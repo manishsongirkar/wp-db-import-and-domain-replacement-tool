@@ -1,6 +1,62 @@
+#!/bin/bash
+
+# ===============================================
+# WordPress Database Import & Domain Replacement Tool
+# ===============================================
+#
+# Description:
+#   A comprehensive bash script for importing WordPress databases and performing
+#   domain/URL replacements with full support for both single-site and multisite
+#   WordPress installations. This tool automates the complex process of migrating
+#   WordPress databases from production to local/staging environments.
+#
+# Features:
+#   - Automatic WordPress installation detection (single-site or multisite)
+#   - Intelligent domain sanitization (removes protocols, trailing slashes)
+#   - Interactive domain mapping for multisite installations
+#   - Two-pass search-replace (standard + serialized data)
+#   - Post revision cleanup for improved performance
+#   - Cache and transient clearing
+#   - Dry-run mode for testing
+#   - MySQL command generation for phpMyAdmin
+#   - Comprehensive error handling and logging
+#   - Colored terminal output with progress indicators
+#
+# Requirements:
+#   - WP-CLI installed and accessible in PATH
+#   - WordPress installation (wp-config.php present)
+#   - MySQL/MariaDB database
+#   - Bash shell
+#   - macOS/Linux environment
+#
+# Usage:
+#   1. Place SQL file in the same directory as this script
+#   2. Navigate to WordPress root directory or subdirectory
+#   3. Source this script: source import_wp_db.sh
+#   4. Run the function: import_wp_db
+#   5. Follow the interactive prompts
+#
+# Supported WordPress Types:
+#   - Single-site installations
+#   - Multisite subdomain networks
+#   - Multisite subdirectory networks
+#
+# File Structure:
+#   - Creates temporary log files in /tmp/ for debugging
+#   - Automatically cleans up temporary files on exit
+#   - Logs all WP-CLI operations for troubleshooting
+#
+# Security:
+#   - Uses absolute paths to prevent directory traversal
+#   - Validates all user inputs
+#   - Sanitizes domain inputs
+#   - Uses temporary files with process-specific names
+#
+# Author: Manish Songirkar (@manishsongirkar)
+# Repository: https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool
+#
 # ===============================================
 # import_wp_db() function definition
-# Author: Manish Songirkar (@manishsongirkar)
 # ===============================================
 import_wp_db() {
   # 🎨 Define colors locally for use within the function (Self-contained scope)
