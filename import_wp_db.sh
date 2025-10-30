@@ -119,16 +119,23 @@ import_wp_db() {
   }
   trap cleanup EXIT
 
-  # 🌀 Spinner function
+  # 🌀 Spinner function with elapsed time
   show_spinner() {
     local pid=$1
     local message=$2
     local delay=0.15
     local spin='|/-\'
+    local start_time=$(date +%s)
+
     printf "  %s " "$message"
     while ps -p "$pid" > /dev/null 2>&1; do
       for i in $(seq 0 3); do
-        printf "\r  %s ${CYAN}%s${RESET}" "$message" "${spin:$i:1}"
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+        local minutes=$((elapsed / 60))
+        local seconds=$((elapsed % 60))
+
+        printf "\r  %s ${CYAN}%s${RESET} (%02d:%02d)" "$message" "${spin:$i:1}" "$minutes" "$seconds"
         sleep $delay
       done
     done
@@ -247,6 +254,7 @@ import_wp_db() {
 
   # 📥 Import database (with spinner)
   printf "\n${CYAN}⏳ Importing database...${RESET}\n"
+  local import_start_time=$(date +%s)
   /bin/sh -c "\"$WP_COMMAND\" db import \"$sql_file\" &> \"$DB_LOG\"" &
   local spinner_pid=$!
   show_spinner $spinner_pid "Importing"
@@ -256,7 +264,14 @@ import_wp_db() {
     printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$DB_LOG"
     return 1
   fi
-  printf "${GREEN}✅ Database import successful!${RESET}\n\n"
+
+  # Calculate elapsed time
+  local import_end_time=$(date +%s)
+  local import_elapsed=$((import_end_time - import_start_time))
+  local import_minutes=$((import_elapsed / 60))
+  local import_seconds=$((import_elapsed % 60))
+
+  printf "${GREEN}✅ Database import successful! ${CYAN}[Completed in %02d:%02d]${RESET}\n\n" "$import_minutes" "$import_seconds"
 
   # 🧩 Check for multisite
   printf "${CYAN}🔍 Checking WordPress installation type...${RESET}\n"
