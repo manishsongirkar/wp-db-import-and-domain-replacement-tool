@@ -196,13 +196,29 @@ import_wp_db() {
   # 🧹 Sanitize domain inputs (remove protocols and trailing slashes)
   sanitize_domain() {
     local domain="$1"
+
+    # Handle empty input
+    if [[ -z "$domain" ]]; then
+      echo ""
+      return 0
+    fi
+
     # Remove http:// and https:// protocols
     domain="${domain#http://}"
     domain="${domain#https://}"
+
+    # Remove any leading/trailing whitespace using bash built-ins
+    # This is more reliable than sed and doesn't depend on external commands
+    while [[ "$domain" =~ ^[[:space:]] ]]; do
+      domain="${domain#[[:space:]]}"
+    done
+    while [[ "$domain" =~ [[:space:]]$ ]]; do
+      domain="${domain%[[:space:]]}"
+    done
+
     # Remove trailing slash
     domain="${domain%/}"
-    # Remove any leading/trailing whitespace
-    domain=$(echo "$domain" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
     echo "$domain"
   }
 
@@ -456,7 +472,7 @@ import_wp_db() {
       fi
 
       # Set PATH and run WP-CLI command
-      if ! (export PATH="/opt/homebrew/bin:$PATH"; "$WP_COMMAND" "${cmd_args[@]}") &>> "$log_file"; then
+      if ! (export PATH="/opt/homebrew/bin:$PATH"; "$WP_COMMAND" "${cmd_args[@]}") >> "$log_file" 2>&1; then
           return 1
       fi
 
@@ -486,8 +502,16 @@ import_wp_db() {
               continue
           fi
 
-          # Clean the line of any carriage returns or other whitespace
-          line=$(echo "$line" | tr -d '\r' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+          # Clean the line of any carriage returns or other whitespace using bash built-ins
+          line="${line//$'\r'/}"  # Remove carriage returns
+          # Remove leading whitespace
+          while [[ "$line" =~ ^[[:space:]] ]]; do
+            line="${line#[[:space:]]}"
+          done
+          # Remove trailing whitespace
+          while [[ "$line" =~ [[:space:]]$ ]]; do
+            line="${line%[[:space:]]}"
+          done
 
           # Skip if line becomes empty after cleaning
           if [[ -z "$line" ]]; then
@@ -726,7 +750,7 @@ import_wp_db() {
       printf "${GREEN}  ✅ All transients deleted.${RESET}\n"
   fi
 
-  printf "\n${GREEN}${BOLD}🎉 All done!${RESET} Database import and replacements completed successfully.\n\n\n\n"
+  printf "\n${GREEN}${BOLD}🎉 All done!${RESET} Database import and replacements completed successfully.\n\n\n"
 
   # 📋 Generate and display MySQL commands for manual execution in phpMyAdmin
   if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 ]]; then
@@ -816,6 +840,126 @@ import_wp_db() {
     printf "${GREEN}✅ Single site domain replacement completed via WP-CLI.${RESET}\n"
   else
     printf "${YELLOW}ℹ️ No domain mappings to generate MySQL commands for.${RESET}\n"
+  fi
+
+  printf "\n"
+
+  # 🔍 Ask for confirmation that MySQL commands have been executed (for multisite)
+  local sql_executed="y"
+  if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 ]]; then
+    printf "${CYAN}${BOLD}📋 MySQL Commands Confirmation${RESET}\n"
+    printf "Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): "
+    read -r sql_executed
+    sql_executed="${sql_executed:-y}"
+
+    if [[ "$sql_executed" != [Yy]* ]]; then
+      printf "${YELLOW}⚠️ Please execute the MySQL commands first, to complete the setup.${RESET}\n"
+      sql_executed="n"
+    else
+      printf "${GREEN}🚀 Database Migration Completed Successfully!${RESET}\n"
+    fi
+    printf "\n"
+  fi
+
+  # 🔍 Check for stage-file-proxy plugin and configure if present (only if SQL commands confirmed)
+  if [[ "$sql_executed" == [Yy]* ]]; then
+    if (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; "$WP_COMMAND" plugin is-installed stage-file-proxy) &>/dev/null; then
+      printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
+
+    # Check if plugin is active and activate if needed
+    if ! (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; "$WP_COMMAND" plugin is-active stage-file-proxy $network_flag) &>/dev/null; then
+      printf "${CYAN}📦 Activating stage-file-proxy plugin...${RESET}\n"
+      if (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; "$WP_COMMAND" plugin activate stage-file-proxy $network_flag) &>/dev/null; then
+        printf "${GREEN}✅ Plugin activated successfully${RESET}\n"
+      else
+        printf "${RED}❌ Failed to activate plugin${RESET}\n"
+      fi
+    else
+      printf "${GREEN}✅ Plugin already active${RESET}\n"
+    fi    # Function to escape JSON values safely
+    escape_json_value() {
+      local input="$1"
+      # Use bash built-in parameter expansion instead of sed
+      input="${input//\\/\\\\}"  # Escape backslashes
+      input="${input//\"/\\\"}"  # Escape quotes
+      input="${input//$'\t'/\\t}" # Escape tabs
+      input="${input//$'\n'/\\n}" # Escape newlines
+      input="${input//$'\r'/\\r}" # Escape carriage returns
+      echo "$input"
+    }
+
+    # Function to create JSON settings for stage-file-proxy
+    create_stage_proxy_settings() {
+      local source_domain="$1"
+      local method="${2:-redirect}"
+
+      # Add protocol if missing
+      if [[ ! "$source_domain" =~ ^https?:// ]]; then
+        source_domain="https://$source_domain"
+      fi
+
+      local escaped_domain escaped_method
+      escaped_domain=$(escape_json_value "$source_domain")
+      escaped_method=$(escape_json_value "$method")
+
+      echo "{\"source_domain\":\"$escaped_domain\",\"method\":\"$escaped_method\"}"
+    }
+
+    # Configure site-specific stage-file-proxy settings
+    configure_site_proxy() {
+      local source_domain="$1"
+      local target_site="$2"
+      local wp_url_flag=""
+
+      if [[ "$is_multisite" == "yes" ]]; then
+        wp_url_flag="--url=$target_site"
+      fi
+
+      local settings
+      settings=$(create_stage_proxy_settings "$source_domain" "redirect")
+
+      if (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; eval "$WP_COMMAND option update stage-file-proxy-settings '$settings' --format=json $wp_url_flag") &>/dev/null; then
+        printf "${GREEN}  ✅ Configured: %s → %s${RESET}\n" "$target_site" "$source_domain"
+      else
+        printf "${RED}  ❌ Configuration failed for %s${RESET}\n" "$target_site"
+      fi
+    }
+
+    # Configure based on installation type
+    if [[ "$is_multisite" == "yes" ]]; then
+      printf "${CYAN}🌐 Configuring multisite stage-file-proxy...${RESET}\n"
+
+      # Use existing domain mappings
+      local array_length=${#domain_keys[@]}
+
+      if [[ $array_length -eq 0 ]]; then
+        printf "${YELLOW}⚠️ No domain mappings found. Using fallback configuration.${RESET}\n"
+        configure_site_proxy "$search_domain" "$search_domain"
+      else
+        printf "${GREEN}✅ Configuring %d sites with stage-file-proxy${RESET}\n" "$array_length"
+
+        for ((i=1; i<=array_length; i++)); do
+          local old_domain="${domain_keys[i]}"
+          local new_domain="${domain_values[i]}"
+
+          # Skip if empty or unchanged
+          if [[ -z "$old_domain" || -z "$new_domain" || "$old_domain" == "$new_domain" ]]; then
+            continue
+          fi
+
+          configure_site_proxy "$old_domain" "$new_domain"
+        done
+      fi
+
+    else
+      printf "${CYAN}🧩 Configuring single site stage-file-proxy...${RESET}\n"
+      configure_site_proxy "$search_domain" "$replace_domain"
+    fi
+
+    printf "${GREEN}🎉 stage-file-proxy configuration complete!${RESET}\n"
+    fi
+  else
+    printf "${YELLOW}ℹ️ Skipping stage-file-proxy configuration (SQL commands not confirmed or not applicable).${RESET}\n"
   fi
 
   printf "\n"

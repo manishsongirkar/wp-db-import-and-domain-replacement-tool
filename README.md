@@ -14,6 +14,7 @@ A powerful **interactive Bash function** that automates importing a WordPress da
 - ✅ **Cache and transient clearing** (object cache, rewrites, transients)
 - ✅ **Dry-run mode** for testing before applying changes
 - ✅ **MySQL command generation** for phpMyAdmin manual execution
+- ✅ **Stage File Proxy integration** - Automatic setup for local development
 - ✅ **Comprehensive error handling** and logging
 - ✅ **Colored terminal output** with progress indicators
 - ✅ **Smart WordPress root detection** (works from any subdirectory)
@@ -117,6 +118,63 @@ You'll be guided step-by-step through the process:
 8. **Execution**: Two-pass search-replace with progress indicators
 9. **Cache Cleanup**: Automatic flushing of caches and transients
 10. **MySQL Commands**: Generated commands for manual phpMyAdmin execution
+11. **SQL Confirmation**: Confirmation prompt for MySQL command execution
+12. **Stage File Proxy Setup**: Automatic configuration if plugin is installed
+
+---
+
+## 🔄 Stage File Proxy Integration
+
+The script automatically detects and configures the **Stage File Proxy** plugin for seamless local development. This plugin allows your local WordPress installation to fetch missing media files from the production server automatically.
+
+### How It Works
+
+1. **Silent Detection**: After displaying MySQL commands, the script silently checks for the stage-file-proxy plugin
+2. **Confirmation Required**: For multisite installations, asks if you've executed the MySQL commands (default: Yes)
+3. **Automatic Configuration**: If plugin is found and confirmed, automatically:
+   - Activates the plugin (if not already active)
+   - Configures source domains using existing domain mappings
+   - Sets up redirect method for file proxying
+
+### Example Output
+
+#### When Plugin is Found:
+```
+📋 MySQL Commands Confirmation
+Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
+🚀 Database Migration Completed Successfully!
+
+🔍 stage-file-proxy plugin found! Configuring...
+✅ Plugin already active
+🧩 Configuring single site stage-file-proxy...
+  ✅ Configured: local.dev → https://production.com
+🎉 stage-file-proxy configuration complete!
+```
+
+#### When Plugin is Not Found:
+The script continues silently without any stage-file-proxy messages.
+
+### Benefits
+
+- **Zero Configuration**: Automatically uses your existing domain mappings
+- **Seamless Development**: Missing images/files load from production
+- **Multisite Support**: Configures each subsite individually
+- **Safe Timing**: Only runs after database structure is properly updated
+- **Non-Intrusive**: Only shows output if plugin is present and being configured
+
+### Manual Setup Alternative
+
+If you prefer to set up stage-file-proxy manually, you can source the standalone setup script:
+
+```bash
+# Uncomment this line in your shell configuration
+if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
+    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
+fi
+
+# Then use the manual setup function
+setup_stage_file_proxy
+```
 
 ---
 
@@ -327,6 +385,8 @@ UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 3;
 | **All tables**       | Include non-WordPress prefixed tables        | Recommended (Y/n) |
 | **Dry-run mode**     | Preview changes without applying them        | Optional (y/N) |
 | **Multisite mapping**| Per-subsite domain mapping (auto-detected)   | Interactive prompts |
+| **SQL confirmation** | Confirm MySQL commands executed (multisite)  | Default Yes (Y/n) |
+| **Stage File Proxy** | Auto-setup if plugin installed              | Automatic detection |
 | **Cache clearing**   | Flush object cache, rewrites, and transients | Automatic |
 
 ---
@@ -386,6 +446,8 @@ These can be used inside phpMyAdmin or MySQL directly if needed.
 | `❌ Database import failed`               | Database connection issue | Check database credentials in `wp-config.php` and user privileges           |
 | `❌ Failed to change directory`           | Permission issues         | Check directory permissions and disk space                                  |
 | Search-replace fails midway               | WP-CLI timeout/memory     | Check available memory and `php.ini` settings                               |
+| `env: php: No such file or directory`     | PHP not in PATH          | Ensure PHP is installed and accessible in system PATH                       |
+| Stage-file-proxy not configuring          | Plugin not installed      | Install stage-file-proxy plugin or answer 'n' to SQL confirmation           |
 
 ---
 
@@ -422,6 +484,7 @@ if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then
     source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"
 fi
 
+# Uncomment this line in your shell configuration
 # if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
 #     source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
 # fi
