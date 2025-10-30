@@ -145,7 +145,8 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 🚀 Database Migration Completed Successfully!
 
 🔍 stage-file-proxy plugin found! Configuring...
-✅ Plugin already active
+📦 Activating stage-file-proxy plugin...
+✅ Plugin activated successfully
 🧩 Configuring single site stage-file-proxy...
   ✅ Configured: local.dev → https://production.com
 🎉 stage-file-proxy configuration complete!
@@ -246,6 +247,17 @@ Proceed with search-replace now? (Y/n): y
 -- No additional MySQL commands needed for single site installations
 
 ✅ Single site domain replacement completed via WP-CLI.
+
+📋 MySQL Commands Confirmation
+Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
+🚀 Database Migration Completed Successfully!
+
+🔍 stage-file-proxy plugin found! Configuring...
+📦 Activating stage-file-proxy plugin...
+✅ Plugin activated successfully
+🧩 Configuring single site stage-file-proxy...
+  ✅ Configured: example.local → https://example.com
+🎉 stage-file-proxy configuration complete!
 ```
 
 ---
@@ -370,6 +382,20 @@ UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 2;
 UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 3;
 
 💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.
+
+📋 MySQL Commands Confirmation
+Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
+🚀 Database Migration Completed Successfully!
+
+🔍 stage-file-proxy plugin found! Configuring...
+📦 Activating stage-file-proxy plugin...
+✅ Plugin activated successfully
+🌐 Configuring multisite stage-file-proxy...
+✅ Configuring 3 sites with stage-file-proxy
+  ✅ Configured: example.local → example.com
+  ✅ Configured: blog.example.local → blog.example.com
+  ✅ Configured: shop.example.local → shop.example.com
+🎉 stage-file-proxy configuration complete!
 ```
 
 ---
