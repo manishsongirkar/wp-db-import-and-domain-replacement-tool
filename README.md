@@ -6,16 +6,16 @@ A powerful **interactive Bash function** that automates importing a WordPress da
 
 ## 🚀 Features
 
-✅ Import `.sql` dump directly into your WordPress database
-✅ Interactive domain replacement (`old-domain → new-domain`)
-✅ Supports **multisite** and **single-site** WordPress installs
-✅ Optional **revision cleanup** for faster search-replace
-✅ Smart detection of WordPress root
-✅ Double-pass serialized data-safe replacements
-✅ Automatic log management in `/tmp/`
-✅ Safe exit traps and progress spinners
-✅ Optional **dry-run** mode (preview replacements)
-✅ Generates MySQL helper commands for manual use
+- ✅ Import `.sql` dump directly into your WordPress database 
+- ✅ Interactive domain replacement (`old-domain → new-domain`) 
+- ✅ Supports **multisite** and **single-site** WordPress installs 
+- ✅ Optional **revision cleanup** for faster search-replace 
+- ✅ Smart detection of WordPress root 
+- ✅ Double-pass serialized data-safe replacements 
+- ✅ Automatic log management in `/tmp/` 
+- ✅ Safe exit traps and progress spinners 
+- ✅ Optional **dry-run** mode (preview replacements) 
+- ✅ Generates MySQL helper commands for manual use 
 
 ---
 
