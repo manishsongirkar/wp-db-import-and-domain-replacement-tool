@@ -63,7 +63,7 @@ if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then
 fi
 
 # if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
- #   source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
+#    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
 # fi
 ```
 
@@ -278,6 +278,8 @@ fi
 # fi
 
 source ~/.bashrc
+# OR
+source ~/.zshrc
 
 # Navigate to your WordPress project directory (where `wp-config.php` exists) and run:
 
