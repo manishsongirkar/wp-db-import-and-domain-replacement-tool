@@ -6,16 +6,19 @@ A powerful **interactive Bash function** that automates importing a WordPress da
 
 ## 🚀 Features
 
-✅ Import `.sql` dump directly into your WordPress database
-✅ Interactive domain replacement (`old-domain → new-domain`)
-✅ Supports **multisite** and **single-site** WordPress installs
-✅ Optional **revision cleanup** for faster search-replace
-✅ Smart detection of WordPress root
-✅ Double-pass serialized data-safe replacements
-✅ Automatic log management in `/tmp/`
-✅ Safe exit traps and progress spinners
-✅ Optional **dry-run** mode (preview replacements)
-✅ Generates MySQL helper commands for manual use
+- ✅ **Automatic WordPress installation detection** (single-site or multisite)
+- ✅ **Intelligent domain sanitization** (removes protocols, trailing slashes)
+- ✅ **Interactive domain mapping** for multisite installations
+- ✅ **Two-pass search-replace** (standard + serialized data)
+- ✅ **Post revision cleanup** for improved performance
+- ✅ **Cache and transient clearing** (object cache, rewrites, transients)
+- ✅ **Dry-run mode** for testing before applying changes
+- ✅ **MySQL command generation** for phpMyAdmin manual execution
+- ✅ **Comprehensive error handling** and logging
+- ✅ **Colored terminal output** with progress indicators
+- ✅ **Smart WordPress root detection** (works from any subdirectory)
+- ✅ **Safe exit traps** and automatic cleanup of temporary files
+- ✅ **Supports both multisite types** (subdomain and subdirectory networks)
 
 ---
 
@@ -23,18 +26,19 @@ A powerful **interactive Bash function** that automates importing a WordPress da
 
 | Requirement | Description |
 |--------------|-------------|
-| **Operating System** | Linux or macOS (Bash 4+) |
-| **WP-CLI** | Installed and available in `$PATH` |
-| **MySQL CLI** | Required for `wp db import` |
-| **WordPress** | Standard installation (non-Bedrock) |
+| **Operating System** | macOS/Linux environment (Bash shell) |
+| **WP-CLI** | Installed and accessible in PATH |
+| **WordPress** | WordPress installation (wp-config.php present) |
+| **Database** | MySQL/MariaDB database |
 | **Permissions** | User must have DB import privileges |
+| **File Access** | SQL file in same directory or accessible path |
 
 Check your environment:
 ```bash
 wp --info
 mysql --version
 bash --version
-````
+```
 
 ---
 
@@ -63,7 +67,7 @@ if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then
 fi
 
 # if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
- #   source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
+#     source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
 # fi
 ```
 
@@ -101,15 +105,18 @@ Once installed, navigate to your WordPress project directory (where `wp-config.p
 import_wp_db
 ```
 
-You’ll be guided step-by-step through the process:
+You'll be guided step-by-step through the process:
 
-1. Confirm SQL file (default: `vip-db.sql`)
-2. Enter **old domain** (e.g., `production.com`)
-3. Enter **new domain** (e.g., `local.test`)
-4. Confirm import and replacement
-5. (Optional) Clean post revisions
-6. (Optional) Choose dry-run or all-tables mode
-7. Wait for the process to complete 🎉
+1. **SQL File**: Confirm SQL file name (default: `vip-db.sql`)
+2. **Domain Mapping**: Enter old domain (production) and new domain (local)
+3. **Import Confirmation**: Review and confirm database import
+4. **Multisite Detection**: Automatic detection of WordPress type
+5. **Revision Cleanup**: Optional cleanup of post revisions for better performance
+6. **Options**: Choose `--all-tables` and dry-run mode settings
+7. **Domain Mapping** (Multisite): Interactive mapping for each subsite
+8. **Execution**: Two-pass search-replace with progress indicators
+9. **Cache Cleanup**: Automatic flushing of caches and transients
+10. **MySQL Commands**: Generated commands for manual phpMyAdmin execution
 
 ---
 
@@ -120,30 +127,67 @@ You’ll be guided step-by-step through the process:
 ```
 $ import_wp_db
 
-💾 Enter the SQL file name [vip-db.sql]: vip-db.sql
-✅ WordPress installation detected.
-🌐 Enter OLD domain (e.g., production.com): example.com
-🌐 Enter NEW domain (e.g., local.test): example.local
-⚠️ Confirm import and replacement from example.com → example.local? (Y/n): y
-🔄 Importing database vip-db.sql...
+� WordPress Database Import & Domain Replace Tool
+---------------------------------------------------
 
-✅ Database imported successfully.
-🧹 Delete all post revisions before search-replace? (y/N): y
-✅ Post revisions deleted successfully.
+📦 Enter SQL file name (default: vip-db.sql): production-backup.sql
+✅ WordPress root found: /Users/john/Sites/my-wp-site
 
-🧠 Perform dry-run first? (Y/n): y
-💬 Running search-replace dry-run for example.com → example.local...
-✅ Dry-run complete.
+✅ Found SQL file: production-backup.sql
 
-🧠 Proceed with actual replacement? (Y/n): y
-🔍 Running search-replace pass 1...
-🔍 Running search-replace pass 2...
-✅ Replacement complete.
+� Enter the OLD (production) domain to search for: example.com
+� Enter the NEW (local) domain/base URL to replace with: example.local
 
-🧹 Flushing cache and rewrites...
-✅ Done.
+🧾 Summary:
+    🔍 Search for:   example.com
+    🔄 Replace with: example.local
 
-✨ All tasks complete. Logs saved in /tmp/wp_replace_single_12345.log
+Proceed with database import? (Y/n): y
+
+⏳ Importing database...
+✅ Database import successful!
+
+🔍 Checking WordPress installation type...
+✅ Multisite status: no
+
+Clear ALL post revisions? (improves search-replace speed) (Y/n): y
+🗑️ REVISION CLEANUP - STEP BY STEP
+=====================================================
+
+🧩 SINGLE SITE DETECTED - Processing main site only...
+  Step A: Processing revisions for the main site
+
+  🌍 Processing Main Site
+  ✅ Revisions deleted
+
+Include --all-tables (recommended for full DB imports)? (Y/n): y
+✅ Will include all tables.
+
+Run in dry-run mode (no data will be changed)? (y/N): n
+🚀 Running in live mode (changes will be applied).
+
+Proceed with search-replace now? (Y/n): y
+
+� Running search-replace (Double Pass)...
+  [Pass 1] Simple replacement: //example.com → //example.local
+  [Pass 2] Serialized replacement: \\/\\/example.com → \\/\\/example.local
+
+✅ Search-replace completed successfully!
+
+🧹 Flushing WordPress and WP-CLI caches & transients...
+  ✅ Object cache flushed.
+  ✅ Rewrite rule flushed.
+  ✅ All transients deleted.
+
+🎉 All done! Database import and replacements completed successfully.
+
+📋 MySQL Commands for Single Site:
+================================================================
+
+-- Single site setup - domain updated via WP-CLI search-replace
+-- No additional MySQL commands needed for single site installations
+
+✅ Single site domain replacement completed via WP-CLI.
 ```
 
 ---
@@ -153,44 +197,137 @@ $ import_wp_db
 ```
 $ import_wp_db
 
-💾 Enter the SQL file name [vip-db.sql]: staging.sql
-✅ Detected WordPress Multisite installation.
-🌐 Enter OLD domain (e.g., production.com): example.com
-🌐 Enter NEW domain (e.g., local.test): example.local
-⚠️ Confirm import and replacement from example.com → example.local? (Y/n): y
+� WordPress Database Import & Domain Replace Tool
+---------------------------------------------------
 
-🧠 Found 3 subsites:
-  1) example.com/
-  2) blog.example.com/
-  3) shop.example.com/
+📦 Enter SQL file name (default: vip-db.sql): multisite-backup.sql
+✅ WordPress root found: /Users/john/Sites/multisite-wp
 
-Enter NEW domain for subsite 1 (example.com) [example.local]:
-Enter NEW domain for subsite 2 (blog.example.com) [blog.local.test]:
-Enter NEW domain for subsite 3 (shop.example.com) [shop.local.test]:
+✅ Found SQL file: multisite-backup.sql
 
-🔍 Processing site #1 (example.com)
-✅ Replacement done.
-🔍 Processing site #2 (blog.example.com)
-✅ Replacement done.
-🔍 Processing site #3 (shop.example.com)
-✅ Replacement done.
+� Enter the OLD (production) domain to search for: example.com
+� Enter the NEW (local) domain/base URL to replace with: example.local
 
-✅ All subsites processed successfully.
-🧹 Cache and rewrites flushed.
+🧾 Summary:
+    🔍 Search for:   example.com
+    🔄 Replace with: example.local
+
+Proceed with database import? (Y/n): y
+
+⏳ Importing database...
+✅ Database import successful!
+
+🔍 Checking WordPress installation type...
+✅ Multisite status: subdomain
+
+Clear ALL post revisions? (improves search-replace speed) (Y/n): y
+🗑️ REVISION CLEANUP - STEP BY STEP
+=====================================================
+
+🌐 MULTISITE DETECTED - Processing all subsites...
+  Step A: Getting list of all sites in the network
+Found 3 sites to process:
+    1. example.com
+    2. blog.example.com
+    3. shop.example.com
+
+  Step B: Processing revisions for each site individually
+
+  🌍 Site 1/3: example.com
+  ✅ Revisions deleted
+
+  🌍 Site 2/3: blog.example.com
+  ✅ Revisions deleted
+
+  🌍 Site 3/3: shop.example.com
+  ✅ Revisions deleted
+
+Include --all-tables (recommended for full DB imports)? (Y/n): y
+✅ Will include all tables.
+
+Run in dry-run mode (no data will be changed)? (y/N): n
+🚀 Running in live mode (changes will be applied).
+
+🌐 Multisite (subdomain) detected — gathering subsites for mapping...
+
+✅ Found 3 subsites:
++--------+------------------+------+
+| blog_id| domain           | path |
++--------+------------------+------+
+| 1      | example.com      | /    |
+| 2      | blog.example.com | /    |
+| 3      | shop.example.com | /    |
++--------+------------------+------+
+
+Enter the NEW URL/Domain for each site:
+(Example: Map 'sub1.example.com' to 'example.local/sub1')
+
+→ Local URL for 'example.com' (Blog ID 1): (example.local) example.local
+→ Local URL for 'blog.example.com' (Blog ID 2): blog.example.local
+→ Local URL for 'shop.example.com' (Blog ID 3): shop.example.local
+
+🧾 Domain mapping summary:
+    🔁 example.com → example.local
+    🔁 blog.example.com → blog.example.local
+    🔁 shop.example.com → shop.example.local
+
+Proceed with search-replace for all subsites? (Y/n): y
+
+� Starting search-replace (per subsite, sequential)...
+
+➡️  Replacing for Site ID 1: example.com → example.local
+  [Pass 1] Simple replacement: //example.com → //example.local
+  [Pass 2] Serialized replacement: \\/\\/example.com → \\/\\/example.local
+✅ Completed for example.com.
+
+➡️  Replacing for Site ID 2: blog.example.com → blog.example.local
+  [Pass 1] Simple replacement: //blog.example.com → //blog.example.local
+  [Pass 2] Serialized replacement: \\/\\/blog.example.com → \\/\\/blog.example.local
+✅ Completed for blog.example.com.
+
+➡️  Replacing for Site ID 3: shop.example.com → shop.example.local
+  [Pass 1] Simple replacement: //shop.example.com → //shop.example.local
+  [Pass 2] Serialized replacement: \\/\\/shop.example.com → \\/\\/shop.example.local
+✅ Completed for shop.example.com.
+
+🧹 Flushing WordPress and WP-CLI caches & transients...
+  ✅ Object cache flushed.
+  ✅ Rewrite rule flushed.
+  ✅ All transients deleted.
+
+🎉 All done! Database import and replacements completed successfully.
+
+================================================================
+
+📋 MySQL Commands for Manual Execution in phpMyAdmin:
+
+================================================================
+
+-- Update the main site domain
+UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
+
+-- Update blog domains and paths based on domain mapping
+UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 1;
+UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 2;
+UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 3;
+
+💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.
 ```
 
 ---
 
 ## ⚡ Options Overview
 
-| Option               | Description                                   |
-| -------------------- | --------------------------------------------- |
-| **SQL filename**     | Defaults to `vip-db.sql`, or specify manually |
-| **Old / New Domain** | Required — used for replacements              |
-| **Revision cleanup** | Optional, improves search speed               |
-| **Dry-run**          | Optional, safe preview mode                   |
-| **All tables**       | Optional, includes non-WP prefixed tables     |
-| **Multisite mode**   | Auto-detected, prompts per-site               |
+| Option               | Description                                   | Default |
+| -------------------- | --------------------------------------------- | ------- |
+| **SQL filename**     | Database dump file to import                  | `vip-db.sql` |
+| **Old Domain**       | Production domain to search for               | Required input |
+| **New Domain**       | Local/staging domain to replace with         | Required input |
+| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) |
+| **All tables**       | Include non-WordPress prefixed tables        | Recommended (Y/n) |
+| **Dry-run mode**     | Preview changes without applying them        | Optional (y/N) |
+| **Multisite mapping**| Per-subsite domain mapping (auto-detected)   | Interactive prompts |
+| **Cache clearing**   | Flush object cache, rewrites, and transients | Automatic |
 
 ---
 
@@ -240,35 +377,47 @@ These can be used inside phpMyAdmin or MySQL directly if needed.
 
 ## 🧩 Troubleshooting
 
-| Problem                          | Cause                     | Solution                                                                     |
-| -------------------------------- | ------------------------- | ---------------------------------------------------------------------------- |
-| `❌ WP-CLI not found`             | WP-CLI not in PATH        | Install via `brew install wp-cli` or `composer global require wp-cli/wp-cli` |
-| `❌ SQL file not found`           | Wrong filename or path    | Ensure `.sql` file exists in current directory                               |
-| `❌ Not a WordPress installation` | Script not run in WP root | `cd` into the folder with `wp-config.php`                                    |
-| `Error: database not found`      | Wrong DB credentials      | Check `wp-config.php`                                                        |
-| Script stops midway              | Permissions / disk full   | Check `/tmp/` and DB user privileges                                         |
+| Problem                                    | Cause                     | Solution                                                                     |
+| ------------------------------------------ | ------------------------- | ---------------------------------------------------------------------------- |
+| `❌ WP-CLI not found in PATH`             | WP-CLI not in PATH        | Install via `brew install wp-cli` or `composer global require wp-cli/wp-cli` |
+| `❌ File 'filename.sql' not found`        | Wrong filename or path    | Ensure `.sql` file exists in current directory or specify full path          |
+| `❌ WordPress root not found`             | Script not run in WP root | Navigate to folder containing `wp-config.php` or its subdirectory           |
+| `❌ No WordPress installation detected`   | Invalid WordPress setup   | Check `wp-config.php` and database connection                               |
+| `❌ Database import failed`               | Database connection issue | Check database credentials in `wp-config.php` and user privileges           |
+| `❌ Failed to change directory`           | Permission issues         | Check directory permissions and disk space                                  |
+| Search-replace fails midway               | WP-CLI timeout/memory     | Check available memory and `php.ini` settings                               |
 
 ---
 
 ## 🛡️ Safety Recommendations
 
-* Always **backup your database** before importing:
-
+* **Always backup your database** before importing:
   ```bash
   wp db export backup-$(date +%F).sql
   ```
-* Use **dry-run** for first-time replacements.
-* Review generated logs before deleting them.
+
+* **Use dry-run mode** for first-time replacements to preview changes
+
+* **Test on staging environment** before applying to production
+
+* **Verify domain sanitization** - the script automatically removes protocols and trailing slashes
+
+* **Review generated logs** before deleting them (stored in `/tmp/`)
+
+* **Check multisite domain mapping** carefully for complex network setups
+
+* **Backup wp-config.php** as it contains critical database connection info
 
 ---
 
 🟩 **Quick Start:**
 
 ```bash
+# 1. Clone the repository
 cd ~
 git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
 
-# Add this to ~/.bashrc or ~/.zshrc
+# 2. Add to your shell configuration (~/.bashrc or ~/.zshrc)
 if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then
     source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"
 fi
@@ -277,10 +426,14 @@ fi
 #     source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
 # fi
 
-source ~/.bashrc
+# 3. Reload your shell
+source ~/.bashrc  # or ~/.zshrc
 
-# Navigate to your WordPress project directory (where `wp-config.php` exists) and run:
+# 4. Verify installation
+type import_wp_db
 
+# 5. Navigate to your WordPress project and run
+cd /path/to/your/wordpress/site
 import_wp_db
 ```
 
