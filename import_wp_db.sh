@@ -506,7 +506,13 @@ import_wp_db() {
       # Read the CSV data using a simple and reliable method
       local subsite_lines=()
 
+      # Ensure the CSV file ends with a newline to prevent missing the last line
+      echo "" >> "$SUBSITE_DATA"
+
+      local line_count=0
       while IFS= read -r line; do
+          line_count=$((line_count + 1))
+
           # Skip header line exactly
           if [[ "$line" == "blog_id,domain,path" ]]; then
               continue
@@ -517,65 +523,19 @@ import_wp_db() {
               continue
           fi
 
-          # Clean the line of any carriage returns or other whitespace using bash built-ins
-          line="${line//$'\r'/}"  # Remove carriage returns
-          # Remove leading whitespace
-          while [[ "$line" =~ ^[[:space:]] ]]; do
-            line="${line#[[:space:]]}"
-          done
-          # Remove trailing whitespace
-          while [[ "$line" =~ [[:space:]]$ ]]; do
-            line="${line%[[:space:]]}"
-          done
+          # Clean the line of any carriage returns
+          line="${line//$'\r'/}"
 
           # Skip if line becomes empty after cleaning
           if [[ -z "$line" ]]; then
               continue
           fi
 
-          # Add valid lines
-          subsite_lines+=("$line")
+          # Add valid lines only if they contain actual data
+          if [[ "$line" =~ ^[0-9]+, ]]; then
+              subsite_lines+=("$line")
+          fi
       done < "$SUBSITE_DATA"
-
-      # Filter out any empty elements (safety measure)
-      local filtered_lines=()
-      for line in "${subsite_lines[@]}"; do
-
-          if [[ -n "$line" ]]; then
-              if [[ "$line" != "blog_id,domain,path" ]]; then
-                  filtered_lines+=("$line")
-              fi
-          fi
-      done
-      subsite_lines=("${filtered_lines[@]}")
-
-      # REMOVE PREVIOUS FIX: We only need to ensure the final subsite_lines array is clean.
-      # The previous logic failed to remove the empty element at index 0, causing index misalignment.
-      # The simple filtering above should be sufficient if WP-CLI is not outputting true empty elements.
-      # If the empty line still exists at index 0 after the filtering loop, it needs to be removed.
-      # If [[ "${subsite_lines[0]}" == "" ]]; then
-      #     subsite_lines=("${subsite_lines[@]:1}")
-      # fi
-      # NOTE: Reverting the previous fix as it caused the regression.
-      # The issue is the combination of the filtering logic and the previous fix.
-      # Since the filtering loop above is redundant with the `while read` loop's checks, we'll
-      # make the final filtering array assignment definitive to remove any empty elements.
-
-      # NEW FIX: The initial filtering loop inside the `while read` is not appending empty lines.
-      # The second filtering loop is what preserves the empty line if it was introduced.
-      # The final `subsite_lines=("${filtered_lines[@]}")` already represents the clean array.
-      # The regression was caused by the manual array shift. We must ensure the filtering array is built correctly.
-
-      # We will modify the cleanup loop to ensure no empty element makes it into the final array.
-      local final_subsite_lines=()
-      for line in "${subsite_lines[@]}"; do
-          # Check for non-zero length AND that the first character is not a comma (to exclude weird empty lines)
-          if [[ -n "$line" && "$line" != ","* ]]; then
-              final_subsite_lines+=("$line")
-          fi
-      done
-      subsite_lines=("${final_subsite_lines[@]}")
-
 
       local site_list
       site_list=$("$WP_COMMAND" site list --fields=blog_id,domain,path --format=table --url="$search_domain" 2>/dev/null)
@@ -587,141 +547,216 @@ import_wp_db() {
       printf "%s\n" "$site_list"
       printf "\n"
 
-      # Use parallel arrays instead of associative arrays (more compatible)
-      local domain_keys=()
-      local domain_values=()
+      # FIXED: Handle subdirectory vs subdomain multisite differently for search-replace
+      if [[ "$multisite_type" == "subdirectory" ]]; then
+          # For subdirectory multisite: All sites share the same domain
+          printf "${CYAN}🏠 Subdirectory Multisite Detected${RESET}\n"
+          printf "All subsites share the same domain. Only one search-replace operation needed.\n\n"
 
-      printf "${BOLD}Enter the NEW URL/Domain for each site:${RESET}\n"
-      printf "(Example: Map 'sub1.example.com' to 'example.local/sub1')\n\n"
+          printf "🌍 Enter the NEW domain for all sites:\n"
+          printf "→ Replace '%s' with: (%s) " "$search_domain" "$replace_domain"
+          read -r network_domain
+          network_domain="${network_domain:-$replace_domain}"
 
-      local blog_id domain path local_domain mapped cleaned_domain
-
-      # --- Interactive Mapping Loop ---
-      for subsite_line in "${subsite_lines[@]}"; do
-
-        if [[ "$subsite_line" == "blog_id,domain,path" ]]; then
-            continue
-        fi
-
-        # Skip empty lines
-        if [[ -z "$subsite_line" ]]; then
-            continue
-        fi
-
-        # Read the CSV elements from the array element
-        IFS=, read -r blog_id domain path <<< "$subsite_line"
-
-        cleaned_domain=$(clean_string "$domain")
-
-        # Skip if domain is empty after cleaning
-        if [[ -z "$cleaned_domain" ]]; then
-            continue
-        fi
-
-        # For the main site (ID 1), default to the global replace_domain
-        if [[ "$blog_id" == "1" ]]; then
-            printf "→ Local URL for '%s' (Blog ID 1): (%s) " "$cleaned_domain" "$replace_domain"
-            read -r local_domain
-            # Use default if empty
-            local_domain="${local_domain:-$replace_domain}"
-        else
-            # For subsites, prompt the user clearly
-            printf "→ Local URL for '%s' (Blog ID %s): " "$cleaned_domain" "$blog_id"
-            read -r local_domain
-            # Use default if empty
-            local_domain="${local_domain:-$cleaned_domain}"
-        fi
-
-        # 🧹 Sanitize the local domain input (remove protocols, trailing slashes, whitespace)
-        if [[ -n "$local_domain" ]]; then
-            local original_local_domain="$local_domain"
-            local_domain=$(sanitize_domain "$local_domain")
-
-            # Show what was cleaned up if changes were made
-            if [[ "$original_local_domain" != "$local_domain" ]]; then
-                printf "    ${YELLOW}🧹 Cleaned: '%s' → '%s'${RESET}\n" "$original_local_domain" "$local_domain"
-            fi
-        fi
-
-        # Add to arrays with validation - SINGLE POINT OF ADDITION
-        if [[ -n "$cleaned_domain" && -n "$local_domain" ]]; then
-            domain_keys+=("$cleaned_domain")
-            domain_values+=("$local_domain")
-        fi
-      done
-
-      printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
-
-      # --- Summary Loop using parallel arrays (more compatible) ---
-      local array_length=${#domain_keys[@]}
-
-      for ((i=1; i<=array_length; i++)); do
-
-        local key="${domain_keys[i]}"
-        local value="${domain_values[i]}"
-
-        # 1. Trim leading whitespace from 'key'
-        key="${key#"${key%%[![:space:]]*}"}"
-
-        # 2. Trim trailing whitespace from 'key'
-        key="${key%"${key##*[![:space:]]}"}"
-
-        # 3. Trim leading whitespace from 'value'
-        value="${value#"${value%%[![:space:]]*}"}"
-
-        # 4. Trim trailing whitespace from 'value'
-        value="${value%"${value##*[![:space:]]}"}"
-
-        if [[ -z "$value" ]]; then
-          printf "    ❌ %s → (no mapping found)\n" "$key"
-        elif [[ "$key" == "$value" ]]; then
-          printf "    ⏭️  %s → (unchanged)\n" "$key"
-        else
-          printf "    🔁 %s → ${GREEN}%s${RESET}\n" "$key" "$value"
-        fi
-      done
-
-      printf "\n"
-      printf "Proceed with search-replace for all subsites? (Y/n): "
-      read -r confirm_replace
-      confirm_replace="${confirm_replace:-y}"
-      [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
-
-      printf "\n${CYAN}🔄 Starting search-replace (per subsite, sequential)...${RESET}\n"
-      local new_domain SR_LOG_MULTI
-
-      # --- Execution Loop using parallel arrays ---
-      local array_length=${#domain_keys[@]}
-      for ((i=1; i<=array_length; i++)); do
-        local cleaned_domain="${domain_keys[i]}"
-        local new_domain="${domain_values[i]}"
-
-        if [[ -z "$new_domain" || "$cleaned_domain" == "$new_domain" ]]; then
-          printf "${YELLOW}⏭️  Skipping '%s' (no change).${RESET}\n" "$cleaned_domain"
-          continue
-        fi
-
-        # Get the blog_id from the original data by matching the domain
-        local blog_id=""
-        for subsite_line in "${subsite_lines[@]}"; do
-          IFS=, read -r temp_blog_id temp_domain temp_path <<< "$subsite_line"
-          local temp_cleaned_domain=$(clean_string "$temp_domain")
-          if [[ "$temp_cleaned_domain" == "$cleaned_domain" ]]; then
-            blog_id="$temp_blog_id"
-            break
+          # Sanitize the input
+          local original_network_domain="$network_domain"
+          network_domain=$(sanitize_domain "$network_domain")
+          if [[ "$original_network_domain" != "$network_domain" ]]; then
+              printf "    ${YELLOW}🧹 Cleaned: '%s' → '%s'${RESET}\n" "$original_network_domain" "$network_domain"
           fi
-        done
 
-        SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
+          printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
+          printf "    🔁 %s → ${GREEN}%s${RESET} (Network-wide)\n" "$search_domain" "$network_domain"
 
-        printf "\n➡️  ${BOLD}Replacing for Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$blog_id" "$cleaned_domain" "$new_domain"
+          printf "\nProceed with network-wide search-replace? (Y/n): "
+          read -r confirm_replace
+          confirm_replace="${confirm_replace:-y}"
+          [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
 
-        if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain"; then
-          printf "${GREEN}✅ Completed for %s.${RESET}\n" "$cleaned_domain"
-        else
-          printf "${RED}❌ Failed on %s. Check %s for details.${RESET}\n" "$cleaned_domain" "$SR_LOG_MULTI"
-        fi
-      done
+          printf "\n${CYAN}🔄 Starting network-wide search-replace...${RESET}\n"
+
+          # For subdirectory multisite, use network flag and main domain
+          if run_search_replace "$search_domain" "$network_domain" "$SR_LOG_SINGLE" ""; then
+              printf "\n${GREEN}✅ Network-wide search-replace completed successfully!${RESET}\n"
+          else
+              printf "\n${RED}❌ Network-wide search-replace failed. See %s.${RESET}\n" "$SR_LOG_SINGLE"
+              return 1
+          fi
+
+          # Store network domain for MySQL command generation
+          domain_keys=("$search_domain")
+          domain_values=("$network_domain")
+
+      else
+          # For subdomain multisite: Handle individual site mappings (original logic)
+          printf "${CYAN}🌐 Subdomain Multisite Detected${RESET}\n"
+          printf "Each subsite has its own domain. Individual mapping required.\n\n"
+
+          # Use parallel arrays instead of associative arrays (more compatible)
+          local domain_keys=()
+          local domain_values=()
+
+          printf "${BOLD}Enter the NEW URL/Domain for each site:${RESET}\n"
+          printf "(Example: Map 'sub1.example.com' to 'sub1.example.local')\n\n"
+
+          local blog_id domain path local_domain mapped cleaned_domain
+          local processed_count=0
+
+          # --- Interactive Mapping Loop ---
+          for subsite_line in "${subsite_lines[@]}"; do
+            processed_count=$((processed_count + 1))
+
+            if [[ "$subsite_line" == "blog_id,domain,path" ]]; then
+                continue
+            fi
+
+            # Skip empty lines
+            if [[ -z "$subsite_line" ]]; then
+                continue
+            fi
+
+            # Read the CSV elements from the array element
+            IFS=, read -r blog_id domain path <<< "$subsite_line"
+
+            cleaned_domain=$(clean_string "$domain")
+
+            # Skip if domain is empty after cleaning
+            if [[ -z "$cleaned_domain" ]]; then
+                continue
+            fi
+
+            # Debug output for domain processing
+            printf "\n"
+            printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$blog_id" "$cleaned_domain" "$path"
+
+            # For the main site (ID 1), default to the global replace_domain
+            if [[ "$blog_id" == "1" ]]; then
+                printf "→ Local URL for '%s' (Blog ID 1): (%s) " "$cleaned_domain" "$replace_domain"
+                read -r local_domain
+                # Use default if empty
+                local_domain="${local_domain:-$replace_domain}"
+            else
+                # For subsites, prompt the user clearly
+                printf "→ Local URL for '%s' (Blog ID %s): " "$cleaned_domain" "$blog_id"
+                read -r local_domain
+                # Use default if empty
+                local_domain="${local_domain:-$cleaned_domain}"
+            fi
+
+            # 🧹 Sanitize the local domain input (remove protocols, trailing slashes, whitespace)
+            if [[ -n "$local_domain" ]]; then
+                local original_local_domain="$local_domain"
+                local_domain=$(sanitize_domain "$local_domain")
+
+                # Show what was cleaned up if changes were made
+                if [[ "$original_local_domain" != "$local_domain" ]]; then
+                    printf "    ${YELLOW}🧹 Cleaned: '%s' → '%s'${RESET}\n" "$original_local_domain" "$local_domain"
+                fi
+            fi
+
+            # Add to arrays with validation - SINGLE POINT OF ADDITION
+            if [[ -n "$cleaned_domain" && -n "$local_domain" ]]; then
+                # For multisite, multiple sites can have the same domain with different paths
+                # This is normal behavior, so we don't need to prevent "duplicates" here
+                domain_keys+=("$cleaned_domain")
+                domain_values+=("$local_domain")
+                printf "    ${GREEN}✅ Added mapping:${RESET} '%s' → '%s'\n" "$cleaned_domain" "$local_domain"
+            else
+                printf "    ${RED}❌ Skipped invalid mapping:${RESET} domain='%s', local='%s'\n" "$cleaned_domain" "$local_domain"
+            fi
+
+            printf "\n"
+
+          done
+
+          # Clean up arrays - remove any empty elements using a more robust approach
+          local clean_domain_keys=()
+          local clean_domain_values=()
+          local original_length=${#domain_keys[@]}
+
+          for ((i=1; i<=original_length; i++)); do
+            local key="${domain_keys[i]}"
+            local value="${domain_values[i]}"
+
+            if [[ -n "$key" && -n "$value" ]]; then
+              clean_domain_keys+=("$key")
+              clean_domain_values+=("$value")
+            fi
+          done
+
+          # Replace the original arrays
+          unset domain_keys domain_values
+          domain_keys=("${clean_domain_keys[@]}")
+          domain_values=("${clean_domain_values[@]}")
+
+          printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
+
+          # --- Summary Loop using parallel arrays (more compatible) ---
+          local array_length=${#domain_keys[@]}
+
+          for ((i=1; i<=array_length; i++)); do
+
+            local key="${domain_keys[i]}"
+            local value="${domain_values[i]}"
+
+            # Use simple and reliable trimming - just check the raw values
+            if [[ -z "$value" ]]; then
+              printf "    ❌ %s → (no mapping found)\n" "$key"
+            elif [[ "$key" == "$value" ]]; then
+              printf "    ⏭️  %s → (unchanged)\n" "$key"
+            else
+              printf "    🔁 %s → ${GREEN}%s${RESET}\n" "$key" "$value"
+            fi
+          done
+
+          printf "\n"
+          printf "Proceed with search-replace for all subsites? (Y/n): "
+          read -r confirm_replace
+          confirm_replace="${confirm_replace:-y}"
+          [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
+
+          printf "\n${CYAN}🔄 Starting search-replace (per subsite, sequential)...${RESET}\n"
+          local new_domain SR_LOG_MULTI
+
+          # --- Execution Loop using parallel arrays ---
+          local array_length=${#domain_keys[@]}
+          for ((i=1; i<=array_length; i++)); do
+            local cleaned_domain="${domain_keys[i]}"
+            local new_domain="${domain_values[i]}"
+
+            if [[ -z "$new_domain" || "$cleaned_domain" == "$new_domain" ]]; then
+              printf "${YELLOW}⏭️  Skipping '%s' (no change).${RESET}\n" "$cleaned_domain"
+              continue
+            fi
+
+            # Get the blog_id from the original data by matching the domain
+            local blog_id=""
+            for subsite_line in "${subsite_lines[@]}"; do
+              IFS=, read -r temp_blog_id temp_domain temp_path <<< "$subsite_line"
+              local temp_cleaned_domain=$(clean_string "$temp_domain")
+              if [[ "$temp_cleaned_domain" == "$cleaned_domain" ]]; then
+                blog_id="$temp_blog_id"
+                break
+              fi
+            done
+
+            # Add safety check for missing blog_id
+            if [[ -z "$blog_id" ]]; then
+              printf "${RED}❌ Could not find blog_id for domain '%s' - skipping${RESET}\n" "$cleaned_domain"
+              continue
+            fi
+
+            SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
+
+            printf "\n➡️  ${BOLD}Replacing for Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$blog_id" "$cleaned_domain" "$new_domain"
+
+            if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain"; then
+              printf "${GREEN}✅ Completed for %s.${RESET}\n" "$cleaned_domain"
+            else
+              printf "${RED}❌ Failed on %s. Check %s for details.${RESET}\n" "$cleaned_domain" "$SR_LOG_MULTI"
+            fi
+          done
+      fi  # End of subdirectory vs subdomain multisite logic
 
   else
     # 🧩 Single site (Original logic)
@@ -776,7 +811,7 @@ import_wp_db() {
     # Extract the base domain from the first mapped domain (main site)
     local base_domain=""
     if [[ ${#domain_values[@]} -gt 0 ]]; then
-      base_domain="${domain_values[1]}"
+      base_domain="${domain_values[1]}"  # Use index 1 since we're using 1-based indexing
       # Remove protocol if present
       base_domain="${base_domain#http://}"
       base_domain="${base_domain#https://}"
@@ -789,11 +824,12 @@ import_wp_db() {
     if [[ -n "$base_domain" ]]; then
       printf "-- Update the main site domain\n"
       printf "UPDATE wp_site SET domain = '%s' WHERE id = 1;\n\n" "$base_domain"
-
-      printf "-- Update blog domains and paths based on domain mapping\n"
+      printf "-- Update blog domains and paths based on domain mapping\n\n"
 
       # Generate commands for each mapped domain
       local array_length=${#domain_keys[@]}
+      local processed_blog_ids=() # Track processed blog_ids to prevent duplicates
+
       for ((i=1; i<=array_length; i++)); do
         local old_domain="${domain_keys[i]}"
         local new_domain="${domain_values[i]}"
@@ -818,28 +854,75 @@ import_wp_db() {
           if [[ "$temp_cleaned_domain" == "$old_domain" ]]; then
             blog_id="$temp_blog_id"
 
-            # Determine the path based on the new domain mapping
-            if [[ "$new_domain" == *"/"* ]]; then
-              # Extract path from new_domain if it contains a path
-              local domain_part="${new_domain%%/*}"
-              local path_part="${new_domain#*/}"
-              if [[ "$path_part" != "$new_domain" ]]; then
-                site_path="/${path_part}/"
+            # FIXED: Always derive path from new mapped domain if it contains a path
+            # This works for both subdomain-to-subdirectory and subdirectory-to-subdirectory migrations
+            local clean_new_domain="$new_domain"
+            # Remove protocols if present
+            clean_new_domain="${clean_new_domain#http://}"
+            clean_new_domain="${clean_new_domain#https://}"
+
+            local path_part=""
+            if [[ "$clean_new_domain" == *"/"* ]]; then
+              # Extract everything after the first slash (the path part)
+              path_part="${clean_new_domain#*/}"
+              if [[ -n "$path_part" ]]; then
+                # Ensure path starts and ends with forward slash
+                site_path="/${path_part}"
+                if [[ ! "$site_path" =~ /$ ]]; then
+                  site_path="${site_path}/"
+                fi
+              else
+                site_path="/"
               fi
-            elif [[ "$blog_id" != "1" ]]; then
-              # For non-main sites, create path from old domain
-              if [[ "$old_domain" == *"."* ]]; then
-                # Extract subdomain or create path from domain
-                local subdomain="${old_domain%%.*}"
-                site_path="/${subdomain}/"
-              fi
+            else
+              site_path="/"
             fi
+
+            # Special case: if path is just "/" and this is the main site, keep it as "/"
+            if [[ "$site_path" == "//" ]]; then
+              site_path="/"
+            fi
+
             break
           fi
         done
 
         if [[ -n "$blog_id" ]]; then
-          printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s;\n" "$base_domain" "$site_path" "$blog_id"
+          # Check for duplicate blog_id to prevent duplicate SQL commands
+          local duplicate_blog_id=false
+          for processed_id in "${processed_blog_ids[@]}"; do
+            if [[ "$processed_id" == "$blog_id" ]]; then
+              duplicate_blog_id=true
+              break
+            fi
+          done
+
+          if [[ "$duplicate_blog_id" == true ]]; then
+            printf "-- Skipping duplicate blog_id %s for domain %s\n" "$blog_id" "$old_domain"
+            continue
+          fi
+
+          # Add to processed list
+          processed_blog_ids+=("$blog_id")
+
+          # FIXED: For subdirectory multisite, determine correct domain assignment
+          local target_domain="$base_domain"
+
+          # Check if this is a subdirectory or subdomain multisite
+          if [[ "$multisite_type" == "subdirectory" ]]; then
+            # For subdirectory setups, all sites share the same domain
+            target_domain="$base_domain"
+          else
+            # For subdomain setups, extract domain from new_domain
+            local clean_new_domain="$new_domain"
+            clean_new_domain="${clean_new_domain#http://}"
+            clean_new_domain="${clean_new_domain#https://}"
+            clean_new_domain="${clean_new_domain%/}"
+            clean_new_domain="${clean_new_domain%%/*}"  # Remove any path component
+            target_domain="$clean_new_domain"
+          fi
+
+          printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s\n" "$target_domain" "$site_path" "$blog_id" "$old_domain" "$new_domain"
         fi
       done
 
@@ -880,6 +963,7 @@ import_wp_db() {
   if [[ "$sql_executed" == [Yy]* ]]; then
     if (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; "$WP_COMMAND" plugin is-installed stage-file-proxy) &>/dev/null; then
       printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
+      printf "${CYAN}ℹ️  Note: All domains will be stored with https:// protocol for security.${RESET}\n"
 
     # Check if plugin is active and activate if needed
     if ! (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; "$WP_COMMAND" plugin is-active stage-file-proxy $network_flag) &>/dev/null; then
@@ -891,36 +975,119 @@ import_wp_db() {
       fi
     else
       printf "${GREEN}✅ Plugin already active${RESET}\n"
-    fi    # Function to escape JSON values safely
-    escape_json_value() {
-      local input="$1"
-      # Use bash built-in parameter expansion instead of sed
-      input="${input//\\/\\\\}"  # Escape backslashes
-      input="${input//\"/\\\"}"  # Escape quotes
-      input="${input//$'\t'/\\t}" # Escape tabs
-      input="${input//$'\n'/\\n}" # Escape newlines
-      input="${input//$'\r'/\\r}" # Escape carriage returns
-      echo "$input"
+    fi    # Function to sanitize and validate domain input (Enhanced version)
+    sanitize_stage_proxy_domain() {
+        local input="$1"
+        local clean_domain
+
+        # Check if input is empty
+        if [[ -z "$input" ]]; then
+            return 1
+        fi
+
+        # Check input length (reasonable URL length limit)
+        if [[ ${#input} -gt 2048 ]]; then
+            return 1
+        fi
+
+        # Initialize clean_domain with input
+        clean_domain="$input"
+
+        # Remove leading/trailing whitespace using bash built-ins (more portable than sed)
+        # Remove leading whitespace
+        while [[ "$clean_domain" =~ ^[[:space:]] ]]; do
+          clean_domain="${clean_domain#[[:space:]]}"
+        done
+        # Remove trailing whitespace
+        while [[ "$clean_domain" =~ [[:space:]]$ ]]; do
+          clean_domain="${clean_domain%[[:space:]]}"
+        done
+
+        # Check for dangerous characters that could cause injection
+        if [[ "$clean_domain" =~ [\;\|\&\$\`\(\)\<\>\"\'] ]]; then
+            return 1
+        fi
+
+        # Check for control characters and non-printable characters
+        if [[ "$clean_domain" =~ [[:cntrl:]] ]]; then
+            return 1
+        fi
+
+        # Remove trailing slashes
+        clean_domain=${clean_domain%/}
+
+        # FIXED: Ensure https:// protocol for database storage
+        # Remove any existing protocol first
+        clean_domain="${clean_domain#http://}"
+        clean_domain="${clean_domain#https://}"
+
+        # Add https:// protocol (required for database storage)
+        clean_domain="https://$clean_domain"
+
+        # Validate URL format more thoroughly (with required https protocol)
+        # Domain must have at least one dot (.) for a valid TLD, except for localhost and IP addresses
+        if [[ "$clean_domain" =~ ^https://localhost([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+            # Allow localhost with optional port and path
+            :
+        elif [[ "$clean_domain" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+            # Allow IP addresses with optional port and path
+            :
+        elif ! [[ "$clean_domain" =~ ^https://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+            return 1
+        fi
+
+        # Additional security check: ensure no multiple protocols using bash built-ins
+        local protocol_count=0
+        local temp_domain="$clean_domain"
+        while [[ "$temp_domain" == *"://"* ]]; do
+            protocol_count=$((protocol_count + 1))
+            temp_domain="${temp_domain#*://}"
+        done
+
+        if [[ "$protocol_count" -gt 1 ]]; then
+            return 1
+        fi
+
+        # Return the sanitized domain with https:// protocol
+        echo "$clean_domain"
+        return 0
     }
 
-    # Function to create JSON settings for stage-file-proxy
+    # Function to escape JSON values safely (Enhanced version)
+    escape_json_value() {
+      local input="$1"
+      # Use printf and parameter expansion for reliable escaping
+      local escaped="$input"
+      escaped="${escaped//\\/\\\\}"    # Escape backslashes first
+      escaped="${escaped//\"/\\\"}"    # Escape quotes
+      escaped="${escaped//$'\t'/\\t}"  # Escape tabs
+      escaped="${escaped//$'\r'/\\r}"  # Escape carriage returns
+      escaped="${escaped//$'\n'/\\n}"  # Escape newlines
+      printf '%s' "$escaped"
+    }
+
+    # Function to create JSON settings for stage-file-proxy (Enhanced version)
     create_stage_proxy_settings() {
       local source_domain="$1"
       local method="${2:-redirect}"
 
-      # Add protocol if missing
-      if [[ ! "$source_domain" =~ ^https?:// ]]; then
-        source_domain="https://$source_domain"
+      # FIXED: Use enhanced domain sanitization instead of basic protocol check
+      local sanitized_domain
+      sanitized_domain=$(sanitize_stage_proxy_domain "$source_domain")
+      if [[ $? -ne 0 ]]; then
+        printf "${RED}❌ Invalid domain format for stage-file-proxy: '%s'${RESET}\n" "$source_domain" >&2
+        return 1
       fi
 
       local escaped_domain escaped_method
-      escaped_domain=$(escape_json_value "$source_domain")
+      escaped_domain=$(escape_json_value "$sanitized_domain")
       escaped_method=$(escape_json_value "$method")
 
       echo "{\"source_domain\":\"$escaped_domain\",\"method\":\"$escaped_method\"}"
+      return 0
     }
 
-    # Configure site-specific stage-file-proxy settings
+    # Configure site-specific stage-file-proxy settings (Enhanced version)
     configure_site_proxy() {
       local source_domain="$1"
       local target_site="$2"
@@ -930,14 +1097,31 @@ import_wp_db() {
         wp_url_flag="--url=$target_site"
       fi
 
+      # FIXED: Enhanced settings creation with validation and user feedback
       local settings
       settings=$(create_stage_proxy_settings "$source_domain" "redirect")
+      if [[ $? -ne 0 ]]; then
+        printf "${RED}  ❌ Configuration failed for %s (invalid domain)${RESET}\n" "$target_site"
+        return 1
+      fi
 
-      if (export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; eval "$WP_COMMAND option update stage-file-proxy-settings '$settings' --format=json $wp_url_flag") &>/dev/null; then
-        printf "${GREEN}  ✅ Configured: %s → %s${RESET}\n" "$target_site" "$source_domain"
+      # Execute WP-CLI command
+      local wp_command="$WP_COMMAND option update stage-file-proxy-settings '$settings' --format=json $wp_url_flag"
+
+      # Execute with error capture
+      local wp_output
+      local wp_exit_code
+      wp_output=$(export PATH="/opt/homebrew/bin:/usr/bin:/bin:$PATH"; eval "$wp_command" 2>&1)
+      wp_exit_code=$?
+
+      if [[ $wp_exit_code -eq 0 ]]; then
+        printf "${GREEN}  ✅ Configured successfully: %s${RESET}\n" "$target_site"
       else
         printf "${RED}  ❌ Configuration failed for %s${RESET}\n" "$target_site"
+        printf "${RED}     WP-CLI Error: %s${RESET}\n" "$wp_output"
+        return 1
       fi
+      return 0
     }
 
     # Configure based on installation type
@@ -962,6 +1146,7 @@ import_wp_db() {
             continue
           fi
 
+          # Configure stage-file-proxy: source_domain (production) → target_site (local)
           configure_site_proxy "$old_domain" "$new_domain"
         done
       fi

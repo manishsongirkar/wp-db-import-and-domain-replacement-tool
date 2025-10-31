@@ -3,6 +3,12 @@
 # Stage File Proxy Setup Function
 # This function activates and configures the Stage File Proxy plugin for WordPress
 # Supports both single site and multisite installations
+#
+# UPDATED: Enhanced input sanitization and protocol handling
+# - All domains are now stored with https:// protocol in the database for security
+# - Improved user input validation and sanitization
+# - Better user feedback about what gets stored in the database
+# - Automatic protocol conversion (http:// → https://, missing protocol → https://)
 
 # Function to sanitize and validate domain input
 sanitize_domain() {
@@ -19,8 +25,16 @@ sanitize_domain() {
         return 1
     fi
 
-    # Remove leading/trailing whitespace
-    clean_domain=$(echo "$input" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Remove leading/trailing whitespace using bash built-ins
+    clean_domain="$input"
+    # Remove leading whitespace
+    while [[ "$clean_domain" =~ ^[[:space:]] ]]; do
+      clean_domain="${clean_domain#[[:space:]]}"
+    done
+    # Remove trailing whitespace
+    while [[ "$clean_domain" =~ [[:space:]]$ ]]; do
+      clean_domain="${clean_domain%[[:space:]]}"
+    done
 
     # Check for dangerous characters that could cause injection
     if [[ "$clean_domain" =~ [\;\|\&\$\`\(\)\<\>\"\'] ]]; then
@@ -35,17 +49,39 @@ sanitize_domain() {
     # Remove trailing slashes
     clean_domain=${clean_domain%/}
 
-    # Validate URL format more thoroughly
-    if ! [[ "$clean_domain" =~ ^https?://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+    # FIXED: Ensure https:// protocol for database storage
+    # Remove any existing protocol first
+    clean_domain="${clean_domain#http://}"
+    clean_domain="${clean_domain#https://}"
+
+    # Add https:// protocol (required for database storage)
+    clean_domain="https://$clean_domain"
+
+    # Validate URL format more thoroughly (with required https protocol)
+    # Domain must have at least one dot (.) for a valid TLD, except for localhost and IP addresses
+    if [[ "$clean_domain" =~ ^https://localhost([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+        # Allow localhost with optional port and path
+        :
+    elif [[ "$clean_domain" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+        # Allow IP addresses with optional port and path
+        :
+    elif ! [[ "$clean_domain" =~ ^https://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+([:]([0-9]{1,5}))?(/.*)?$ ]]; then
         return 1
     fi
 
-    # Additional security check: ensure no multiple protocols
-    if [[ $(echo "$clean_domain" | grep -o "://" | wc -l) -gt 1 ]]; then
+    # Additional security check: ensure no multiple protocols using bash built-ins
+    local protocol_count=0
+    local temp_domain="$clean_domain"
+    while [[ "$temp_domain" == *"://"* ]]; do
+        protocol_count=$((protocol_count + 1))
+        temp_domain="${temp_domain#*://}"
+    done
+
+    if [[ "$protocol_count" -gt 1 ]]; then
         return 1
     fi
 
-    # Return the sanitized domain
+    # Return the sanitized domain with https:// protocol
     echo "$clean_domain"
     return 0
 }
@@ -55,13 +91,24 @@ get_validated_domain() {
     local prompt="$1"
     local domain
     local clean_domain
+    local original_input
 
     while true; do
         printf "%s" "$prompt"
         read -r domain < /dev/tty
 
-        # Remove leading/trailing whitespace first
-        domain=$(echo "$domain" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        # Store original input for user feedback
+        original_input="$domain"
+
+        # Remove leading/trailing whitespace first using bash built-ins
+        # Remove leading whitespace
+        while [[ "$domain" =~ ^[[:space:]] ]]; do
+          domain="${domain#[[:space:]]}"
+        done
+        # Remove trailing whitespace
+        while [[ "$domain" =~ [[:space:]]$ ]]; do
+          domain="${domain%[[:space:]]}"
+        done
 
         # Check if input is empty (allow skipping)
         if [[ -z "$domain" ]]; then
@@ -88,19 +135,24 @@ get_validated_domain() {
             continue
         fi
 
-        # Auto-add https:// protocol if missing (no user prompt)
+        # FIXED: Show user what will be stored in database
+        local display_domain="$domain"
+
+        # Auto-add https:// protocol if missing (required for database storage)
         if [[ ! "$domain" =~ ^https?:// ]]; then
-            echo "Auto-adding https:// protocol..."
+            domain="https://$domain"
+        elif [[ "$domain" =~ ^http:// ]]; then
+            # Convert http to https for security
+            domain="${domain#http://}"
             domain="https://$domain"
         fi
 
-        # Use sanitize function for final validation (without interactive parts)
+        # Use sanitize function for final validation
         clean_domain=$(sanitize_domain "$domain")
         if [[ $? -eq 0 ]]; then
             # Check for localhost patterns
             if [[ "$clean_domain" =~ (localhost|127\.0\.0\.1|0\.0\.0\.0) ]]; then
-                echo "Warning: Detected localhost pattern. Are you sure this is correct for production?"
-                printf "Continue with this domain? (y/n): "
+                printf "⚠️  Warning: Localhost pattern detected. Continue? (y/n): "
                 read -r continue_localhost < /dev/tty
                 if [[ ! "$continue_localhost" =~ ^[Yy] ]]; then
                     continue
@@ -111,7 +163,7 @@ get_validated_domain() {
             VALIDATED_DOMAIN="$clean_domain"
             return 0
         else
-            echo "Error: Invalid URL format. Please enter a valid domain like https://example.com"
+            echo "❌ Error: Invalid domain format. Please try again."
             continue
         fi
     done
@@ -120,8 +172,14 @@ get_validated_domain() {
 # Function to safely escape JSON values
 escape_json() {
     local input="$1"
-    # Escape backslashes, quotes, and control characters for JSON
-    echo "$input" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\n/\\n/g; s/\r/\\r/g'
+    # Use printf and parameter expansion for reliable escaping
+    local escaped="$input"
+    escaped="${escaped//\\/\\\\}"    # Escape backslashes first
+    escaped="${escaped//\"/\\\"}"    # Escape quotes
+    escaped="${escaped//$'\t'/\\t}"  # Escape tabs
+    escaped="${escaped//$'\r'/\\r}"  # Escape carriage returns
+    escaped="${escaped//$'\n'/\\n}"  # Escape newlines
+    printf '%s' "$escaped"
 }
 
 # Function to create safe JSON settings
@@ -198,24 +256,24 @@ setup_single_site() {
 
     # Get source domain from user with sanitization
     echo ""
-    if get_validated_domain "Enter the production domain: "; then
+    echo "ℹ️  Note: Domain will be stored with https:// protocol."
+    if get_validated_domain "Enter the production domain (e.g., example.com or https://example.com): "; then
         local source_domain="$VALIDATED_DOMAIN"
 
         # Configure the plugin
+        echo ""
         echo "Configuring Stage File Proxy..."
         local settings
         settings=$(create_safe_json_settings "$source_domain" "redirect")
 
         if wp option update stage-file-proxy-settings "$settings" --format=json --quiet; then
-            echo "✓ Plugin configured successfully"
-            echo "  Source Domain: $source_domain"
-            echo "  Method: redirect"
+            echo "✅ Plugin configured successfully"
         else
-            echo "✗ Failed to configure plugin"
+            echo "❌ Failed to configure plugin"
             return 1
         fi
     else
-        echo "⚠ Skipping Stage File Proxy configuration for this site"
+        echo "⚠️  Skipping Stage File Proxy configuration for this site"
     fi
 
     echo ""
@@ -251,7 +309,8 @@ setup_multisite() {
     echo "$sites" | nl -w2 -s'. '
 
     echo ""
-    echo "Now we'll configure each site individually..."
+    echo "ℹ️  Note: Domains are automatically stored with https:// protocol."
+    echo "Now configuring each site..."
     echo ""
 
     # Configure each site
@@ -266,17 +325,13 @@ setup_multisite() {
             settings=$(create_safe_json_settings "$source_domain" "redirect")
 
             if wp --url="$site_url" option update stage-file-proxy-settings "$settings" --format=json --quiet; then
-                echo "✓ Site configured successfully"
-                echo "  URL: $site_url"
-                echo "  Source Domain: $source_domain"
-                echo "  Method: redirect"
+                echo "✅ $site_url configured"
             else
-                echo "✗ Failed to configure site: $site_url"
+                echo "❌ Failed to configure site: $site_url"
             fi
         else
-            echo "⚠ Skipping configuration for $site_url"
+            echo "⚠️  Skipping $site_url"
         fi
-        echo ""
     done <<< "$sites"
 
     echo "=== Multisite Setup Complete ==="
@@ -328,27 +383,32 @@ bulk_configure_multisite() {
     fi
 
     echo "=== Bulk Configure All Sites ==="
-    if get_validated_domain "Enter the production domain to use for ALL sites: "; then
+    echo "ℹ️  Note: Domain will be stored with https:// protocol."
+    if get_validated_domain "Enter the production domain to use for ALL sites (e.g., example.com): "; then
         local source_domain="$VALIDATED_DOMAIN"
         local settings
         settings=$(create_safe_json_settings "$source_domain" "redirect")
 
+        echo ""
         echo "Applying configuration to all sites..."
+        echo ""
+
         local sites
         sites=$(wp site list --field=url --quiet)
 
         while IFS= read -r site_url; do
             echo "Configuring: $site_url"
             if wp --url="$site_url" option update stage-file-proxy-settings "$settings" --format=json --quiet; then
-                echo "✓ $site_url configured"
+                echo "✅ $site_url configured"
             else
-                echo "✗ Failed to configure $site_url"
+                echo "❌ Failed to configure $site_url"
             fi
         done <<< "$sites"
 
-        echo "Bulk configuration complete!"
+        echo ""
+        echo "✅ Bulk configuration complete!"
     else
-        echo "⚠ Bulk configuration cancelled (no domain provided)"
+        echo "⚠️  Configuration cancelled."
     fi
 }
 
