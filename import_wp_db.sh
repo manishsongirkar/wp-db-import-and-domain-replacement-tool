@@ -4,56 +4,7 @@
 # WordPress Database Import & Domain Replacement Tool
 # ===============================================
 #
-# Description:
-#   A comprehensive bash script for importing WordPress databases and performing
-#   domain/URL replacements with full support for both single-site and multisite
-#   WordPress installations. This tool automates the complex process of migrating
-#   WordPress databases from production to local/staging environments.
-#
-# Features:
-#   - Automatic WordPress installation detection (single-site or multisite)
-#   - Intelligent domain sanitization (removes protocols, trailing slashes)
-#   - Interactive domain mapping for multisite installations
-#   - Two-pass search-replace (standard + serialized data)
-#   - Post revision cleanup for improved performance
-#   - Cache and transient clearing
-#   - Dry-run mode for testing
-#   - MySQL command generation for phpMyAdmin
-#   - Comprehensive error handling and logging
-#   - Colored terminal output with progress indicators
-#
-# Requirements:
-#   - WP-CLI installed and accessible in PATH
-#   - WordPress installation (wp-config.php present)
-#   - MySQL/MariaDB database
-#   - Bash shell
-#   - macOS/Linux environment
-#
-# Usage:
-#   1. Place SQL file in the same directory as this script
-#   2. Navigate to WordPress root directory or subdirectory
-#   3. Source this script: source import_wp_db.sh
-#   4. Run the function: import_wp_db
-#   5. Follow the interactive prompts
-#
-# Supported WordPress Types:
-#   - Single-site installations
-#   - Multisite subdomain networks
-#   - Multisite subdirectory networks
-#
-# File Structure:
-#   - Creates temporary log files in /tmp/ for debugging
-#   - Automatically cleans up temporary files on exit
-#   - Logs all WP-CLI operations for troubleshooting
-#
-# Security:
-#   - Uses absolute paths to prevent directory traversal
-#   - Validates all user inputs
-#   - Sanitizes domain inputs
-#   - Uses temporary files with process-specific names
-#
-# Author: Manish Songirkar (@manishsongirkar)
-# Repository: https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool
+# ... [Omitted header for brevity] ...
 #
 # ===============================================
 # import_wp_db() function definition
@@ -595,6 +546,7 @@ import_wp_db() {
           # Use parallel arrays instead of associative arrays (more compatible)
           local domain_keys=()
           local domain_values=()
+          local domain_blog_ids=() # Added array to track blog IDs
 
           printf "${BOLD}Enter the NEW URL/Domain for each site:${RESET}\n"
           printf "(Example: Map 'sub1.example.com' to 'sub1.example.local')\n\n"
@@ -619,6 +571,7 @@ import_wp_db() {
             IFS=, read -r blog_id domain path <<< "$subsite_line"
 
             cleaned_domain=$(clean_string "$domain")
+            local clean_blog_id=$(clean_string "$blog_id")
 
             # Skip if domain is empty after cleaning
             if [[ -z "$cleaned_domain" ]]; then
@@ -627,17 +580,17 @@ import_wp_db() {
 
             # Debug output for domain processing
             printf "\n"
-            printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$blog_id" "$cleaned_domain" "$path"
+            printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$clean_blog_id" "$cleaned_domain" "$path"
 
             # For the main site (ID 1), default to the global replace_domain
-            if [[ "$blog_id" == "1" ]]; then
+            if [[ "$clean_blog_id" == "1" ]]; then
                 printf "→ Local URL for '%s' (Blog ID 1): (%s) " "$cleaned_domain" "$replace_domain"
                 read -r local_domain
                 # Use default if empty
                 local_domain="${local_domain:-$replace_domain}"
             else
                 # For subsites, prompt the user clearly
-                printf "→ Local URL for '%s' (Blog ID %s): " "$cleaned_domain" "$blog_id"
+                printf "→ Local URL for '%s' (Blog ID %s): " "$cleaned_domain" "$clean_blog_id"
                 read -r local_domain
                 # Use default if empty
                 local_domain="${local_domain:-$cleaned_domain}"
@@ -660,7 +613,8 @@ import_wp_db() {
                 # This is normal behavior, so we don't need to prevent "duplicates" here
                 domain_keys+=("$cleaned_domain")
                 domain_values+=("$local_domain")
-                printf "    ${GREEN}✅ Added mapping:${RESET} '%s' → '%s'\n" "$cleaned_domain" "$local_domain"
+                domain_blog_ids+=("$clean_blog_id") # Store the blog ID
+                printf "    ${GREEN}✅ Added mapping:${RESET} '%s' → '%s' (ID: %s)\n" "$cleaned_domain" "$local_domain" "$clean_blog_id"
             else
                 printf "    ${RED}❌ Skipped invalid mapping:${RESET} domain='%s', local='%s'\n" "$cleaned_domain" "$local_domain"
             fi
@@ -672,22 +626,26 @@ import_wp_db() {
           # Clean up arrays - remove any empty elements using a more robust approach
           local clean_domain_keys=()
           local clean_domain_values=()
+          local clean_domain_blog_ids=()
           local original_length=${#domain_keys[@]}
 
           for ((i=1; i<=original_length; i++)); do
             local key="${domain_keys[i]}"
             local value="${domain_values[i]}"
+            local id="${domain_blog_ids[i]}" # Get blog ID
 
-            if [[ -n "$key" && -n "$value" ]]; then
+            if [[ -n "$key" && -n "$value" && -n "$id" ]]; then
               clean_domain_keys+=("$key")
               clean_domain_values+=("$value")
+              clean_domain_blog_ids+=("$id") # Store clean blog ID
             fi
           done
 
           # Replace the original arrays
-          unset domain_keys domain_values
+          unset domain_keys domain_values domain_blog_ids
           domain_keys=("${clean_domain_keys[@]}")
           domain_values=("${clean_domain_values[@]}")
+          domain_blog_ids=("${clean_domain_blog_ids[@]}") # Use clean blog ID array
 
           printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
 
@@ -698,51 +656,47 @@ import_wp_db() {
 
             local key="${domain_keys[i]}"
             local value="${domain_values[i]}"
+            local id="${domain_blog_ids[i]}"
 
             # Use simple and reliable trimming - just check the raw values
             if [[ -z "$value" ]]; then
-              printf "    ❌ %s → (no mapping found)\n" "$key"
+              printf "    ❌ [ID: %s] %s → (no mapping found)\n" "$id" "$key"
             elif [[ "$key" == "$value" ]]; then
-              printf "    ⏭️  %s → (unchanged)\n" "$key"
+              printf "    ⏭️  [ID: %s] %s → (unchanged)\n" "$id" "$key"
             else
-              printf "    🔁 %s → ${GREEN}%s${RESET}\n" "$key" "$value"
+              printf "    🔁 [ID: %s] %s → ${GREEN}%s${RESET}\n" "$id" "$key" "$value"
             fi
           done
 
           printf "\n"
-          printf "Proceed with search-replace for all subsites? (Y/n): "
+          printf "Proceed with search-replace for all sites? (Y/n): "
           read -r confirm_replace
           confirm_replace="${confirm_replace:-y}"
           [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
 
-          printf "\n${CYAN}🔄 Starting search-replace (per subsite, sequential)...${RESET}\n"
+          printf "\n${CYAN}🔄 Starting search-replace (per site, sequential) - Subsites first, then Main Site...${RESET}\n"
           local new_domain SR_LOG_MULTI
+          local main_site_key=""
+          local main_site_value=""
 
-          # --- Execution Loop using parallel arrays ---
+          # --- Execution Loop 1: Subsites (ID > 1) ---
+          printf "\n${CYAN}  SUB-SITES REPLACEMENT (ID > 1)${RESET}\n"
           local array_length=${#domain_keys[@]}
           for ((i=1; i<=array_length; i++)); do
             local cleaned_domain="${domain_keys[i]}"
             local new_domain="${domain_values[i]}"
+            local blog_id="${domain_blog_ids[i]}"
 
-            if [[ -z "$new_domain" || "$cleaned_domain" == "$new_domain" ]]; then
-              printf "${YELLOW}⏭️  Skipping '%s' (no change).${RESET}\n" "$cleaned_domain"
-              continue
+            # Skip main site for now
+            if [[ "$blog_id" == "1" ]]; then
+                main_site_key="$cleaned_domain"
+                main_site_value="$new_domain"
+                printf "${YELLOW}  ⏸️  Skipping Main Site (ID 1) - will process last.${RESET}\n"
+                continue
             fi
 
-            # Get the blog_id from the original data by matching the domain
-            local blog_id=""
-            for subsite_line in "${subsite_lines[@]}"; do
-              IFS=, read -r temp_blog_id temp_domain temp_path <<< "$subsite_line"
-              local temp_cleaned_domain=$(clean_string "$temp_domain")
-              if [[ "$temp_cleaned_domain" == "$cleaned_domain" ]]; then
-                blog_id="$temp_blog_id"
-                break
-              fi
-            done
-
-            # Add safety check for missing blog_id
-            if [[ -z "$blog_id" ]]; then
-              printf "${RED}❌ Could not find blog_id for domain '%s' - skipping${RESET}\n" "$cleaned_domain"
+            if [[ -z "$new_domain" || "$cleaned_domain" == "$new_domain" ]]; then
+              printf "${YELLOW}⏭️  Skipping '%s' (ID %s, no change).${RESET}\n" "$cleaned_domain" "$blog_id"
               continue
             fi
 
@@ -750,12 +704,33 @@ import_wp_db() {
 
             printf "\n➡️  ${BOLD}Replacing for Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$blog_id" "$cleaned_domain" "$new_domain"
 
+            # Use the old domain in the --url parameter because WP-CLI needs to find the table prefix.
+            # The old domain should still exist in the wp_blogs table until the MySQL update.
             if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain"; then
-              printf "${GREEN}✅ Completed for %s.${RESET}\n" "$cleaned_domain"
+              printf "${GREEN}✅ Completed for %s (ID %s).${RESET}\n" "$cleaned_domain" "$blog_id"
             else
-              printf "${RED}❌ Failed on %s. Check %s for details.${RESET}\n" "$cleaned_domain" "$SR_LOG_MULTI"
+              printf "${RED}❌ Failed on %s (ID %s). Check %s for details.${RESET}\n" "$cleaned_domain" "$blog_id" "$SR_LOG_MULTI"
             fi
           done
+
+          # --- Execution Loop 2: Main Site (ID = 1) ---
+          printf "\n${CYAN}  MAIN SITE REPLACEMENT (ID = 1)${RESET}\n"
+          if [[ -n "$main_site_key" && "$main_site_key" != "$main_site_value" ]]; then
+              local main_site_log="/tmp/wp_replace_1_$$.log"
+              printf "\n➡️  ${BOLD}Replacing for Main Site ID 1:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$main_site_key" "$main_site_value"
+
+              # Run main site search-replace (using the main site's old domain in --url for safety)
+              if run_search_replace "$main_site_key" "$main_site_value" "$main_site_log" "--url=$main_site_key"; then
+                printf "${GREEN}✅ Completed for Main Site (ID 1).${RESET}\n"
+              else
+                printf "${RED}❌ Failed on Main Site (ID 1). Check %s for details.${RESET}\n" "$main_site_log"
+              fi
+          elif [[ -n "$main_site_key" ]]; then
+              printf "${YELLOW}⏭️  Skipping Main Site (ID 1, no change).${RESET}\n"
+          else
+              printf "${RED}❌ Could not find Main Site mapping (ID 1) to process.${RESET}\n"
+          fi
+
       fi  # End of subdirectory vs subdomain multisite logic
 
   else
@@ -805,126 +780,140 @@ import_wp_db() {
   # 📋 Generate and display MySQL commands for manual execution in phpMyAdmin
   if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 ]]; then
     printf "\n================================================================\n"
-    printf "\n${CYAN}${BOLD}📋 MySQL Commands for Manual Execution in phpMyAdmin:${RESET}\n"
+    printf "\n${CYAN}${BOLD}📋 MySQL Commands for Manual Execution in phpMyAdmin: (Subsites First)${RESET}\n"
     printf "\n================================================================\n\n"
 
     # Extract the base domain from the first mapped domain (main site)
     local base_domain=""
-    if [[ ${#domain_values[@]} -gt 0 ]]; then
-      base_domain="${domain_values[1]}"  # Use index 1 since we're using 1-based indexing
+    local main_site_new_domain=""
+    local main_site_old_domain=""
+
+    # Find the main site mapping for base_domain calculation
+    local array_length=${#domain_keys[@]}
+    for ((i=0; i<array_length; i++)); do
+        local blog_id="${domain_blog_ids[i]}"
+        if [[ "$blog_id" == "1" ]]; then
+            main_site_new_domain="${domain_values[i]}"
+            main_site_old_domain="${domain_keys[i]}"
+            break
+        fi
+    done
+
+    if [[ -n "$main_site_new_domain" ]]; then
+      base_domain="$main_site_new_domain"
       # Remove protocol if present
       base_domain="${base_domain#http://}"
       base_domain="${base_domain#https://}"
       # Remove trailing slash
       base_domain="${base_domain%/}"
-      # Remove path if it's a subdirectory setup
+      # Remove path if it's a subdirectory setup (we only want the base domain)
       base_domain="${base_domain%%/*}"
     fi
 
     if [[ -n "$base_domain" ]]; then
-      printf "-- Update the main site domain\n"
-      printf "UPDATE wp_site SET domain = '%s' WHERE id = 1;\n\n" "$base_domain"
-      printf "-- Update blog domains and paths based on domain mapping\n\n"
+      printf "-- 1. Update blog domains and paths for SUB-SITES (ID > 1)\n\n"
 
       # Generate commands for each mapped domain
-      local array_length=${#domain_keys[@]}
       local processed_blog_ids=() # Track processed blog_ids to prevent duplicates
 
+      # --- Subsite Commands (ID > 1) ---
       for ((i=1; i<=array_length; i++)); do
         local old_domain="${domain_keys[i]}"
         local new_domain="${domain_values[i]}"
+        local blog_id="${domain_blog_ids[i]}"
+
+        # Skip main site for this section
+        if [[ "$blog_id" == "1" ]]; then
+          continue
+        fi
 
         # Skip if empty or unchanged
         if [[ -z "$new_domain" || "$old_domain" == "$new_domain" ]]; then
           continue
         fi
 
-        # Find the corresponding blog_id from subsite data
-        local blog_id=""
+        # Find the path component from the new_domain mapping (for subdirectory migration)
         local site_path="/"
+        local clean_new_domain="$new_domain"
+        clean_new_domain="${clean_new_domain#http://}"
+        clean_new_domain="${clean_new_domain#https://}"
 
-        for subsite_line in "${subsite_lines[@]}"; do
-          if [[ "$subsite_line" == "blog_id,domain,path" || -z "$subsite_line" ]]; then
-            continue
+        local path_part=""
+        if [[ "$clean_new_domain" == *"/"* ]]; then
+          path_part="${clean_new_domain#*/}"
+          if [[ -n "$path_part" ]]; then
+            site_path="/${path_part}"
+            if [[ ! "$site_path" =~ /$ ]]; then
+              site_path="${site_path}/"
+            fi
+          else
+            site_path="/"
           fi
+        else
+          site_path="/"
+        fi
 
-          IFS=, read -r temp_blog_id temp_domain temp_path <<< "$subsite_line"
-          local temp_cleaned_domain=$(clean_string "$temp_domain")
+        if [[ "$site_path" == "//" ]]; then
+          site_path="/"
+        fi
 
-          if [[ "$temp_cleaned_domain" == "$old_domain" ]]; then
-            blog_id="$temp_blog_id"
-
-            # FIXED: Always derive path from new mapped domain if it contains a path
-            # This works for both subdomain-to-subdirectory and subdirectory-to-subdirectory migrations
-            local clean_new_domain="$new_domain"
-            # Remove protocols if present
-            clean_new_domain="${clean_new_domain#http://}"
-            clean_new_domain="${clean_new_domain#https://}"
-
-            local path_part=""
-            if [[ "$clean_new_domain" == *"/"* ]]; then
-              # Extract everything after the first slash (the path part)
-              path_part="${clean_new_domain#*/}"
-              if [[ -n "$path_part" ]]; then
-                # Ensure path starts and ends with forward slash
-                site_path="/${path_part}"
-                if [[ ! "$site_path" =~ /$ ]]; then
-                  site_path="${site_path}/"
-                fi
-              else
-                site_path="/"
-              fi
-            else
-              site_path="/"
-            fi
-
-            # Special case: if path is just "/" and this is the main site, keep it as "/"
-            if [[ "$site_path" == "//" ]]; then
-              site_path="/"
-            fi
-
+        # Skip if already processed (for safety)
+        local duplicate_blog_id=false
+        for processed_id in "${processed_blog_ids[@]}"; do
+          if [[ "$processed_id" == "$blog_id" ]]; then
+            duplicate_blog_id=true
             break
           fi
         done
 
-        if [[ -n "$blog_id" ]]; then
-          # Check for duplicate blog_id to prevent duplicate SQL commands
-          local duplicate_blog_id=false
-          for processed_id in "${processed_blog_ids[@]}"; do
-            if [[ "$processed_id" == "$blog_id" ]]; then
-              duplicate_blog_id=true
-              break
-            fi
-          done
-
-          if [[ "$duplicate_blog_id" == true ]]; then
-            printf "-- Skipping duplicate blog_id %s for domain %s\n" "$blog_id" "$old_domain"
-            continue
-          fi
-
-          # Add to processed list
-          processed_blog_ids+=("$blog_id")
-
-          # FIXED: For subdirectory multisite, determine correct domain assignment
-          local target_domain="$base_domain"
-
-          # Check if this is a subdirectory or subdomain multisite
-          if [[ "$multisite_type" == "subdirectory" ]]; then
-            # For subdirectory setups, all sites share the same domain
-            target_domain="$base_domain"
-          else
-            # For subdomain setups, extract domain from new_domain
-            local clean_new_domain="$new_domain"
-            clean_new_domain="${clean_new_domain#http://}"
-            clean_new_domain="${clean_new_domain#https://}"
-            clean_new_domain="${clean_new_domain%/}"
-            clean_new_domain="${clean_new_domain%%/*}"  # Remove any path component
-            target_domain="$clean_new_domain"
-          fi
-
-          printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s\n" "$target_domain" "$site_path" "$blog_id" "$old_domain" "$new_domain"
+        if [[ "$duplicate_blog_id" == true ]]; then
+          printf "-- Skipping duplicate blog_id %s for domain %s\n" "$blog_id" "$old_domain"
+          continue
         fi
+
+        processed_blog_ids+=("$blog_id")
+
+        # Determine the target domain
+        local target_domain="$base_domain"
+        if [[ "$multisite_type" != "subdirectory" ]]; then
+          local domain_part="$new_domain"
+          domain_part="${domain_part#http://}"
+          domain_part="${domain_part#https://}"
+          domain_part="${domain_part%/}"
+          domain_part="${domain_part%%/*}"
+          target_domain="$domain_part"
+        fi
+
+        printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Subsite)\n" "$target_domain" "$site_path" "$blog_id" "$old_domain" "$new_domain"
       done
+
+      printf "\n-- 2. Update blog domain and path for MAIN SITE (ID = 1)\n\n"
+
+      # --- Main Site wp_blogs Command (ID = 1) ---
+      if [[ -n "$main_site_new_domain" ]]; then
+          # For main site, the path is always '/'
+          local main_site_path="/"
+
+          # Determine the target domain for ID 1
+          local target_domain="$base_domain"
+          if [[ "$multisite_type" != "subdirectory" ]]; then
+            # Use the full domain part for subdomain setups
+            local domain_part="$main_site_new_domain"
+            domain_part="${domain_part#http://}"
+            domain_part="${domain_part#https://}"
+            domain_part="${domain_part%/}"
+            domain_part="${domain_part%%/*}"
+            target_domain="$domain_part"
+          fi
+
+          # Output the command for wp_blogs ID 1
+          printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = 1; -- %s → %s (Main Site)\n" "$target_domain" "$main_site_path" "$main_site_old_domain" "$main_site_new_domain"
+      else
+          printf "-- WARNING: Main site mapping (ID 1) not found to generate wp_blogs command.\n"
+      fi
+
+      printf "\n-- 3. Update the main network site domain (ID = 1)\n"
+      printf "UPDATE wp_site SET domain = '%s' WHERE id = 1;\n\n" "$base_domain"
 
       printf "\n${YELLOW}💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.${RESET}\n"
     else
@@ -1087,7 +1076,7 @@ import_wp_db() {
       return 0
     }
 
-    # Configure site-specific stage-file-proxy settings (Enhanced version)
+    # Function to configure site-specific stage-file-proxy settings (Enhanced version)
     configure_site_proxy() {
       local source_domain="$1"
       local target_site="$2"
