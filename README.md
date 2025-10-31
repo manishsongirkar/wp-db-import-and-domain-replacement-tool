@@ -1043,11 +1043,10 @@ echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]
 echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.zshrc
 echo 'fi' >> ~/.zshrc
 
-# 3. Optional: Add Stage File Proxy setup tool
-echo '# Uncomment the next 3 lines to enable standalone stage-file-proxy setup' >> ~/.zshrc
-echo '# if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
-echo '#     source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
-echo '# fi' >> ~/.zshrc
+# 3. Optional: Add Stage File Proxy manual setup tool
+echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
+echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
+echo 'fi' >> ~/.zshrc
 
 # 4. Reload your shell configuration
 source ~/.zshrc  # or ~/.bashrc
@@ -1063,23 +1062,6 @@ import_wp_db
 # setup_stage_file_proxy
 # show_stage_file_proxy_config
 # bulk_configure_multisite  # For multisite only
-```
-
-### 🎯 Pro Tips for Power Users:
-
-```bash
-# Create an alias for quick access
-echo 'alias wpimport="import_wp_db"' >> ~/.zshrc
-
-# Set up project-specific defaults
-export WP_DEFAULT_SQL_FILE="production-backup.sql"
-export WP_DEFAULT_DOMAIN="mysite.local"
-
-# Quick backup before import
-alias wpbackup='wp db export "backup-$(date +%Y%m%d-%H%M%S).sql" && echo "Backup created"'
-
-# Combine backup and import
-wpbackup && import_wp_db
 ```
 
 ---
