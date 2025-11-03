@@ -208,12 +208,33 @@ import_wp_db() {
 
   printf "${GREEN}✅ Found SQL file:${RESET} %s\n\n" "$sql_file"
 
-  # 🌐 Ask for main domain mapping
+  # 🌐 Ask for main domain mapping (MANDATORY - no defaults allowed)
   local search_domain replace_domain confirm
-  printf "🌍 Enter the OLD (production) domain to search for: "
-  read -r search_domain
-  printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
-  read -r replace_domain
+
+  # Get OLD (production) domain - mandatory input
+  while true; do
+    printf "🌍 Enter the OLD (production) domain to search for: "
+    read -r search_domain
+
+    if [[ -n "$search_domain" ]]; then
+      break
+    else
+      printf "${YELLOW}⚠️  Production domain is required. Please enter a value.${RESET}\n"
+    fi
+  done
+
+  # Get NEW (local) domain - mandatory input
+  while true; do
+    printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
+    read -r replace_domain
+
+    if [[ -n "$replace_domain" ]]; then
+      break
+    else
+      printf "${YELLOW}⚠️  Local domain is required. Please enter a value.${RESET}\n"
+    fi
+  done
+
   printf "\n"
 
   # 🧹 Sanitize domain inputs (remove protocols and trailing slashes)
