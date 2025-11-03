@@ -360,38 +360,86 @@ import_wp_db() {
 
   # Clean revision cleanup function - minimal output
   clean_revisions_silent() {
+    # Description: Deletes all post revisions for the current site or a specified subsite.
+    # It uses 'wp post list' piped to 'xargs wp post delete' for high-speed, reliable bulk operation,
+    # bypassing Bash's word-splitting limitations.
+    # Arguments:
+    #   $1 (optional, string): The --url parameter for a specific multisite subsite.
+    # Returns:
+    #   0 on successful deletion (or if no revisions found).
+    #   1 on failure or if revisions remain after the operation.
     local url_param="$1"
+    local wp_cli_args
+    local revision_ids_output
+    local revision_count_before
+    local delete_success=0
 
-    # Get revision IDs and execute deletion
-    local get_ids_cmd_parts=()
+    # 1. --- Revision ID Retrieval ---
+    # Construct the base command to list all revision IDs.
     if [[ -n "$url_param" ]]; then
-      get_ids_cmd_parts=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
+      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
     else
-      get_ids_cmd_parts=("post" "list" "--post_type=revision" "--format=ids" "$network_flag")
+      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "$network_flag")
     fi
 
-    # Execute the bulk deletion
-    local revision_ids_output
-    # FIXED: Use execute_wp_cli
-    revision_ids_output=$(execute_wp_cli "${get_ids_cmd_parts[@]}" 2>/dev/null)
+    # Execute the command and capture IDs.
+    revision_ids_output=$(execute_wp_cli "${wp_cli_args[@]}" 2>/dev/null)
+    local trimmed_output
+    # Remove all carriage returns and newlines to get a single space-separated string of IDs.
+    trimmed_output=$(echo "$revision_ids_output" | tr -d '\r\n')
 
-    if [[ -n "$revision_ids_output" && "$revision_ids_output" =~ [0-9] ]]; then
-        local delete_cmd_parts=("post" "delete" $revision_ids_output "--force")
+    if [[ -z "$trimmed_output" ]]; then
+        printf "${YELLOW}ℹ️ No revisions found${RESET}\n"
+        return 0
+    fi
 
-        if [[ -n "$url_param" ]]; then
-            delete_cmd_parts+=("--url=$url_param")
-        else
-            delete_cmd_parts+=("$network_flag")
-        fi
+    # Count IDs for verification and logging.
+    revision_count_before=$(echo "$trimmed_output" | wc -w | tr -d ' ')
 
-        # FIXED: Use execute_wp_cli
-        if execute_wp_cli "${delete_cmd_parts[@]}" &>/dev/null; then
-          printf "${GREEN}✅ Revisions deleted${RESET}\n"
-        else
-          printf "${RED}❌ Failed to delete revisions${RESET}\n"
-        fi
+    printf "${CYAN}  Revisions found: %s${RESET}\n" "$revision_count_before"
+
+    local xargs_command_output
+    local xargs_exit_code
+
+    # 2. --- Bulk Deletion via xargs ---
+    # Construct arguments specific to the delete command.
+    local wp_args=("--force")
+    if [[ -n "$url_param" ]]; then
+        wp_args+=("--url=$url_param")
     else
-      printf "${YELLOW}ℹ️ No revisions found${RESET}\n"
+        wp_args+=("$network_flag")
+    fi
+
+    # Use xargs to pipeline the list of IDs, calling 'wp post delete' in batches of 500.
+    # This bypasses Bash array splitting issues and is highly performant.
+    xargs_command_output=$(
+        echo "$trimmed_output" | xargs -r -n 500 "$WP_COMMAND" post delete "${wp_args[@]}" 2>&1
+    )
+    xargs_exit_code=$?
+
+    # Check for execution success. WP-CLI may report success even if not all rows were deleted,
+    # so we rely on the verification step.
+    if [[ $xargs_exit_code -eq 0 ]]; then
+        printf "${GREEN}✅ Revisions deleted (WP-CLI reported success)${RESET}\n"
+        delete_success=1
+    else
+        printf "${RED}❌ Failed to execute BULK deletion (xargs Exit Code %s)${RESET}\n" "$xargs_exit_code"
+        printf "${RED}     WP-CLI/xargs Output: %s${RESET}\n" "$xargs_command_output"
+        return 1
+    fi
+
+    # 3. --- Verification Step ---
+    local revisions_after
+    # Check the remaining revision count by executing wp post list again.
+    revisions_after=$(execute_wp_cli post list --post_type=revision --format=ids "${url_param:+--url=$url_param}" "$network_flag" 2>/dev/null | wc -w | tr -d ' ')
+    revisions_after="${revisions_after:-0}"
+
+    # Final check for total success
+    if [[ "$revisions_after" -eq 0 ]]; then
+        return 0
+    else
+        printf "${RED}⚠️ WARNING: %s revisions remain in the database after bulk attempt.${RESET}\n" "$revisions_after"
+        return 1
     fi
   }
 
