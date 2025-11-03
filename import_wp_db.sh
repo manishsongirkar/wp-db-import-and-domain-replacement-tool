@@ -85,6 +85,8 @@ import_wp_db() {
       (
           # Prepend common paths (Homebrew, /usr/local) to the current PATH
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          # Disable OPcache warnings that can interfere with output parsing
+          export PHP_INI_SCAN_DIR=""
           # Execute the command passed as arguments
           "$WP_COMMAND" "$@"
       )
@@ -340,58 +342,7 @@ import_wp_db() {
   # Determine multisite type if it's multisite
   if [[ "$is_multisite" == "yes" ]]; then
     network_flag="--network"
-
-    # Method 1: Check subdirectory_install option from database
-    local sub_dir_option=""
-    sub_dir_option=$(execute_wp_cli db query "SELECT option_value FROM wp_options WHERE option_name = 'subdirectory_install' LIMIT 1;" --skip-column-names --silent 2>/dev/null || echo "")
-
-    # Method 2: Check wp-config.php for SUBDOMAIN_INSTALL constant
-    local subdomain_config=""
-    if [[ -f "wp-config.php" ]]; then
-      if grep -q "define.*SUBDOMAIN_INSTALL.*true" wp-config.php 2>/dev/null; then
-        subdomain_config="subdomain"
-      elif grep -q "define.*SUBDOMAIN_INSTALL.*false" wp-config.php 2>/dev/null; then
-        subdomain_config="subdirectory"
-      elif grep -q "define.*('SUBDOMAIN_INSTALL'.*true" wp-config.php 2>/dev/null; then
-        subdomain_config="subdomain"
-      elif grep -q "define.*('SUBDOMAIN_INSTALL'.*false" wp-config.php 2>/dev/null; then
-        subdomain_config="subdirectory"
-      elif grep -q 'define.*("SUBDOMAIN_INSTALL".*true' wp-config.php 2>/dev/null; then
-        subdomain_config="subdomain"
-      elif grep -q 'define.*("SUBDOMAIN_INSTALL".*false' wp-config.php 2>/dev/null; then
-        subdomain_config="subdirectory"
-      fi
-    fi
-
-    # Method 3: Analyze wp_blogs table structure for path patterns
-    local path_analysis=""
-    local paths_with_subdir=""
-    paths_with_subdir=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs WHERE path != '/' AND path != '';" --skip-column-names --silent 2>/dev/null || echo "0")
-
-    if [[ "$paths_with_subdir" -gt 0 ]]; then
-      path_analysis="subdirectory"
-    else
-      path_analysis="subdomain"
-    fi
-
-    # Decision logic for multisite type
-    if [[ "$sub_dir_option" == "1" ]]; then
-      multisite_type="subdirectory"
-      printf "${GREEN}✅ Multisite type:${RESET} subdirectory (via database option)\n"
-    elif [[ "$subdomain_config" == "subdirectory" ]]; then
-      multisite_type="subdirectory"
-      printf "${GREEN}✅ Multisite type:${RESET} subdirectory (via wp-config.php)\n"
-    elif [[ "$subdomain_config" == "subdomain" ]]; then
-      multisite_type="subdomain"
-      printf "${GREEN}✅ Multisite type:${RESET} subdomain (via wp-config.php)\n"
-    elif [[ "$path_analysis" == "subdirectory" ]]; then
-      multisite_type="subdirectory"
-      printf "${GREEN}✅ Multisite type:${RESET} subdirectory (via path analysis)\n"
-    else
-      multisite_type="subdomain"
-      printf "${GREEN}✅ Multisite type:${RESET} subdomain (default/fallback)\n"
-    fi
-
+    multisite_type="subdomain" && printf "\n"
   else
     printf "${GREEN}✅ Multisite status:${RESET} no\n"
   fi
