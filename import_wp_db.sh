@@ -6,27 +6,27 @@
 #
 # Description:
 #   A comprehensive bash script for importing WordPress databases and performing
-#   domain/URL replacements with full support for both single-site and multisite
-#   WordPress installations. This tool automates the complex process of migrating
-#   WordPress databases from production to local/staging environments.
+#   domain/URL replacements, crucial for migrating environments (e.g., prod to local/staging).
+#   It handles complex domain mapping scenarios and is optimized for both single-site
+#   and multi-domain WordPress Multisite installations.
 #
 # Features:
 #   - Automatic WordPress installation detection (single-site or multisite)
+#   - **High-Speed Bulk Post Revision Cleanup (via xargs)**
 #   - Intelligent domain sanitization (removes protocols, trailing slashes)
-#   - Interactive domain mapping for multisite installations
+#   - **Robust Multi-Domain/Per-Site Mapping for Multisite**
 #   - Two-pass search-replace (standard + serialized data)
-#   - Post revision cleanup for improved performance
 #   - Cache and transient clearing
 #   - Dry-run mode for testing
-#   - MySQL command generation for phpMyAdmin
+#   - MySQL command generation for domain mapping tables (for multisite completion)
 #   - Comprehensive error handling and logging
-#   - Colored terminal output with progress indicators
+#   - Colored terminal output with clear progress indicators
 #
 # Requirements:
 #   - WP-CLI installed and accessible in PATH
 #   - WordPress installation (wp-config.php present)
 #   - MySQL/MariaDB database
-#   - Bash shell
+#   - Bash shell (minimum 4.0 recommended for best performance)
 #   - macOS/Linux environment
 #
 # Usage:
@@ -39,7 +39,7 @@
 # Supported WordPress Types:
 #   - Single-site installations
 #   - Multisite subdomain networks
-#   - Multisite subdirectory networks
+#   - Multisite subdirectory networks (especially multi-domain to single-domain migrations)
 #
 # File Structure:
 #   - Creates temporary log files in /tmp/ for debugging
@@ -417,7 +417,7 @@ import_wp_db() {
     # Count IDs for verification and logging.
     revision_count_before=$(echo "$trimmed_output" | wc -w | tr -d ' ')
 
-    printf "${CYAN}  Revisions found: %s${RESET}\n" "$revision_count_before"
+    printf "${CYAN}    Revisions found: %s${RESET}\n" "$revision_count_before"
 
     local xargs_command_output
     local xargs_exit_code
@@ -441,11 +441,10 @@ import_wp_db() {
     # Check for execution success. WP-CLI may report success even if not all rows were deleted,
     # so we rely on the verification step.
     if [[ $xargs_exit_code -eq 0 ]]; then
-        printf "${GREEN}✅ Revisions deleted (WP-CLI reported success)${RESET}\n"
+        printf "  ${GREEN}✅ Revisions deleted (WP-CLI reported success)${RESET}\n"
         delete_success=1
     else
-        printf "${RED}❌ Failed to execute BULK deletion (xargs Exit Code %s)${RESET}\n" "$xargs_exit_code"
-        printf "${RED}     WP-CLI/xargs Output: %s${RESET}\n" "$xargs_command_output"
+        printf "  ${RED}❌ Failed to execute BULK deletion (xargs Exit Code %s)${RESET}\n" "$xargs_exit_code"
         return 1
     fi
 
@@ -807,7 +806,7 @@ import_wp_db() {
       elif [[ -z "$site_list" ]]; then
         printf "${YELLOW}⚠️ WP-CLI command succeeded but returned empty output${RESET}\n"
       else
-        printf "%s\n" "$site_list"
+        printf "%s\n" "$site_list" | column -t -s $'\t'
       fi
       printf "\n"
 
