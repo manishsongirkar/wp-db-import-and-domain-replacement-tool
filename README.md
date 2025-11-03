@@ -11,6 +11,7 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 - ✅ **Enhanced domain sanitization** with security validation and protocol handling
 - ✅ **Interactive domain mapping** with per-subsite configuration for multisite
 - ✅ **Dual-pass search-replace** (standard URLs + serialized data structures)
+- ✅ **Enhanced domain+path replacement** for complex multisite configurations with intelligent slash handling
 - ✅ **Intelligent post revision cleanup** with site-by-site processing
 - ✅ **Comprehensive cache clearing** (object cache, rewrites, transients)
 - ✅ **Advanced dry-run mode** for safe testing and validation
@@ -318,9 +319,10 @@ Include --all-tables (recommended for full DB imports)? (Y/n): y
 Run in dry-run mode (no data will be changed)? (y/N): n
 🚀 Running in live mode (changes will be applied).
 
+🧩 Single site detected.
 Proceed with search-replace now? (Y/n): y
 
-🔄 Starting search-replace (Double Pass)...
+� Running search-replace (Double Pass)...
   [Pass 1] Simple replacement: //example.com → //example.local
   [Pass 2] Serialized replacement: \\/\\/example.com → \\/\\/example.local
 
@@ -358,155 +360,7 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 
 ### 🟢 Multisite Example
 
-```
-$ import_wp_db
-
-� WordPress Database Import & Domain Replace Tool
----------------------------------------------------
-
-📦 Enter SQL file name (default: vip-db.sql): multisite-backup.sql
-✅ WordPress root found: /Users/john/Sites/multisite-wp
-
-✅ Found SQL file: multisite-backup.sql
-
-� Enter the OLD (production) domain to search for: example.com
-� Enter the NEW (local) domain/base URL to replace with: example.local
-
-🧾 Summary:
-    🔍 Search for:   example.com
-    🔄 Replace with: example.local
-
-Proceed with database import? (Y/n): y
-
-⏳ Importing database...
-✅ Database import successful! [Completed in 04:12]
-
-🔍 Checking WordPress installation type...
-✅ Multisite status: subdomain
-
-Clear ALL post revisions? (improves search-replace speed) (Y/n): y
-🗑️ REVISION CLEANUP - STEP BY STEP
-=====================================================
-
-🌐 MULTISITE DETECTED - Processing all subsites...
-  Step A: Getting list of all sites in the network
-Found 3 sites to process:
-    1. example.com
-    2. blog.example.com
-    3. shop.example.com
-
-  Step B: Processing revisions for each site individually
-
-  🌍 Site 1/3: example.com
-  ✅ Revisions deleted
-
-  🌍 Site 2/3: blog.example.com
-  ✅ Revisions deleted
-
-  🌍 Site 3/3: shop.example.com
-  ✅ Revisions deleted
-
-Include --all-tables (recommended for full DB imports)? (Y/n): y
-✅ Will include all tables.
-
-Run in dry-run mode (no data will be changed)? (y/N): n
-🚀 Running in live mode (changes will be applied).
-
-🌐 Multisite (subdomain) detected — gathering subsites for mapping...
-
-✅ Found 3 subsites:
-+--------+------------------+------+
-| blog_id| domain           | path |
-+--------+------------------+------+
-| 1      | example.com      | /    |
-| 2      | blog.example.com | /    |
-| 3      | shop.example.com | /    |
-+--------+------------------+------+
-
-🌐 Subdomain Multisite Detected
-Each subsite has its own domain. Individual mapping required.
-
-Enter the NEW URL/Domain for each site:
-(Example: Map 'sub1.example.com' to 'sub1.example.local')
-
-  Processing: Blog ID 1, Domain: 'example.com', Path: '/'
-→ Local URL for 'example.com' (Blog ID 1): (example.local) example.local
-    ✅ Added mapping: 'example.com' → 'example.local'
-
-  Processing: Blog ID 2, Domain: 'blog.example.com', Path: '/'
-→ Local URL for 'blog.example.com' (Blog ID 2): blog.example.local
-    ✅ Added mapping: 'blog.example.com' → 'blog.example.local'
-
-  Processing: Blog ID 3, Domain: 'shop.example.com', Path: '/'
-→ Local URL for 'shop.example.com' (Blog ID 3): shop.example.local
-    ✅ Added mapping: 'shop.example.com' → 'shop.example.local'
-
-🧾 Domain mapping summary:
-    🔁 example.com → example.local
-    🔁 blog.example.com → blog.example.local
-    🔁 shop.example.com → shop.example.local
-
-Proceed with search-replace for all subsites? (Y/n): y
-
-🔄 Starting search-replace (per subsite, sequential)...
-
-➡️  Replacing for Site ID 1: example.com → example.local
-  [Pass 1] Simple replacement: //example.com → //example.local
-  [Pass 2] Serialized replacement: \\/\\/example.com → \\/\\/example.local
-✅ Completed for example.com.
-
-➡️  Replacing for Site ID 2: blog.example.com → blog.example.local
-  [Pass 1] Simple replacement: //blog.example.com → //blog.example.local
-  [Pass 2] Serialized replacement: \\/\\/blog.example.com → \\/\\/blog.example.local
-✅ Completed for blog.example.com.
-
-➡️  Replacing for Site ID 3: shop.example.com → shop.example.local
-  [Pass 1] Simple replacement: //shop.example.com → //shop.example.local
-  [Pass 2] Serialized replacement: \\/\\/shop.example.com → \\/\\/shop.example.local
-✅ Completed for shop.example.com.
-
-🧹 Flushing WordPress and WP-CLI caches & transients...
-  ✅ Object cache flushed.
-  ✅ Rewrite rule flushed.
-  ✅ All transients deleted.
-
-🎉 All done! Database import and replacements completed successfully.
-
-================================================================
-
-📋 MySQL Commands for Manual Execution in phpMyAdmin:
-
-================================================================
-
--- Update the main site domain
-UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
-
--- Update blog domains and paths based on domain mapping
-
-UPDATE wp_blogs SET domain = "blog.example.local", path = "/" WHERE blog_id = 2; -- blog.example.com → blog.example.local
-UPDATE wp_blogs SET domain = "shop.example.local", path = "/" WHERE blog_id = 3; -- shop.example.com → shop.example.local
-
-💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.
-
-📋 MySQL Commands Confirmation
-Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
-🚀 Database Migration Completed Successfully!
-
-🔍 stage-file-proxy plugin found! Configuring...
-ℹ️  Note: All domains will be stored with https:// protocol for security.
-📦 Activating stage-file-proxy plugin...
-✅ Plugin activated successfully
-🌐 Configuring multisite stage-file-proxy...
-✅ Configuring 3 sites with stage-file-proxy
-  ✅ Configured successfully: example.local
-  ✅ Configured successfully: blog.example.local
-  ✅ Configured successfully: shop.example.local
-🎉 stage-file-proxy configuration complete!
-```
-
----
-
-### 🟢 Multisite Subdirectory Example
+This comprehensive example demonstrates the enhanced domain+path replacement logic for complex multisite setups:
 
 ```
 $ import_wp_db
@@ -514,86 +368,91 @@ $ import_wp_db
 🔧 WordPress Database Import & Domain Replace Tool
 ---------------------------------------------------
 
-📦 Enter SQL file name (default: vip-db.sql): multisite-subdirectory.sql
-✅ WordPress root found: /Users/john/Sites/multisite-subdirectory
+📦 Enter SQL file name (default: vip-db.sql): example-multisite.sql
+✅ WordPress root found: /Users/john/Sites/example-wp
 
-✅ Found SQL file: multisite-subdirectory.sql
+✅ Found SQL file: example-multisite.sql
 
 🌍 Enter the OLD (production) domain to search for: example.com
-🏠 Enter the NEW (local) domain/base URL to replace with: example.local
+🏠 Enter the NEW (local) domain/base URL to replace with: example.test
 
 🧾 Summary:
     🔍 Search for:   example.com
-    🔄 Replace with: example.local
+    🔄 Replace with: example.test
 
 Proceed with database import? (Y/n): y
 
 ⏳ Importing database...
-✅ Database import successful! [Completed in 03:45]
+✅ Database import successful! [Completed in 03:22]
 
 🔍 Checking WordPress installation type...
-✅ Multisite status: subdirectory
+✅ Multisite status: subdomain
 
-Clear ALL post revisions? (improves search-replace speed) (Y/n): y
-🗑️ REVISION CLEANUP - STEP BY STEP
-=====================================================
-
-🌐 MULTISITE DETECTED - Processing all subsites...
-  Step A: Getting list of all sites in the network
-Found 4 sites to process:
-    1. example.com/
-    2. example.com/blog/
-    3. example.com/shop/
-    4. example.com/news/
-
-  Step B: Processing revisions for each site individually
-
-  🌍 Site 1/4: example.com/
-  ✅ Revisions deleted
-
-  🌍 Site 2/4: example.com/blog/
-  ✅ Revisions deleted
-
-  🌍 Site 3/4: example.com/shop/
-  ✅ Revisions deleted
-
-  🌍 Site 4/4: example.com/news/
-  ✅ Revisions deleted
-
-Include --all-tables (recommended for full DB imports)? (Y/n): y
-✅ Will include all tables.
-
-Run in dry-run mode (no data will be changed)? (y/N): n
-🚀 Running in live mode (changes will be applied).
-
-🌐 Multisite (subdirectory) detected — gathering subsites for mapping...
+🌐 Multisite (subdomain) detected — gathering subsites for mapping...
 
 ✅ Found 4 subsites:
-+--------+-------------+--------+
-| blog_id| domain      | path   |
-+--------+-------------+--------+
-| 1      | example.com | /      |
-| 2      | example.com | /blog/ |
-| 3      | example.com | /shop/ |
-| 4      | example.com | /news/ |
-+--------+-------------+--------+
++--------+---------------------------+-------------+
+| blog_id| domain                    | path        |
++--------+---------------------------+-------------+
+| 1      | vip.example.com       | /           |
+| 2      | us.example.com        | /           |
+| 3      | demo.example.com      | /           |
+| 4      | vip.example.com       | /resources/ |
++--------+---------------------------+-------------+
 
-🏠 Subdirectory Multisite Detected
-All subsites share the same domain. Only one search-replace operation needed.
+🌐 Subdomain Multisite Detected
+Each subsite has its own domain. Individual mapping required.
 
-🌍 Enter the NEW domain for all sites:
-→ Replace 'example.com' with: (example.local) example.local
+Enter the NEW URL/Domain for each site:
+(Example: Map 'sub1.example.com' to 'sub1.example.test')
+
+  Processing: Blog ID 1, Domain: 'vip.example.com', Path: '/'
+→ Local URL for 'vip.example.com' (Blog ID 1): example.test
+    ✅ Added mapping: 'vip.example.com' → 'example.test'
+
+  Processing: Blog ID 2, Domain: 'us.example.com', Path: '/'
+→ Local URL for 'us.example.com' (Blog ID 2): example.test/us
+    ✅ Added mapping: 'us.example.com' → 'example.test/us'
+
+  Processing: Blog ID 3, Domain: 'demo.example.com', Path: '/'
+→ Local URL for 'demo.example.com' (Blog ID 3): example.test/demo
+    ✅ Added mapping: 'demo.example.com' → 'example.test/demo'
+
+  Processing: Blog ID 4, Domain: 'vip.example.com', Path: '/resources/'
+→ Local URL for 'vip.example.com/resources/' (Blog ID 4): example.test/resources
+    ✅ Added mapping: 'vip.example.com/resources/' → 'example.test/resources'
 
 🧾 Domain mapping summary:
-    🔁 example.com → example.local (Network-wide)
+    🔁 [ID: 1] vip.example.com/ → example.test
+    🔁 [ID: 2] us.example.com/ → example.test/us
+    🔁 [ID: 3] demo.example.com/ → example.test/demo
+    🔁 [ID: 4] vip.example.com/resources/ → example.test/resources
 
-Proceed with network-wide search-replace? (Y/n): y
+Proceed with search-replace for all sites? (Y/n): y
 
-🔄 Starting network-wide search-replace...
-  [Pass 1] Simple replacement: //example.com → //example.local
-  [Pass 2] Serialized replacement: \\/\\/example.com → \\/\\/example.local
+🔄 Starting search-replace (per subsite, sequential)...
 
-✅ Network-wide search-replace completed successfully!
+➡️  Replacing for Site ID 2: us.example.com/ → example.test/us
+  [Pass 1] Simple replacement: //us.example.com → //example.test/us
+  [Pass 2] Serialized replacement: \\//us.example.com → \\//example.test/us
+✅ Completed for us.example.com/ (ID 2).
+
+➡️  Replacing for Site ID 3: demo.example.com/ → example.test/demo
+  [Pass 1] Simple replacement: //demo.example.com → //example.test/demo
+  [Pass 2] Serialized replacement: \\//demo.example.com → \\//example.test/demo
+✅ Completed for demo.example.com/ (ID 3).
+
+➡️  Replacing for Site ID 4: vip.example.com/resources/ → example.test/resources
+  [Pass 1] Domain+Path replacement: //vip.example.com/resources → //example.test/resources
+  [Pass 2] Serialized replacement: \\//vip.example.com/resources → \\//example.test/resources
+✅ Completed for vip.example.com/resources/ (ID 4).
+
+  MAIN SITE REPLACEMENT (ID = 1)
+
+➡️  Replacing for Main Site ID 1: vip.example.com/ → example.test
+  [Pass 1] Simple replacement: //vip.example.com → //example.test
+  [Pass 2] Serialized replacement: \\//vip.example.com → \\//example.test
+✅ Completed for Main Site (ID 1).
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
@@ -602,22 +461,19 @@ Proceed with network-wide search-replace? (Y/n): y
 
 🎉 All done! Database import and replacements completed successfully.
 
-================================================================
-
 📋 MySQL Commands for Manual Execution in phpMyAdmin:
-
 ================================================================
 
 -- Update the main site domain
-UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
+UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
 
--- Update blog domains (shared domain with individual paths)
-UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 1;      -- Main site
-UPDATE wp_blogs SET domain = "example.local", path = "/blog/" WHERE blog_id = 2; -- example.com/blog → example.local/blog
-UPDATE wp_blogs SET domain = "example.local", path = "/shop/" WHERE blog_id = 3; -- example.com/shop → example.local/shop
-UPDATE wp_blogs SET domain = "example.local", path = "/news/" WHERE blog_id = 4; -- example.com/news → example.local/news
+-- Update blog domains and paths based on domain mapping
+UPDATE wp_blogs SET domain = "example.test", path = "/" WHERE blog_id = 1; -- vip.example.com → example.test (Main Site)
+UPDATE wp_blogs SET domain = "example.test", path = "/us/" WHERE blog_id = 2; -- us.example.com → example.test/us
+UPDATE wp_blogs SET domain = "example.test", path = "/demo/" WHERE blog_id = 3; -- demo.example.com → example.test/demo
+UPDATE wp_blogs SET domain = "example.test", path = "/resources/" WHERE blog_id = 4; -- vip.example.com/resources → example.test/resources
 
-💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.
+💡 Copy the above commands and paste them into phpMyAdmin → SQL tab to execute.
 
 📋 MySQL Commands Confirmation
 Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
@@ -629,10 +485,10 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
 ✅ Configuring 4 sites with stage-file-proxy
-  ✅ Configured successfully: example.local
-  ✅ Configured successfully: example.local/blog
-  ✅ Configured successfully: example.local/shop
-  ✅ Configured successfully: example.local/news
+  ✅ Configured successfully: example.test
+  ✅ Configured successfully: example.test/us
+  ✅ Configured successfully: example.test/demo
+  ✅ Configured successfully: example.test/resources
 🎉 stage-file-proxy configuration complete!
 ```
 

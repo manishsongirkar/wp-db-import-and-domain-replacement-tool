@@ -434,14 +434,24 @@ import_wp_db() {
     printf "${GREEN}🚀 Running in live mode (changes will be applied).${RESET}\n\n"
   fi
 
-  # --- Search-Replace Execution Function (Handles Double Pass) ---
-
-  # Arguments: $1=old_domain $2=new_domain $3=log_file $4=url_flag
+  # --- Search-Replace Execution Function (Handles Double Pass with Domain+Path Logic) ---
+  #
+  # Enhanced to handle domain+path combinations from wp_blogs table with intelligent slash handling.
+  #
+  # Key Features:
+  # - Searches for domain+path as per wp_blogs table structure
+  # - Conditional slash handling: only adds trailing slash to source if destination has trailing slash
+  # - Maintains backward compatibility for single-site and simple domain-only replacements
+  # - Supports both subdomain and subdirectory multisite configurations
+  #
+  # Arguments: $1=old_domain $2=new_domain $3=log_file $4=url_flag $5=old_path (optional) $6=new_path (optional)
   run_search_replace() {
       local old_domain="$1"
       local new_domain="$2"
       local log_file="$3"
       local url_flag="$4" # --url=... or empty
+      local old_path="${5:-}"  # Optional path from wp_blogs table
+      local new_path="${6:-}"  # Optional new path
 
       # Validate inputs
       if [[ -z "$old_domain" || -z "$new_domain" ]]; then
@@ -449,13 +459,92 @@ import_wp_db() {
           return 1
       fi
 
-      local sr1_old="//${old_domain}"
-      local sr1_new="//${new_domain}"
-      local sr2_old="\\\\//${old_domain}"
-      local sr2_new="\\\\//${new_domain}"
+      # Enhanced domain+path construction with intelligent slash handling
+      local search_domain_with_path="$old_domain"
+      local replace_domain_with_path="$new_domain"
+
+      # CRITICAL REGRESSION PROTECTION: Only use path logic for actual multisite contexts
+      # Path logic should only execute when:
+      # 1. Paths are provided AND meaningful (not just "/")
+      # 2. We're in a multisite context (indicated by --url flag)
+      local is_multisite_context=false
+      if [[ "$url_flag" == *"--url="* ]]; then
+          is_multisite_context=true
+      fi
+
+      # If paths are provided, meaningful, AND we're in multisite context, construct domain+path combinations
+      # Note: For multisite, main site path is "/" while subsites have paths like "/subsite/"
+      if [[ -n "$old_path" && "$old_path" != "/" && "$is_multisite_context" == true ]]; then
+          # Remove leading and trailing slashes from paths for clean handling
+          local clean_old_path="${old_path#/}"
+          clean_old_path="${clean_old_path%/}"
+          local clean_new_path="${new_path#/}"
+          clean_new_path="${clean_new_path%/}"
+
+          # Clean destination domain of trailing slash for proper concatenation
+          local clean_new_domain="${new_domain%/}"
+
+          # Determine if destination should have trailing slash based on original new_domain format
+          local dest_has_trailing_slash=false
+          if [[ "$new_domain" =~ /$ ]]; then
+              dest_has_trailing_slash=true
+          fi
+
+          # Construct source domain+path with conditional trailing slash
+          if [[ "$dest_has_trailing_slash" == true ]]; then
+              # If destination has slash, add slash to source
+              search_domain_with_path="${old_domain}/${clean_old_path}/"
+          else
+              # If destination has no slash, don't add slash to source
+              search_domain_with_path="${old_domain}/${clean_old_path}"
+          fi
+
+          # Construct replace domain+path - preserve destination format
+          if [[ -n "$clean_new_path" ]]; then
+              if [[ "$dest_has_trailing_slash" == true ]]; then
+                  replace_domain_with_path="${clean_new_domain}/${clean_new_path}/"
+              else
+                  replace_domain_with_path="${clean_new_domain}/${clean_new_path}"
+              fi
+          else
+              # If new_path is empty or just "/", use the new_domain with proper slash handling
+              if [[ "$dest_has_trailing_slash" == true ]]; then
+                  replace_domain_with_path="${clean_new_domain}/"
+              else
+                  replace_domain_with_path="$clean_new_domain"
+              fi
+          fi
+      else
+          # For main sites (path="/") or when no path info available, use domain-only replacement
+          # Apply destination slash logic to domain-only replacements as well
+          local clean_old_domain="${old_domain%/}"  # Remove any existing trailing slash
+          local dest_has_trailing_slash=false
+          if [[ "$new_domain" =~ /$ ]]; then
+              dest_has_trailing_slash=true
+          fi
+
+          if [[ "$dest_has_trailing_slash" == true ]]; then
+              # If destination domain has trailing slash, add to source for consistency
+              search_domain_with_path="${clean_old_domain}/"
+              replace_domain_with_path="${new_domain}"  # Use as-is since it already has the slash
+          else
+              # No trailing slash needed
+              search_domain_with_path="$clean_old_domain"
+              replace_domain_with_path="$new_domain"
+          fi
+      fi
+
+      local sr1_old="//${search_domain_with_path}"
+      local sr1_new="//${replace_domain_with_path}"
+      local sr2_old="\\\\//${search_domain_with_path}"
+      local sr2_new="\\\\//${replace_domain_with_path}"
 
       # --- Pass 1 Execution (Blocking/Sequential) ---
-      printf "  [Pass 1] Simple replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old" "$sr1_new"
+      if [[ -n "$old_path" && "$old_path" != "/" ]]; then
+          printf "  [Pass 1] Domain+Path replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old" "$sr1_new"
+      else
+          printf "  [Pass 1] Simple replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old" "$sr1_new"
+      fi
 
       # Build the command array to avoid word splitting issues
       local cmd_args=("search-replace" "$sr1_old" "$sr1_new")
@@ -563,9 +652,9 @@ import_wp_db() {
               subsite_lines+=("$line")
 
               # Parse for ID and Path
-              IFS=, read -r blog_id domain path <<< "$line"
+              IFS=, read -r blog_id domain site_path <<< "$line"
               local clean_blog_id=$(clean_string "$blog_id")
-              local clean_path=$(clean_string "$path")
+              local clean_site_path=$(clean_string "$site_path")
 
               # Condition 1: Find the lowest blog ID
               if [[ "$clean_blog_id" -lt "$temp_min_blog_id" ]]; then
@@ -573,7 +662,7 @@ import_wp_db() {
               fi
 
               # Condition 2: Find the site with path ONLY "/"
-              if [[ "$clean_path" == "/" ]]; then
+              if [[ "$clean_site_path" == "/" ]]; then
                   # We prefer the lowest ID with path '/' if multiple exist, though typically only one should.
                   if [[ -z "$found_main_by_path" || "$clean_blog_id" -lt "$found_main_by_path" ]]; then
                       found_main_by_path="$clean_blog_id"
@@ -585,12 +674,9 @@ import_wp_db() {
       # Assign the Main Site ID
       if [[ -n "$found_main_by_path" ]]; then
           main_site_id="$found_main_by_path"
-          printf "${GREEN}✅ Main Site ID detected by path ('/'):${RESET} %s\n" "$main_site_id"
       elif [[ "$temp_min_blog_id" -ne 999999 ]]; then
           main_site_id="$temp_min_blog_id"
-          printf "${YELLOW}⚠️ Main Site ID detected by lowest ID (fallback):${RESET} %s\n" "$main_site_id"
       else
-          printf "${RED}❌ Could not detect Main Site ID. Defaulting to 1 (Network Admin Site).${RESET}\n"
           main_site_id="1" # Safest default
       fi
       printf "\n"
@@ -666,6 +752,7 @@ import_wp_db() {
           local domain_keys=()
           local domain_values=()
           local domain_blog_ids=() # Added array to track blog IDs
+          local domain_paths=() # Added array to track paths from wp_blogs
 
           printf "${BOLD}Enter the NEW URL/Domain for each site:${RESET}\n"
           printf "(Example: Map 'sub1.example.com' to 'sub1.example.local')\n\n"
@@ -687,10 +774,11 @@ import_wp_db() {
             fi
 
             # Read the CSV elements from the array element
-            IFS=, read -r blog_id domain path <<< "$subsite_line"
+            IFS=, read -r blog_id domain site_path <<< "$subsite_line"
 
             cleaned_domain=$(clean_string "$domain")
             local clean_blog_id=$(clean_string "$blog_id")
+            local clean_site_path=$(clean_string "$site_path")
 
             # Skip if domain is empty after cleaning
             if [[ -z "$cleaned_domain" ]]; then
@@ -699,7 +787,7 @@ import_wp_db() {
 
             # Debug output for domain processing
             printf "\n"
-            printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$clean_blog_id" "$cleaned_domain" "$path"
+            printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$clean_blog_id" "$cleaned_domain" "$clean_site_path"
 
             # For the main site (dynamic ID), default to the global replace_domain
             if [[ "$clean_blog_id" == "$main_site_id" ]]; then
@@ -733,7 +821,8 @@ import_wp_db() {
                 domain_keys+=("$cleaned_domain")
                 domain_values+=("$local_domain")
                 domain_blog_ids+=("$clean_blog_id") # Store the blog ID
-                printf "    ${GREEN}✅ Added mapping:${RESET} '%s' → '%s' (ID: %s)\n" "$cleaned_domain" "$local_domain" "$clean_blog_id"
+                domain_paths+=("$clean_site_path") # Store the path from wp_blogs
+                printf "    ${GREEN}✅ Added mapping:${RESET} '%s' → '%s' (ID: %s, Path: %s)\n" "$cleaned_domain" "$local_domain" "$clean_blog_id" "$clean_site_path"
             else
                 printf "    ${RED}❌ Skipped invalid mapping:${RESET} domain='%s', local='%s'\n" "$cleaned_domain" "$local_domain"
             fi
@@ -744,25 +833,31 @@ import_wp_db() {
           local clean_domain_keys=()
           local clean_domain_values=()
           local clean_domain_blog_ids=()
+          local clean_domain_paths=()
+          local domain_display_names=()  # Store exact display names from summary
           local original_length=${#domain_keys[@]}
 
           for ((i=1; i<=original_length; i++)); do
             local key="${domain_keys[i]}"
             local value="${domain_values[i]}"
             local id="${domain_blog_ids[i]}" # Get blog ID
+            local site_path_var="${domain_paths[i]}" # Get path
 
             if [[ -n "$key" && -n "$value" && -n "$id" ]]; then
               clean_domain_keys+=("$key")
               clean_domain_values+=("$value")
               clean_domain_blog_ids+=("$id") # Store clean blog ID
+              clean_domain_paths+=("$site_path_var") # Store clean path
+              domain_display_names+=("${key}${site_path_var}") # Store exact display name
             fi
           done
 
           # Replace the original arrays
-          unset domain_keys domain_values domain_blog_ids
+          unset domain_keys domain_values domain_blog_ids domain_paths
           domain_keys=("${clean_domain_keys[@]}")
           domain_values=("${clean_domain_values[@]}")
           domain_blog_ids=("${clean_domain_blog_ids[@]}") # Use clean blog ID array
+          domain_paths=("${clean_domain_paths[@]}") # Use clean path array
 
           printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
 
@@ -774,14 +869,15 @@ import_wp_db() {
             local key="${domain_keys[i]}"
             local value="${domain_values[i]}"
             local id="${domain_blog_ids[i]}"
+            local site_path_var="${domain_paths[i]}"
 
             # Use simple and reliable trimming - just check the raw values
             if [[ -z "$value" ]]; then
-              printf "    ❌ [ID: %s] %s → (no mapping found)\n" "$id" "$key"
+              printf "    ❌ [ID: %s] %s%s → (no mapping found)\n" "$id" "$key" "$site_path_var"
             elif [[ "$key" == "$value" ]]; then
-              printf "    ⏭️  [ID: %s] %s → (unchanged)\n" "$id" "$key"
+              printf "    ⏭️  [ID: %s] %s%s → (unchanged)\n" "$id" "$key" "$site_path_var"
             else
-              printf "    🔁 [ID: %s] %s → ${GREEN}%s${RESET}\n" "$id" "$key" "$value"
+              printf "    🔁 [ID: %s] %s%s → ${GREEN}%s${RESET}\n" "$id" "$key" "$site_path_var" "$value"
             fi
           done
 
@@ -795,19 +891,21 @@ import_wp_db() {
           local new_domain SR_LOG_MULTI
           local main_site_key=""
           local main_site_value=""
+          local main_site_path=""
 
           # --- Execution Loop 1: Subsites (ID != main_site_id) ---
-          printf "\n${CYAN}  SUB-SITES REPLACEMENT (ID != %s)${RESET}\n" "$main_site_id"
           local array_length=${#domain_keys[@]}
           for ((i=1; i<=array_length; i++)); do
             local cleaned_domain="${domain_keys[i]}"
             local new_domain="${domain_values[i]}"
             local blog_id="${domain_blog_ids[i]}"
+            local site_path_var="${domain_paths[i]}"
 
-            # Skip main site for now
+            # Skip main site for now - store its data for later processing
             if [[ "$blog_id" == "$main_site_id" ]]; then
                 main_site_key="$cleaned_domain"
                 main_site_value="$new_domain"
+                main_site_path="$site_path_var"
                 printf "${YELLOW}  ⏸️  Skipping Main Site (ID %s) - will process last.${RESET}\n" "$main_site_id"
                 continue
             fi
@@ -819,14 +917,16 @@ import_wp_db() {
 
             SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
 
-            printf "\n➡️  ${BOLD}Replacing for Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$blog_id" "$cleaned_domain" "$new_domain"
+            # Use the exact display name from summary to ensure consistency
+            local display_old="${domain_display_names[i]}"
+            printf "\n➡️  ${BOLD}Replacing for Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$blog_id" "$display_old" "$new_domain"
 
-            # Use the old domain in the --url parameter because WP-CLI needs to find the table prefix.
-            # The old domain should still exist in the wp_blogs table until the MySQL update.
-            if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain"; then
-              printf "${GREEN}✅ Completed for %s (ID %s).${RESET}\n" "$cleaned_domain" "$blog_id"
+            # Use enhanced run_search_replace with path information
+            # Pass the path from wp_blogs to enable domain+path replacement
+            if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain" "$site_path_var" ""; then
+              printf "${GREEN}✅ Completed for %s (ID %s).${RESET}\n" "$display_old" "$blog_id"
             else
-              printf "${RED}❌ Failed on %s (ID %s). Check %s for details.${RESET}\n" "$cleaned_domain" "$blog_id" "$SR_LOG_MULTI"
+              printf "${RED}❌ Failed on %s (ID %s). Check %s for details.${RESET}\n" "$display_old" "$blog_id" "$SR_LOG_MULTI"
             fi
           done
 
@@ -834,10 +934,11 @@ import_wp_db() {
           printf "\n${CYAN}  MAIN SITE REPLACEMENT (ID = %s)${RESET}\n" "$main_site_id"
           if [[ -n "$main_site_key" && "$main_site_key" != "$main_site_value" ]]; then
               local main_site_log="/tmp/wp_replace_${main_site_id}_$$.log"
-              printf "\n➡️  ${BOLD}Replacing for Main Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$main_site_id" "$main_site_key" "$main_site_value"
+              local main_display_old="${main_site_key}${main_site_path}"
+              printf "\n➡️  ${BOLD}Replacing for Main Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$main_site_id" "$main_display_old" "$main_site_value"
 
-              # Run main site search-replace (using the main site's old domain in --url for safety)
-              if run_search_replace "$main_site_key" "$main_site_value" "$main_site_log" "--url=$main_site_key"; then
+              # Run main site search-replace with path information (using the main site's old domain in --url for safety)
+              if run_search_replace "$main_site_key" "$main_site_value" "$main_site_log" "--url=$main_site_key" "$main_site_path" ""; then
                 printf "${GREEN}✅ Completed for Main Site (ID %s).${RESET}\n" "$main_site_id"
               else
                 printf "${RED}❌ Failed on Main Site (ID %s). Check %s for details.${RESET}\n" "$main_site_id" "$main_site_log"
