@@ -288,27 +288,115 @@ import_wp_db() {
 
   printf "${GREEN}✅ Database import successful! ${CYAN}[Completed in %02d:%02d]${RESET}\n\n" "$import_minutes" "$import_seconds"
 
-  # 🧩 Check for multisite
+  # 🧩 Enhanced multisite detection logic (Post-import database introspection)
   printf "${CYAN}🔍 Checking WordPress installation type...${RESET}\n"
-  local is_multisite
-  # FIXED: Use execute_wp_cli for WP-CLI calls
-  is_multisite=$(execute_wp_cli eval 'echo is_multisite() ? "yes" : "no";' --url="$search_domain" 2>/dev/null)
 
+  # Method 1: Direct database queries (most reliable after import)
+  local is_multisite_db table_count blog_count site_count
+  local multisite_type=""
   local network_flag=""
+
+  # Check if wp_blogs table exists and has multiple entries
+  blog_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs;" --skip-column-names --silent 2>/dev/null || echo "0")
+  site_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_site;" --skip-column-names --silent 2>/dev/null || echo "0")
+
+  # Method 2: Check wp-config.php constants (fallback for local environment)
+  local multisite_config=""
+  if [[ -f "wp-config.php" ]]; then
+    # Check for MULTISITE constant in wp-config.php
+    if grep -q "define.*MULTISITE.*true" wp-config.php 2>/dev/null; then
+      multisite_config="yes"
+    elif grep -q "define.*('MULTISITE'.*true" wp-config.php 2>/dev/null; then
+      multisite_config="yes"
+    elif grep -q 'define.*("MULTISITE".*true' wp-config.php 2>/dev/null; then
+      multisite_config="yes"
+    fi
+  fi
+
+  # Method 3: WP-CLI eval without URL constraint (most compatible)
+  local is_multisite_wp=""
+  is_multisite_wp=$(execute_wp_cli eval 'echo is_multisite() ? "yes" : "no";' 2>/dev/null || echo "unknown")
+
+  # Decision logic: Combine all methods for accuracy
+  local is_multisite="no"
+
+  # If database has multisite tables with data, it's definitely multisite
+  if [[ "$blog_count" -gt 1 ]] || [[ "$site_count" -gt 0 ]]; then
+    is_multisite="yes"
+    printf "${GREEN}✅ Multisite detected via database analysis${RESET} (blogs: %s, sites: %s)\n" "$blog_count" "$site_count"
+  # If wp-config.php shows MULTISITE constant, trust it
+  elif [[ "$multisite_config" == "yes" ]]; then
+    is_multisite="yes"
+    printf "${GREEN}✅ Multisite detected via wp-config.php constants${RESET}\n"
+  # If WP-CLI can determine it, use that
+  elif [[ "$is_multisite_wp" == "yes" ]]; then
+    is_multisite="yes"
+    printf "${GREEN}✅ Multisite detected via WP-CLI evaluation${RESET}\n"
+  else
+    is_multisite="no"
+    printf "${GREEN}✅ Single site installation detected${RESET}\n"
+  fi
+
+  # Determine multisite type if it's multisite
   if [[ "$is_multisite" == "yes" ]]; then
-    local sub_dir_option multisite_type
-    # FIXED: Use execute_wp_cli
-    sub_dir_option=$(execute_wp_cli option get subdirectory_install --url="$search_domain" 2>/dev/null)
+    network_flag="--network"
+
+    # Method 1: Check subdirectory_install option from database
+    local sub_dir_option=""
+    sub_dir_option=$(execute_wp_cli db query "SELECT option_value FROM wp_options WHERE option_name = 'subdirectory_install' LIMIT 1;" --skip-column-names --silent 2>/dev/null || echo "")
+
+    # Method 2: Check wp-config.php for SUBDOMAIN_INSTALL constant
+    local subdomain_config=""
+    if [[ -f "wp-config.php" ]]; then
+      if grep -q "define.*SUBDOMAIN_INSTALL.*true" wp-config.php 2>/dev/null; then
+        subdomain_config="subdomain"
+      elif grep -q "define.*SUBDOMAIN_INSTALL.*false" wp-config.php 2>/dev/null; then
+        subdomain_config="subdirectory"
+      elif grep -q "define.*('SUBDOMAIN_INSTALL'.*true" wp-config.php 2>/dev/null; then
+        subdomain_config="subdomain"
+      elif grep -q "define.*('SUBDOMAIN_INSTALL'.*false" wp-config.php 2>/dev/null; then
+        subdomain_config="subdirectory"
+      elif grep -q 'define.*("SUBDOMAIN_INSTALL".*true' wp-config.php 2>/dev/null; then
+        subdomain_config="subdomain"
+      elif grep -q 'define.*("SUBDOMAIN_INSTALL".*false' wp-config.php 2>/dev/null; then
+        subdomain_config="subdirectory"
+      fi
+    fi
+
+    # Method 3: Analyze wp_blogs table structure for path patterns
+    local path_analysis=""
+    local paths_with_subdir=""
+    paths_with_subdir=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs WHERE path != '/' AND path != '';" --skip-column-names --silent 2>/dev/null || echo "0")
+
+    if [[ "$paths_with_subdir" -gt 0 ]]; then
+      path_analysis="subdirectory"
+    else
+      path_analysis="subdomain"
+    fi
+
+    # Decision logic for multisite type
     if [[ "$sub_dir_option" == "1" ]]; then
       multisite_type="subdirectory"
+      printf "${GREEN}✅ Multisite type:${RESET} subdirectory (via database option)\n"
+    elif [[ "$subdomain_config" == "subdirectory" ]]; then
+      multisite_type="subdirectory"
+      printf "${GREEN}✅ Multisite type:${RESET} subdirectory (via wp-config.php)\n"
+    elif [[ "$subdomain_config" == "subdomain" ]]; then
+      multisite_type="subdomain"
+      printf "${GREEN}✅ Multisite type:${RESET} subdomain (via wp-config.php)\n"
+    elif [[ "$path_analysis" == "subdirectory" ]]; then
+      multisite_type="subdirectory"
+      printf "${GREEN}✅ Multisite type:${RESET} subdirectory (via path analysis)\n"
     else
       multisite_type="subdomain"
+      printf "${GREEN}✅ Multisite type:${RESET} subdomain (default/fallback)\n"
     fi
-    printf "${GREEN}✅ Multisite status:${RESET} %s\n\n" "$multisite_type"
-    network_flag="--network"
+
   else
-    printf "${GREEN}✅ Multisite status:${RESET} no\n\n"
+    printf "${GREEN}✅ Multisite status:${RESET} no\n"
   fi
+
+  printf "\n"
 
   # 🗑️ Ask for revision cleanup
   local cleanup_revisions
