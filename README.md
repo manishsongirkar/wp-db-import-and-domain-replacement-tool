@@ -12,22 +12,23 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 - ✅ **Interactive domain mapping** with per-subsite configuration for multisite
 - ✅ **Dual-pass search-replace** (standard URLs + serialized data structures)
 - ✅ **Enhanced domain+path replacement** for complex multisite configurations with intelligent slash handling
-- ✅ **Intelligent post revision cleanup** with site-by-site processing
+- ✅ **High-speed bulk post revision cleanup** using xargs for performance
 - ✅ **Comprehensive cache clearing** (object cache, rewrites, transients)
 - ✅ **Advanced dry-run mode** for safe testing and validation
-- ✅ **MySQL command generation** with automatic blog_id and path detection
-- ✅ **Integrated Stage File Proxy setup** with automatic activation and configuration
+- ✅ **Automatic wp_blogs and wp_site table updates** via wp eval for multisite
+- ✅ **Integrated Stage File Proxy setup** with automatic installation and configuration
 
 ### Technical Features
 - ✅ **Smart WordPress root detection** (works from any subdirectory)
-- ✅ **Process-safe temporary files** with automatic cleanup on exit
+- ✅ **Process-safe temporary files** with automatic cleanup on exit using PID
 - ✅ **Enhanced error handling** with detailed logging and recovery options
 - ✅ **Progress indicators** with elapsed time tracking and spinners
 - ✅ **Multi-site type support** (subdomain networks, subdirectory networks)
 - ✅ **Input validation** with dangerous character detection and sanitization
-- ✅ **Modern plugin support** for Stage File Proxy
+- ✅ **Robust WP-CLI execution** with PATH optimization and environment setup
 - ✅ **Network-wide operations** with site-specific processing
 - ✅ **Protocol enforcement** (automatic HTTPS for stage-file-proxy)
+- ✅ **Main site detection** using multiple criteria (path and blog_id analysis)
 
 ### User Experience
 - ✅ **Color-coded terminal output** with status indicators and progress bars
@@ -35,6 +36,7 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 - ✅ **Comprehensive help documentation** with usage examples
 - ✅ **Step-by-step guidance** with clear confirmation points
 - ✅ **Detailed summary reports** showing all changes made
+- ✅ **Automatic fallback mechanisms** for failed operations
 
 ---
 
@@ -135,64 +137,66 @@ import_wp_db
 ### Complete Process Flow:
 
 1. **🔍 Environment Detection**
-   - WordPress root directory discovery
-   - Installation type detection (single-site vs multisite)
+   - WordPress root directory discovery (works from any subdirectory)
+   - Installation type detection via multiple methods (database analysis, wp-config.php, WP-CLI)
    - Multisite configuration analysis (subdomain vs subdirectory)
 
 2. **📦 Database Import Setup**
    - SQL file selection (default: `vip-db.sql`)
    - Domain mapping configuration (production → local)
    - Import confirmation with summary display
+   - Progress tracking with elapsed time
 
 3. **🗂️ Pre-Processing Operations**
-   - Revision cleanup (optional, site-by-site for multisite)
+   - High-speed bulk revision cleanup using xargs (optional, site-by-site for multisite)
    - Table scope selection (`--all-tables` option)
    - Dry-run mode selection for safe testing
 
 4. **🔄 Domain Replacement Process**
    - **Single-site**: Direct search-replace with dual-pass processing
    - **Multisite (subdirectory)**: Network-wide replacement with shared domain
-   - **Multisite (subdomain)**: Individual site mapping with custom domains
+   - **Multisite (subdomain)**: Individual site mapping with custom domains and automatic database updates
 
-5. **🧹 Post-Processing Cleanup**
+5. **� Database Structure Updates** (Multisite)
+   - **Automatic Updates**: wp_blogs and wp_site tables updated via wp eval before search-replace
+   - **Fallback Commands**: Manual MySQL commands generated only if automatic updates fail
+   - **Verification**: Success/failure reporting for each operation
+
+6. **🧹 Post-Processing Cleanup**
    - Object cache flushing
    - Rewrite rules regeneration
    - Transient data cleanup
 
-6. **🛠️ Database Structure Updates** (Multisite only)
-   - Automatic MySQL command generation
-   - Blog domain and path updates
-   - User confirmation for phpMyAdmin execution
-
 7. **📁 Stage File Proxy Integration**
    - **Interactive setup prompt** with default "Yes" option
-   - **Automatic plugin installation** from GitHub release if not present
+   - **Automatic plugin installation** from GitHub release if not present (multiple fallback methods)
    - **Smart plugin activation** (network-wide for multisite, site-wide for single-site)
    - **Source domain configuration** using existing mappings from import process
    - **HTTPS protocol enforcement** for security compliance
+   - **New plugin structure** using separate `sfp_url` and `sfp_mode` options
 
 ---
 
 ## 🔄 Stage File Proxy Integration
 
-The script provides sophisticated **Stage File Proxy** integration for seamless local development workflows. This feature **automatically installs and configures** your local WordPress installation to fetch missing media files from the production server.
+The script provides sophisticated **Stage File Proxy** integration for seamless local development workflows. This feature **automatically installs and configures** your local WordPress installation to fetch missing media files from the production server using the new plugin architecture.
 
 ### How It Works
 
 1. **🔍 Interactive Setup Prompt**: After completing database operations, prompts user with clear options
 2. **📦 Automatic Plugin Installation**: If stage-file-proxy plugin is not installed, automatically downloads and installs from GitHub release
-3. **📋 MySQL Confirmation**: For multisite installations, confirms MySQL commands were executed (ensures proper site structure)
+3. **📋 Automatic Database Updates**: For multisite installations, automatically updates wp_blogs and wp_site tables via wp eval
 4. **⚙️ Smart Configuration**: When setup is requested:
-   - **Plugin Detection**: Checks if plugin is already installed
+   - **Plugin Detection**: Checks if plugin is already installed using `wp plugin is-installed`
    - **Auto-Installation**: Downloads from `https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip`
    - **Plugin Activation**: Network-wide activation for multisite, site-wide for single-site
    - **Domain Mapping**: Uses existing domain mappings from the import process
    - **Protocol Security**: Enforces HTTPS protocol for all source domains
-   - **Separate Options**: Uses new `sfp_url` and `sfp_mode` options
+   - **New Plugin Structure**: Uses separate `sfp_url` and `sfp_mode` options
 
-### New Setup Process
+### New Plugin Structure
 
-The enhanced setup process now includes an interactive prompt:
+The enhanced setup process now uses the new plugin architecture:
 
 ```
 📸 Stage File Proxy Setup
@@ -204,7 +208,7 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n):
 **Installation Flow**:
 - ✅ **Plugin Already Installed**: Proceeds directly to configuration
 - 📦 **Plugin Not Found**: Automatically installs from GitHub release, then configures
-- ❌ **Installation Fails**: Shows error message and skips configuration
+- ❌ **Installation Fails**: Shows error message with manual installation options
 - ⏭️ **User Declines**: Skips entire setup with appropriate message
 
 #### Security & Validation
@@ -212,46 +216,33 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n):
 - **Protocol Enforcement**: Automatic conversion of HTTP to HTTPS for security
 - **Option Safety**: Direct WordPress option updates with proper validation
 - **Length Validation**: URL length limits to prevent buffer overflow attacks
+- **Character Filtering**: Removes control characters and non-printable content
 
 #### Multisite Support
 - **Individual Site Configuration**: Each subsite gets its own stage-file-proxy settings
-- **Bulk Configuration**: Option to apply same source domain to all sites
+- **Automatic Configuration**: Uses domain mappings from the import process
 - **Network Detection**: Automatic detection of subdomain vs subdirectory networks
 - **Site-Specific Mapping**: Uses individual domain mappings from the import process
 
 ### Example Configuration Output
 
-#### Single Site (New Installation Flow):
+#### Single Site
+```
+📸 Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n):
+🔍 stage-file-proxy plugin found! Configuring...
+📦 Activating stage-file-proxy plugin...
+✅ Plugin activated successfully
+🧩 Configuring single site stage-file-proxy...
+  ✅ Configured successfully: example.local (URL: https://production.example.com, Mode: header)
+🎉 stage-file-proxy configuration complete!
+```
+
+#### Multisite (Automatic Configuration):
 ```
 📸 Stage File Proxy Setup
 Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-📦 Installing stage-file-proxy plugin...
-✅ Plugin installed successfully
-📦 Activating stage-file-proxy plugin...
-✅ Plugin activated successfully
-🧩 Configuring single site stage-file-proxy...
-  ✅ Configured successfully: example.local (URL: https://production.example.com, Mode: header)
-🎉 stage-file-proxy configuration complete!
-```
-
-#### Single Site (Plugin Already Installed):
-```
-� Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n):
-�🔍 stage-file-proxy plugin found! Configuring...
-📦 Activating stage-file-proxy plugin...
-✅ Plugin activated successfully
-🧩 Configuring single site stage-file-proxy...
-  ✅ Configured successfully: example.local (URL: https://production.example.com, Mode: header)
-🎉 stage-file-proxy configuration complete!
-```
-
-#### Multisite (New Installation Flow):
-```
-� Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-📦 Installing stage-file-proxy plugin...
-✅ Plugin installed successfully
+� stage-file-proxy plugin found! Configuring...
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
@@ -262,34 +253,38 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 🎉 stage-file-proxy configuration complete!
 ```
 
-#### User Declines Setup:
-```
-📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n): n
-ℹ️ Skipping stage-file-proxy setup as requested
-```
-
-#### Installation Failure:
+#### Installation Failure with Fallback Options:
 ```
 📸 Stage File Proxy Setup
 Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 📦 Installing stage-file-proxy plugin...
-❌ Failed to install plugin
+    Attempting installation from GitHub release...
+⚠️ GitHub installation failed, trying direct download method...
+    Attempting direct download method...
+❌ Failed to install plugin using all methods
+💡 Installation error details:
+   Last few lines from installation log:
+   Error: Could not create directory
+🔧 Manual installation options:
+   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip
+   2. Install via WP Admin: Plugins → Add New → Upload Plugin
+   3. Check internet connection and try again
 ⚠️ Skipping stage-file-proxy configuration
 ```
 
 ### Benefits
 
 - **🔄 Zero Configuration**: Automatically inherits domain mappings from import process
-- **� Automatic Installation**: Downloads and installs plugin if not present (no manual setup required)
-- **�🖼️ Seamless Media**: Missing images/files automatically load from production
-- **🌐 Multisite Ready**: Individual configuration for each subsite
-- **⏱️ Smart Timing**: Only runs after database structure is properly updated
+- **📦 Automatic Installation**: Downloads and installs plugin if not present with multiple fallback methods
+- **🖼️ Seamless Media**: Missing images/files automatically load from production
+- **🌐 Multisite Ready**: Individual configuration for each subsite using existing mappings
+- **⏱️ Smart Timing**: Runs after database structure is properly updated (automatic or manual)
 - **🎯 User Choice**: Interactive prompt with sensible defaults (Yes/No options)
 - **🔇 Non-Intrusive**: Silent operation when user declines setup
 - **🔒 Security First**: HTTPS enforcement and input validation
-- **✨ Modern Structure**: Compatible with latest plugin architecture
-- **🛡️ Error Handling**: Graceful failure handling with clear messaging
+- **✨ Modern Structure**: Compatible with new plugin architecture
+- **🛡️ Error Handling**: Graceful failure handling with clear manual options
+- **📋 Automatic Configuration**: Uses domain mappings from database import for seamless setup
 
 ### Available Proxy Modes
 
@@ -305,42 +300,45 @@ The new plugin supports multiple proxy modes with `header` as the default:
 
 ### Manual Setup Alternative
 
-For advanced users or custom setups, use the standalone setup script which also includes automatic installation:
+For advanced users or custom setups, use the standalone setup script:
 
 ```bash
-# Source the setup script
+# Source the setup script (includes automatic installation)
 source ~/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh
 
-# Interactive setup (includes automatic plugin installation if needed)
+# Interactive setup with automatic plugin installation if needed
 setup_stage_file_proxy
 
 # Bulk configuration for multisite
 bulk_configure_multisite
 
-# View current configuration
+# View current configuration (shows new plugin structure)
 show_stage_file_proxy_config
 ```
 
-**Note**: The standalone setup script now follows the same installation pattern as the main import script - it automatically detects if the plugin is missing and installs it from the GitHub release before proceeding with configuration.
+**Note**: The standalone setup script automatically detects if the plugin is missing and installs it from the GitHub release before proceeding with configuration.
 
 ### Configuration Functions
 
 #### Available Functions:
-- **`setup_stage_file_proxy`**: Interactive setup with validation
-- **`show_stage_file_proxy_config`**: Display current settings (shows new separate options)
+- **`setup_stage_file_proxy`**: Interactive setup with validation and auto-installation
+- **`show_stage_file_proxy_config`**: Display current settings (shows separate `sfp_url` and `sfp_mode` options)
 - **`bulk_configure_multisite`**: Set same domain for all sites (multisite only)
 - **`configure_stage_file_proxy`**: Core configuration function (new plugin structure)
 
-#### Enhanced Input Handling:
+#### Enhanced Features:
+- **Automatic Installation**: Downloads and installs plugin if not present
+- **Multiple Download Methods**: Tries GitHub release, then direct download with curl/wget
 - **Domain Validation**: URL format validation with TLD requirements
 - **Localhost Support**: Special handling for localhost and IP addresses
 - **Protocol Conversion**: Automatic HTTP to HTTPS conversion
 - **Whitespace Cleaning**: Automatic trimming of input strings
 - **Character Filtering**: Prevention of dangerous characters and injection attempts
+- **New Plugin Structure**: Uses separate `sfp_url` and `sfp_mode` options for better organization
 
 ---
 
-## 🧪 Example Terminal Session
+## 🧪 Example Terminal Sessions
 
 ### 🟢 Single-Site Example
 
@@ -355,11 +353,7 @@ $ import_wp_db
 
 ✅ Found SQL file: production-backup.sql
 
-🌍 Enter the OLD (production) domain to search for:
-⚠️  Production domain is required. Please enter a value.
 🌍 Enter the OLD (production) domain to search for: https://example.com/
-🏠 Enter the NEW (local) domain/base URL to replace with:
-⚠️  Local domain is required. Please enter a value.
 🏠 Enter the NEW (local) domain/base URL to replace with: http://example.local
 
 🧹 Cleaned search domain: 'https://example.com/' → 'example.com'
@@ -420,10 +414,6 @@ Proceed with search-replace now? (Y/n): y
 
 ================================================================
 
-📋 MySQL Commands Confirmation
-Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
-🚀 Database Migration Completed Successfully!
-
 � Stage File Proxy Setup
 Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 📦 Installing stage-file-proxy plugin...
@@ -437,9 +427,9 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 
 ---
 
-### 🟢 Multisite Example
+### 🟢 Multisite Subdomain Example
 
-This comprehensive example demonstrates the enhanced domain+path replacement logic for complex multisite setups:
+This comprehensive example demonstrates the enhanced domain+path replacement logic and automatic database updates for complex multisite setups:
 
 ```
 $ import_wp_db
@@ -504,7 +494,7 @@ Include --all-tables (recommended for full DB imports)? (Y/n): y
 Run in dry-run mode (no data will be changed)? (y/N): n
 🚀 Running in live mode (changes will be applied).
 
-�🌐 Multisite (subdomain) detected — gathering subsites for mapping...
+🌐 Multisite (subdomain) detected — gathering subsites for mapping...
 
 ✅ Found 4 subsites:
 +--------+---------------------------+-------------+
@@ -517,50 +507,69 @@ Run in dry-run mode (no data will be changed)? (y/N): n
 +--------+---------------------------+-------------+
 
 🌐 Subdomain Multisite Detected
-Each subsite has its own domain. Individual mapping required.
+Each subsite has its own domain. Individual mapping input is required.
 
 Enter the NEW URL/Domain for each site:
 (Example: Map 'sub1.example.com' to 'sub1.example.test')
 
   Processing: Blog ID 1, Domain: 'vip.example.com', Path: '/'
-→ Local URL for 'vip.example.com' (Blog ID 1): (example.test) example.test
+→ Local URL for 'vip.example.com' (Blog ID 1): (example.test)
     ✅ Added mapping: 'vip.example.com' → 'example.test' (ID: 1, Path: /)
 
   Processing: Blog ID 2, Domain: 'us.example.com', Path: '/'
 → Local URL for 'us.example.com' (Blog ID 2): us.example.test
-    ✅ Added mapping: 'us.example.com' → 'example.test/us' (ID: 2, Path: /)
+    ✅ Added mapping: 'us.example.com' → 'us.example.test' (ID: 2, Path: /)
 
   Processing: Blog ID 3, Domain: 'demo.example.com', Path: '/'
 → Local URL for 'demo.example.com' (Blog ID 3): demo.example.test
-    ✅ Added mapping: 'demo.example.com' → 'example.test/demo' (ID: 3, Path: /)
+    ✅ Added mapping: 'demo.example.com' → 'demo.example.test' (ID: 3, Path: /)
 
   Processing: Blog ID 4, Domain: 'blog.example.com', Path: '/'
 → Local URL for 'blog.example.com' (Blog ID 4): blog.example.test
-    ✅ Added mapping: 'blog.example.com' → 'example.test/blog' (ID: 4, Path: /)
+    ✅ Added mapping: 'blog.example.com' → 'blog.example.test' (ID: 4, Path: /)
 
 🧾 Domain mapping summary:
     🔁 [ID: 1] vip.example.com/ → example.test
-    🔁 [ID: 2] us.example.com/ → example.test/us
-    🔁 [ID: 3] demo.example.com/ → example.test/demo
-    🔁 [ID: 4] blog.example.com/ → example.test/blog
+    🔁 [ID: 2] us.example.com/ → us.example.test
+    🔁 [ID: 3] demo.example.com/ → demo.example.test
+    🔁 [ID: 4] blog.example.com/ → blog.example.test
 
 Proceed with search-replace for all sites? (Y/n): y
+
+� Updating wp_blogs and wp_site tables (before search-replace)...
+================================================================
+
+�🔄 Executing wp_blogs and wp_site table updates via wp eval...
+
+📝 Preparing wp_blogs updates for subsites...
+  → Blog ID 2: us.example.com → us.example.test/
+  → Blog ID 3: demo.example.com → demo.example.test/
+  → Blog ID 4: blog.example.com → blog.example.test/
+
+📝 Preparing wp_blogs update for main site (ID: 1)...
+  → Blog ID 1: vip.example.com → example.test/
+
+📝 Preparing wp_site update for network (ID: 1)...
+  → Site ID 1: Network domain → example.test
+
+⚡ Updating wp_blogs and wp_site tables...
+✅ All database tables updated successfully!
 
 🔄 Starting search-replace (per site, sequential) - Subsites first, then Main Site...
 
 ➡️  Replacing for Site ID 2: us.example.com/ → us.example.test
-  [Pass 1] Simple replacement: //us.example.com → //example.test/us
-  [Pass 2] Serialized replacement: \\/\\/us.example.com → \\/\\/example.test/us
+  [Pass 1] Simple replacement: //us.example.com → //us.example.test
+  [Pass 2] Serialized replacement: \\/\\/us.example.com → \\/\\/us.example.test
 ✅ Completed for us.example.com/ (ID 2).
 
-➡️  Replacing for Site ID 3: demo.example.com/ → example.test/demo
-  [Pass 1] Simple replacement: //demo.example.com → //example.test/demo
-  [Pass 2] Serialized replacement: \\/\\/demo.example.com → \\/\\/example.test/demo
+➡️  Replacing for Site ID 3: demo.example.com/ → demo.example.test
+  [Pass 1] Simple replacement: //demo.example.com → //demo.example.test
+  [Pass 2] Serialized replacement: \\/\\/demo.example.com → \\/\\/demo.example.test
 ✅ Completed for demo.example.com/ (ID 3).
 
-➡️  Replacing for Site ID 4: blog.example.com/ → example.test/blog
-  [Pass 1] Simple replacement: //blog.example.com → //example.test/blog
-  [Pass 2] Serialized replacement: \\/\\/blog.example.com → \\/\\/example.test/blog
+➡️  Replacing for Site ID 4: blog.example.com/ → blog.example.test
+  [Pass 1] Simple replacement: //blog.example.com → //blog.example.test
+  [Pass 2] Serialized replacement: \\/\\/blog.example.com → \\/\\/blog.example.test
 ✅ Completed for blog.example.com/ (ID 4).
 
   MAIN SITE REPLACEMENT (ID = 1)
@@ -577,38 +586,11 @@ Proceed with search-replace for all sites? (Y/n): y
 
 🎉 All done! Database import and replacements completed successfully.
 
-================================================================
+� Database Migration Completed Successfully! (Tables updated automatically)
 
-📋 MySQL Commands for Manual Execution in phpMyAdmin:
-
-================================================================
-
--- 1. Update blog domains and paths for SUB-SITES (ID != 1)
-
-UPDATE wp_blogs SET domain = "example.test", path = "/us/" WHERE blog_id = 2; -- us.example.com → example.test/us (Subsite)
-UPDATE wp_blogs SET domain = "example.test", path = "/demo/" WHERE blog_id = 3; -- demo.example.com → example.test/demo (Subsite)
-UPDATE wp_blogs SET domain = "example.test", path = "/blog/" WHERE blog_id = 4; -- vip.example.com → example.test/blog (Subsite)
-
--- 2. Update blog domain and path for MAIN SITE (ID = 1)
-
-UPDATE wp_blogs SET domain = "example.test", path = "/" WHERE blog_id = 1; -- vip.example.com → example.test (Main Site)
-
--- 3. Update the main network site domain (ID = 1)
-UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
-
-
-💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.
-
-================================================================
-
-📋 MySQL Commands Confirmation
-Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
-🚀 Database Migration Completed Successfully!
-
-� Stage File Proxy Setup
+📸 Stage File Proxy Setup
 Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-📦 Installing stage-file-proxy plugin...
-✅ Plugin installed successfully
+🔍 stage-file-proxy plugin found! Configuring...
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
@@ -622,6 +604,121 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 
 ---
 
+### 🟢 Multisite Subdirectory Example
+
+```
+$ import_wp_db
+
+🔧 WordPress Database Import & Domain Replace Tool
+---------------------------------------------------
+
+📦 Enter SQL file name (default: vip-db.sql): subdirectory-multisite.sql
+✅ WordPress root found: /Users/jane/Sites/multisite-wp
+
+✅ Found SQL file: subdirectory-multisite.sql
+
+🌍 Enter the OLD (production) domain to search for: example.com
+🏠 Enter the NEW (local) domain/base URL to replace with: example.local
+
+Proceed with database import? (Y/n): y
+
+⏳ Importing database...
+✅ Database import successful! [Completed in 01:45]
+
+🔍 Checking WordPress installation type...
+✅ Multisite detected via database analysis (blogs: 3, sites: 1)
+
+Clear ALL post revisions? (improves search-replace speed) (Y/n): y
+🗑️ Clearing ALL Post Revisions (improves search-replace speed)...
+🗑️ REVISION CLEANUP - STEP BY STEP
+=====================================================
+
+🌐 MULTISITE DETECTED - Processing all subsites...
+  Step A: Getting list of all sites in the network
+  Found 3 sites to process:
+    1. example.com
+    2. example.com/blog
+    3. example.com/shop
+
+  Step B: Processing revisions for each site individually
+
+  🌍 Site 1/3: example.com
+    Revisions found: 12
+  ✅ Revisions deleted (WP-CLI reported success)
+
+  🌍 Site 2/3: example.com/blog
+    Revisions found: 8
+  ✅ Revisions deleted (WP-CLI reported success)
+
+  🌍 Site 3/3: example.com/shop
+    Revisions found: 5
+  ✅ Revisions deleted (WP-CLI reported success)
+
+Include --all-tables (recommended for full DB imports)? (Y/n): y
+✅ Will include all tables.
+
+Run in dry-run mode (no data will be changed)? (y/N): n
+🚀 Running in live mode (changes will be applied).
+
+🌐 Multisite (subdirectory) detected — gathering subsites for mapping...
+
+✅ Found 3 subsites:
++--------+---------------------------+-------------+
+| blog_id| domain                    | path        |
++--------+---------------------------+-------------+
+| 1      | example.com               | /           |
+| 2      | example.com               | /blog/      |
+| 3      | example.com               | /shop/      |
++--------+---------------------------+-------------+
+
+🏠 Subdirectory Multisite Detected
+All subsites share the same domain. Only one network-wide search-replace operation is required.
+
+🌍 Enter the NEW domain for all sites:
+→ Replace 'example.com' with: (example.local)
+
+🧾 Domain mapping summary:
+    🔁 example.com → example.local (Network-wide)
+
+Proceed with network-wide search-replace? (Y/n): y
+
+� Starting network-wide search-replace...
+  [Pass 1] Simple replacement: //example.com → //example.local
+  [Pass 2] Serialized replacement: \\/\\/example.com → \\/\\/example.local
+
+✅ Network-wide search-replace completed successfully!
+
+🧹 Flushing WordPress and WP-CLI caches & transients...
+  ✅ Object cache flushed.
+  ✅ Rewrite rule flushed.
+  ✅ All transients deleted.
+
+🎉 All done! Database import and replacements completed successfully.
+
+📋 MySQL Commands for Single Site:
+================================================================
+
+-- Single site setup - domain updated via WP-CLI search-replace
+-- No additional MySQL commands needed for single site installations
+
+✅ Single site domain replacement completed via WP-CLI.
+
+📸 Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): y
+📦 Installing stage-file-proxy plugin...
+✅ Plugin installed successfully
+📦 Activating stage-file-proxy plugin...
+✅ Plugin activated successfully
+🌐 Configuring multisite stage-file-proxy...
+✅ Configuring 3 sites with stage-file-proxy
+  ✅ Configured successfully: example.local (URL: https://example.com, Mode: header)
+  ✅ Configured successfully: example.local/blog (URL: https://example.com, Mode: header)
+  ✅ Configured successfully: example.local/shop (URL: https://example.com, Mode: header)
+🎉 stage-file-proxy configuration complete!
+```
+
+---
+
 ## ⚡ Configuration Options
 
 | Option | Description | Default | Advanced Notes |
@@ -629,12 +726,12 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 | **SQL filename** | Database dump file to import | `vip-db.sql` | Supports absolute and relative paths |
 | **Old Domain** | Production domain to search for | Required input | Auto-sanitized (protocols/slashes removed) |
 | **New Domain** | Local/staging domain to replace with | Required input | Security validation applied |
-| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | Site-by-site processing for multisite |
+| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | High-speed bulk operation using xargs |
 | **All tables** | Include non-WordPress prefixed tables | Recommended (Y/n) | Essential for full migrations |
-| **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact SQL commands to be executed |
+| **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact operations to be executed |
 | **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Interactive prompts | Supports both subdomain and subdirectory |
-| **SQL confirmation** | Confirm MySQL commands executed (multisite) | Default Yes (Y/n) | Required for stage-file-proxy setup |
-| **Stage File Proxy Setup** | Interactive setup prompt for media management | Default Yes (Y/n) | Includes automatic plugin installation if not present |
+| **Automatic DB Updates** | wp_blogs and wp_site table updates via wp eval | Automatic for multisite | Executed before search-replace operations |
+| **Stage File Proxy Setup** | Interactive setup prompt for media management | Default Yes (Y/n) | Includes automatic plugin installation |
 | **Cache clearing** | Flush object cache, rewrites, and transients | Automatic | Network-wide for multisite |
 
 ### Advanced Configuration Details
@@ -651,11 +748,13 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 - **Subdomain Networks**: Individual site mapping with custom local domains
 - **Path Detection**: Automatic blog path generation for subdirectory setups
 - **Blog ID Mapping**: Precise mapping of blog_id to domain/path combinations
+- **Automatic Updates**: wp_blogs and wp_site tables updated via wp eval before search-replace
 
 #### Stage File Proxy Security:
 - **HTTPS Enforcement**: All source domains stored with HTTPS protocol
 - **Input Validation**: Comprehensive validation of domain inputs
 - **Protocol Conversion**: Automatic HTTP to HTTPS upgrade for security
+- **New Plugin Structure**: Uses separate `sfp_url` and `sfp_mode` options
 
 ---
 
@@ -668,15 +767,17 @@ The tool creates comprehensive logs with process-specific names for debugging an
 | `/tmp/wp_db_import_$$.log` | Database import operations | Process duration | Import success/failure, SQL errors |
 | `/tmp/wp_replace_single_$$.log` | Single-site search-replace | Process duration | URL replacements, serialized data changes |
 | `/tmp/wp_replace_<blogid>_$$.log` | Multisite per-site operations | Process duration | Site-specific URL replacements |
-| `/tmp/wp_revision_delete_$$.log` | Post revision cleanup | Process duration | Revision deletion results |
+| `/tmp/wp_revision_delete_$$.log` | Post revision cleanup | Process duration | Bulk revision deletion results using xargs |
 | `/tmp/wp_subsite_data_$$.csv` | Multisite site information | Process duration | Blog ID, domain, path mappings |
+| `/tmp/wp_plugin_install_$$.log` | Stage File Proxy installation | Process duration | Plugin download and installation details |
 
 ### Log Management Features:
-- **🔄 Automatic Cleanup**: All temporary files deleted on successful exit
+- **🔄 Automatic Cleanup**: All temporary files deleted on successful exit via trap
 - **💥 Crash Recovery**: Manual cleanup commands provided for interrupted processes
-- **🔍 Process Isolation**: PID-based naming prevents conflicts in concurrent runs
+- **🔍 Process Isolation**: PID-based naming ($$) prevents conflicts in concurrent runs
 - **📊 Audit Trail**: Complete record of all operations for troubleshooting
 - **🗂️ Structured Data**: CSV format for multisite data enables easy parsing
+- **🔧 Installation Logs**: Detailed logging for Stage File Proxy installation attempts
 
 ### Manual Cleanup Commands:
 ```bash
@@ -689,65 +790,87 @@ rm -f /tmp/wp_*_*.log /tmp/wp_*_*.csv
 # Find and remove old logs (older than 1 day)
 find /tmp -name "wp_*_*.log" -mtime +1 -delete
 find /tmp -name "wp_*_*.csv" -mtime +1 -delete
+
+# Clean up WP-CLI cache files
+find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
 ```
 
 ---
 
-## 🧮 Enhanced MySQL Command Generation
+## 🧮 Enhanced Database Management
 
-The script generates sophisticated SQL commands for manual execution in phpMyAdmin, with intelligent handling of different multisite configurations:
+### Automatic Database Updates (New Feature)
 
-### Single-Site Commands:
+The script now **automatically updates** the wp_blogs and wp_site tables using `wp eval` commands for multisite installations, eliminating the need for manual MySQL execution in most cases.
+
+#### Automatic Update Process:
+```sql
+-- The script automatically executes these operations via wp eval:
+-- 1. Update wp_site table for network domain
+-- 2. Update wp_blogs table for all subsites
+-- 3. Update wp_blogs table for main site
+-- All operations are executed before search-replace for optimal compatibility
+```
+
+#### Execution Flow:
+1. **Pre-Search-Replace**: Database structure updates happen first
+2. **WP Eval Commands**: Uses WordPress's built-in database functions
+3. **Error Handling**: Automatic fallback to manual commands if auto-updates fail
+4. **Verification**: Success/failure reporting for each operation
+
+### Manual MySQL Commands (Fallback Only)
+
+Manual commands are only shown if automatic updates fail:
+
+#### Single-Site Commands:
 ```sql
 -- Single site installations use WP-CLI search-replace exclusively
 -- No additional MySQL commands needed
 -- Domain replacement handled automatically via WordPress core functions
 ```
 
-### Multisite Commands (Subdomain Network):
+#### Multisite Commands (Subdomain Network):
 ```sql
+-- Only generated if automatic updates fail
 -- Update the main network domain
 UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
 
 -- Update individual blog domains (each subsite gets unique domain)
-UPDATE wp_blogs SET domain = "blog.example.local", path = "/" WHERE blog_id = 2; -- blog.example.com → blog.example.local
-UPDATE wp_blogs SET domain = "shop.example.local", path = "/" WHERE blog_id = 3; -- shop.example.com → shop.example.local
-UPDATE wp_blogs SET domain = "news.example.local", path = "/" WHERE blog_id = 4; -- news.example.com → news.example.local
+UPDATE wp_blogs SET domain = "blog.example.local", path = "/" WHERE blog_id = 2;
+UPDATE wp_blogs SET domain = "shop.example.local", path = "/" WHERE blog_id = 3;
+UPDATE wp_blogs SET domain = "news.example.local", path = "/" WHERE blog_id = 4;
 ```
 
-### Multisite Commands (Subdirectory Network):
+#### Multisite Commands (Subdirectory Network):
 ```sql
+-- Only generated if automatic updates fail
 -- Update the main network domain
 UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
 
 -- Update blog domains (shared domain with individual paths)
 UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 1;      -- Main site
-UPDATE wp_blogs SET domain = "example.local", path = "/blog/" WHERE blog_id = 2; -- example.com/blog → example.local/blog
-UPDATE wp_blogs SET domain = "example.local", path = "/shop/" WHERE blog_id = 3; -- example.com/shop → example.local/shop
-UPDATE wp_blogs SET domain = "example.local", path = "/news/" WHERE blog_id = 4; -- example.com/news → example.local/news
+UPDATE wp_blogs SET domain = "example.local", path = "/blog/" WHERE blog_id = 2;
+UPDATE wp_blogs SET domain = "example.local", path = "/shop/" WHERE blog_id = 3;
 ```
 
-### Advanced Command Features:
+### Advanced Features:
 
-#### Intelligent Path Generation:
-- **Automatic Detection**: Script determines subdomain vs subdirectory network type
-- **Path Extraction**: For subdirectory sites, extracts path from mapped local domain
-- **Slash Normalization**: Ensures proper leading/trailing slash format
-- **Duplicate Prevention**: Prevents duplicate SQL commands for same blog_id
+#### Intelligent Execution:
+- **Connection Testing**: Verifies WP-CLI database connectivity before execution
+- **Individual Operations**: Each table update is executed and verified separately
+- **Success Tracking**: Detailed reporting of successful vs failed operations
+- **Graceful Degradation**: Falls back to manual commands if needed
 
-#### Security Enhancements:
-- **SQL Injection Protection**: All values properly quoted and escaped
+#### Security & Validation:
+- **SQL Injection Protection**: All values properly escaped via WordPress functions
 - **Blog ID Validation**: Ensures blog_id exists before generating commands
-- **Domain Validation**: Validates domain format before including in SQL
-- **Comment Documentation**: Each command includes source → target mapping
+- **Domain Validation**: Validates domain format before database updates
+- **Transaction Safety**: Each operation is atomic and reversible
 
-#### Execution Instructions:
-```
-💡 Copy the above commands and paste them into phpMyAdmin → SQL tab to execute.
-
-⚠️  Important: Execute these commands AFTER the WP-CLI search-replace operations complete.
-    The commands update the multisite network structure which is separate from content URLs.
-```
+#### Performance Optimization:
+- **Bulk Operations**: Efficiently processes multiple sites
+- **Minimal Queries**: Optimized to reduce database load
+- **Error Recovery**: Continues processing even if individual operations fail
 
 ---
 
