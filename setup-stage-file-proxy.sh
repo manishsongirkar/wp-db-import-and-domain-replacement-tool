@@ -216,11 +216,86 @@ setup_stage_file_proxy() {
         return 1
     fi
 
-    # Check if the plugin exists
+    # Check if the plugin exists, if not install it with enhanced error handling
     if ! wp plugin is-installed stage-file-proxy --quiet 2>/dev/null; then
-        echo "Error: Stage File Proxy plugin is not installed"
-        echo "Please install the plugin first"
-        return 1
+        echo "📦 Stage File Proxy plugin not found. Installing..."
+
+        # Create a temporary log for installation debugging
+        local install_log="/tmp/wp_plugin_install_setup_$$.log"
+        local install_success=false
+
+        # Method 1: Try installing from GitHub release
+        echo "    Attempting installation from GitHub release..."
+        if wp plugin install https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip --quiet > "$install_log" 2>&1; then
+            echo "✅ Plugin installed successfully from GitHub"
+            install_success=true
+        else
+            echo "⚠️ GitHub installation failed, trying direct download method..."
+
+            # Method 2: Try direct download and install
+            echo "    Attempting direct download method..."
+            local temp_plugin_file="/tmp/stage-file-proxy-setup-$$.zip"
+
+            # Try downloading with curl first, then wget as fallback
+            if command -v curl &>/dev/null; then
+                if curl -L -o "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
+                    if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
+                        echo "✅ Plugin installed successfully via direct download"
+                        install_success=true
+                    fi
+                    rm -f "$temp_plugin_file" 2>/dev/null
+                fi
+            elif command -v wget &>/dev/null; then
+                if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
+                    if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
+                        echo "✅ Plugin installed successfully via direct download"
+                        install_success=true
+                    fi
+                    rm -f "$temp_plugin_file" 2>/dev/null
+                fi
+            fi
+        fi        # Handle installation result
+        if [[ "$install_success" == true ]]; then
+            # Verify installation was actually successful
+            if wp plugin is-installed stage-file-proxy --quiet 2>/dev/null; then
+                echo "✅ Plugin installation verified"
+            else
+                echo "❌ Plugin installation verification failed"
+                install_success=false
+            fi
+        fi
+
+        if [[ "$install_success" == false ]]; then
+            echo "❌ Failed to install plugin using all methods"
+            echo "💡 Installation error details:"
+            if [[ -f "$install_log" ]]; then
+                # Use built-in bash features instead of external commands
+                echo "   Last few lines from installation log:"
+                local line_count=0
+                local lines=()
+                while IFS= read -r line; do
+                    lines+=("$line")
+                    ((line_count++))
+                done < "$install_log"
+
+                # Display last 5 lines or all lines if less than 5
+                local start_index=$((line_count > 5 ? line_count - 5 : 0))
+                for ((i=start_index; i<line_count; i++)); do
+                    echo "   ${lines[i]}"
+                done
+            fi
+            echo "🔧 Manual installation options:"
+            echo "   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip"
+            echo "   2. Install via WP Admin: Plugins → Add New → Upload Plugin"
+            echo "   3. Check internet connection and try again"
+            echo "Please install the plugin manually and run this script again"
+            return 1
+        fi
+
+        # Clean up installation log
+        rm -f "$install_log" 2>/dev/null
+    else
+        echo "✅ Stage File Proxy plugin already installed"
     fi
 
     # Detect if this is a multisite installation
@@ -247,13 +322,17 @@ setup_single_site() {
     echo ""
     echo "=== Setting up for Single Site ==="
 
-    # Activate the plugin
-    echo "Activating Stage File Proxy plugin..."
-    if wp plugin activate stage-file-proxy --quiet; then
-        echo "✓ Plugin activated successfully"
+    # Check if plugin is already active, activate if needed
+    if wp plugin is-active stage-file-proxy --quiet 2>/dev/null; then
+        echo "✓ Plugin already active"
     else
-        echo "✗ Failed to activate plugin"
-        return 1
+        echo "📦 Activating Stage File Proxy plugin..."
+        if wp plugin activate stage-file-proxy --quiet 2>/dev/null; then
+            echo "✓ Plugin activated successfully"
+        else
+            echo "✗ Failed to activate plugin"
+            return 1
+        fi
     fi
 
     # Get source domain from user with sanitization

@@ -164,26 +164,48 @@ import_wp_db
    - Blog domain and path updates
    - User confirmation for phpMyAdmin execution
 
-7. **📁 Stage File Proxy Integration** (if plugin detected)
-   - Automatic plugin activation
-   - Source domain configuration using existing mappings
-   - HTTPS protocol enforcement for security
+7. **📁 Stage File Proxy Integration**
+   - **Interactive setup prompt** with default "Yes" option
+   - **Automatic plugin installation** from GitHub release if not present
+   - **Smart plugin activation** (network-wide for multisite, site-wide for single-site)
+   - **Source domain configuration** using existing mappings from import process
+   - **HTTPS protocol enforcement** for security compliance
 
 ---
 
 ## 🔄 Stage File Proxy Integration
 
-The script provides sophisticated **Stage File Proxy** integration for seamless local development workflows. This feature automatically configures your local WordPress installation to fetch missing media files from the production server.
+The script provides sophisticated **Stage File Proxy** integration for seamless local development workflows. This feature **automatically installs and configures** your local WordPress installation to fetch missing media files from the production server.
 
 ### How It Works
 
-1. **🔍 Silent Detection**: After completing database operations, automatically scans for stage-file-proxy plugin
-2. **📋 MySQL Confirmation**: For multisite installations, confirms MySQL commands were executed (ensures proper site structure)
-3. **⚙️ Automatic Configuration**: When plugin is detected:
+1. **🔍 Interactive Setup Prompt**: After completing database operations, prompts user with clear options
+2. **📦 Automatic Plugin Installation**: If stage-file-proxy plugin is not installed, automatically downloads and installs from GitHub release
+3. **📋 MySQL Confirmation**: For multisite installations, confirms MySQL commands were executed (ensures proper site structure)
+4. **⚙️ Smart Configuration**: When setup is requested:
+   - **Plugin Detection**: Checks if plugin is already installed
+   - **Auto-Installation**: Downloads from `https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip`
    - **Plugin Activation**: Network-wide activation for multisite, site-wide for single-site
    - **Domain Mapping**: Uses existing domain mappings from the import process
    - **Protocol Security**: Enforces HTTPS protocol for all source domains
    - **Separate Options**: Uses new `sfp_url` and `sfp_mode` options
+
+### New Setup Process
+
+The enhanced setup process now includes an interactive prompt:
+
+```
+📸 Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n):
+```
+
+**Default Response**: `Y` (Yes) - If user presses Enter without input, setup proceeds automatically.
+
+**Installation Flow**:
+- ✅ **Plugin Already Installed**: Proceeds directly to configuration
+- 📦 **Plugin Not Found**: Automatically installs from GitHub release, then configures
+- ❌ **Installation Fails**: Shows error message and skips configuration
+- ⏭️ **User Declines**: Skips entire setup with appropriate message
 
 #### Security & Validation
 - **Input Sanitization**: Comprehensive validation of domain inputs with dangerous character detection
@@ -199,9 +221,12 @@ The script provides sophisticated **Stage File Proxy** integration for seamless 
 
 ### Example Configuration Output
 
-#### Single Site:
+#### Single Site (New Installation Flow):
 ```
-🔍 stage-file-proxy plugin found! Configuring...
+📸 Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): y
+📦 Installing stage-file-proxy plugin...
+✅ Plugin installed successfully
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🧩 Configuring single site stage-file-proxy...
@@ -209,9 +234,24 @@ The script provides sophisticated **Stage File Proxy** integration for seamless 
 🎉 stage-file-proxy configuration complete!
 ```
 
-#### Multisite:
+#### Single Site (Plugin Already Installed):
 ```
-🔍 stage-file-proxy plugin found! Configuring...
+� Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n):
+�🔍 stage-file-proxy plugin found! Configuring...
+📦 Activating stage-file-proxy plugin...
+✅ Plugin activated successfully
+🧩 Configuring single site stage-file-proxy...
+  ✅ Configured successfully: example.local (URL: https://production.example.com, Mode: header)
+🎉 stage-file-proxy configuration complete!
+```
+
+#### Multisite (New Installation Flow):
+```
+� Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): y
+📦 Installing stage-file-proxy plugin...
+✅ Plugin installed successfully
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
@@ -222,15 +262,34 @@ The script provides sophisticated **Stage File Proxy** integration for seamless 
 🎉 stage-file-proxy configuration complete!
 ```
 
+#### User Declines Setup:
+```
+📸 Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): n
+ℹ️ Skipping stage-file-proxy setup as requested
+```
+
+#### Installation Failure:
+```
+📸 Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): y
+📦 Installing stage-file-proxy plugin...
+❌ Failed to install plugin
+⚠️ Skipping stage-file-proxy configuration
+```
+
 ### Benefits
 
 - **🔄 Zero Configuration**: Automatically inherits domain mappings from import process
-- **🖼️ Seamless Media**: Missing images/files automatically load from production
+- **� Automatic Installation**: Downloads and installs plugin if not present (no manual setup required)
+- **�🖼️ Seamless Media**: Missing images/files automatically load from production
 - **🌐 Multisite Ready**: Individual configuration for each subsite
 - **⏱️ Smart Timing**: Only runs after database structure is properly updated
-- **🔇 Non-Intrusive**: Silent operation when plugin not present
+- **🎯 User Choice**: Interactive prompt with sensible defaults (Yes/No options)
+- **🔇 Non-Intrusive**: Silent operation when user declines setup
 - **🔒 Security First**: HTTPS enforcement and input validation
 - **✨ Modern Structure**: Compatible with latest plugin architecture
+- **🛡️ Error Handling**: Graceful failure handling with clear messaging
 
 ### Available Proxy Modes
 
@@ -246,13 +305,13 @@ The new plugin supports multiple proxy modes with `header` as the default:
 
 ### Manual Setup Alternative
 
-For advanced users or custom setups, use the standalone setup script:
+For advanced users or custom setups, use the standalone setup script which also includes automatic installation:
 
 ```bash
 # Source the setup script
 source ~/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh
 
-# Interactive setup
+# Interactive setup (includes automatic plugin installation if needed)
 setup_stage_file_proxy
 
 # Bulk configuration for multisite
@@ -261,6 +320,8 @@ bulk_configure_multisite
 # View current configuration
 show_stage_file_proxy_config
 ```
+
+**Note**: The standalone setup script now follows the same installation pattern as the main import script - it automatically detects if the plugin is missing and installs it from the GitHub release before proceeding with configuration.
 
 ### Configuration Functions
 
@@ -363,7 +424,10 @@ Proceed with search-replace now? (Y/n): y
 Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 🚀 Database Migration Completed Successfully!
 
-🔍 stage-file-proxy plugin found! Configuring...
+� Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): y
+📦 Installing stage-file-proxy plugin...
+✅ Plugin installed successfully
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🧩 Configuring single site stage-file-proxy...
@@ -541,7 +605,10 @@ UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
 Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 🚀 Database Migration Completed Successfully!
 
-🔍 stage-file-proxy plugin found! Configuring...
+� Stage File Proxy Setup
+Do you want to setup the stage file proxy plugin for media management? (Y/n): y
+📦 Installing stage-file-proxy plugin...
+✅ Plugin installed successfully
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
@@ -567,7 +634,7 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 | **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact SQL commands to be executed |
 | **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Interactive prompts | Supports both subdomain and subdirectory |
 | **SQL confirmation** | Confirm MySQL commands executed (multisite) | Default Yes (Y/n) | Required for stage-file-proxy setup |
-| **Stage File Proxy** | Auto-setup if plugin installed | Automatic detection | HTTPS protocol enforced |
+| **Stage File Proxy Setup** | Interactive setup prompt for media management | Default Yes (Y/n) | Includes automatic plugin installation if not present |
 | **Cache clearing** | Flush object cache, rewrites, and transients | Automatic | Network-wide for multisite |
 
 ### Advanced Configuration Details

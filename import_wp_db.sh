@@ -417,7 +417,7 @@ import_wp_db() {
     # Count IDs for verification and logging.
     revision_count_before=$(echo "$trimmed_output" | wc -w | tr -d ' ')
 
-    printf "${CYAN}    Revisions found: %s${RESET}\n" "$revision_count_before"
+    printf "${CYAN}   Revisions found: %s${RESET}\n" "$revision_count_before"
 
     local xargs_command_output
     local xargs_exit_code
@@ -1276,11 +1276,102 @@ import_wp_db() {
     printf "\n"
   fi
 
-  # 🔍 Check for stage-file-proxy plugin and configure if present (only if SQL commands confirmed)
+  # 🔍 Stage File Proxy Plugin Setup (only if SQL commands confirmed)
   if [[ "$sql_executed" == [Yy]* ]]; then
-    # FIXED: Use execute_wp_cli
-    if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
-      printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
+    # Ask user if they want to setup stage file proxy for media management
+    local setup_stage_proxy
+    printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
+    printf "Do you want to setup the stage file proxy plugin for media management? (Y/n): "
+    read -r setup_stage_proxy
+    setup_stage_proxy="${setup_stage_proxy:-y}"
+
+    if [[ "$setup_stage_proxy" == [Yy]* ]]; then
+      # Check if stage-file-proxy plugin is already installed
+      # FIXED: Use execute_wp_cli
+      if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
+        printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
+      else
+        # Install the plugin with enhanced error handling
+        printf "${CYAN}📦 Installing stage-file-proxy plugin...${RESET}\n"
+
+        # Create a temporary log for installation debugging
+        local install_log="/tmp/wp_plugin_install_$$.log"
+        local install_success=false
+
+        # Method 1: Try installing from GitHub release
+        printf "${CYAN}    Attempting installation from GitHub release...${RESET}\n"
+        if execute_wp_cli plugin install https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip > "$install_log" 2>&1; then
+          printf "${GREEN}✅ Plugin installed successfully from GitHub${RESET}\n"
+          install_success=true
+        else
+          printf "${YELLOW}⚠️ GitHub installation failed, trying direct download method...${RESET}\n"
+
+          # Method 2: Try direct download and install
+          printf "${CYAN}    Attempting direct download method...${RESET}\n"
+          local temp_plugin_file="/tmp/stage-file-proxy-$$.zip"
+
+          # Try downloading with curl first, then wget as fallback
+          if command -v curl &>/dev/null; then
+            if curl -L -o "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
+              if execute_wp_cli plugin install "$temp_plugin_file" >> "$install_log" 2>&1; then
+                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
+                install_success=true
+              fi
+              rm -f "$temp_plugin_file" 2>/dev/null
+            fi
+          elif command -v wget &>/dev/null; then
+            if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
+              if execute_wp_cli plugin install "$temp_plugin_file" >> "$install_log" 2>&1; then
+                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
+                install_success=true
+              fi
+              rm -f "$temp_plugin_file" 2>/dev/null
+            fi
+          fi
+        fi        # Handle installation result
+        if [[ "$install_success" == true ]]; then
+          # Verify installation was actually successful
+          if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
+            printf "${GREEN}✅ Plugin installation verified${RESET}\n"
+          else
+            printf "${RED}❌ Plugin installation verification failed${RESET}\n"
+            install_success=false
+          fi
+        fi
+
+        if [[ "$install_success" == false ]]; then
+          printf "${RED}❌ Failed to install plugin using all methods${RESET}\n"
+          printf "${YELLOW}💡 Installation error details:${RESET}\n"
+          if [[ -f "$install_log" ]]; then
+            # Use built-in bash features instead of external commands
+            printf "   Last few lines from installation log:\n"
+            local line_count=0
+            local lines=()
+            while IFS= read -r line; do
+              lines+=("$line")
+              ((line_count++))
+            done < "$install_log"
+
+            # Display last 5 lines or all lines if less than 5
+            local start_index=$((line_count > 5 ? line_count - 5 : 0))
+            for ((i=start_index; i<line_count; i++)); do
+              printf "   %s\n" "${lines[i]}"
+            done
+          fi
+          printf "${YELLOW}⚠️ Skipping stage-file-proxy configuration${RESET}\n"
+          printf "${CYAN}🔧 Manual installation options:${RESET}\n"
+          printf "   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip\n"
+          printf "   2. Install via WP Admin: Plugins → Add New → Upload Plugin\n"
+          printf "   3. Check internet connection and try again\n"
+          setup_stage_proxy="n"
+        fi
+
+        # Clean up installation log
+        rm -f "$install_log" 2>/dev/null
+      fi
+
+      # Only proceed with configuration if plugin installation was successful or plugin was already installed
+      if [[ "$setup_stage_proxy" == [Yy]* ]]; then
 
     # Check if plugin is active and activate if needed
     # FIXED: Use execute_wp_cli
@@ -1455,6 +1546,9 @@ import_wp_db() {
     fi
 
     printf "${GREEN}🎉 stage-file-proxy configuration complete!${RESET}\n"
+      fi
+    else
+      printf "${YELLOW}ℹ️ Skipping stage-file-proxy setup as requested${RESET}\n"
     fi
   else
     printf "${YELLOW}ℹ️ Skipping stage-file-proxy configuration (SQL commands not confirmed or not applicable).${RESET}\n"
