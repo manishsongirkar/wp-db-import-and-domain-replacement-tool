@@ -93,9 +93,9 @@ if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then
     source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"
 fi
 
-# if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
-#     source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
-# fi
+if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
+    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
+fi
 ```
 
 ### 3️⃣ Apply changes

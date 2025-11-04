@@ -5,10 +5,9 @@
 # ===============================================
 #
 # Description:
-#   A comprehensive bash script for importing WordPress databases and performing
-#   domain/URL replacements, crucial for migrating environments (e.g., prod to local/staging).
-#   It handles complex domain mapping scenarios and is optimized for both single-site
-#   and multi-domain WordPress Multisite installations.
+#   A robust bash utility for performing WordPress database imports and domain/URL
+#   replacements, commonly needed for migrating environments (e.g., production to local/staging).
+#   It efficiently handles single-site and multi-domain WordPress Multisite setups.
 #
 # Features:
 #   - Automatic WordPress installation detection (single-site or multisite)
@@ -16,9 +15,9 @@
 #   - Intelligent domain sanitization (removes protocols, trailing slashes)
 #   - **Robust Multi-Domain/Per-Site Mapping for Multisite**
 #   - Two-pass search-replace (standard + serialized data)
-#   - Cache and transient clearing
-#   - Dry-run mode for testing
-#   - MySQL command generation for domain mapping tables (for multisite completion)
+#   - Cache and transient clearing via WP-CLI
+#   - Dry-run mode for testing replacements
+#   - MySQL command generation for network domain tables (critical for multisite completion)
 #   - Comprehensive error handling and logging
 #   - Colored terminal output with clear progress indicators
 #
@@ -30,19 +29,19 @@
 #   - macOS/Linux environment
 #
 # Usage:
-#   1. Place SQL file in the same directory as this script
-#   2. Navigate to WordPress root directory or subdirectory
+#   1. Place SQL file in the same directory as this script.
+#   2. Navigate to WordPress root directory or subdirectory.
 #   3. Source this script: source import_wp_db.sh
 #   4. Run the function: import_wp_db
-#   5. Follow the interactive prompts
+#   5. Follow the interactive prompts.
 #
 # Supported WordPress Types:
 #   - Single-site installations
 #   - Multisite subdomain networks
-#   - Multisite subdirectory networks (especially multi-domain to single-domain migrations)
+#   - Multisite subdirectory networks (including multi-domain to single-domain migrations)
 #
 # File Structure:
-#   - Creates temporary log files in /tmp/ for debugging
+#   - Creates temporary log files in /tmp/ for debugging (uses PID to prevent collision)
 #   - Automatically cleans up temporary files on exit
 #   - Logs all WP-CLI operations for troubleshooting
 #
@@ -59,7 +58,7 @@
 # import_wp_db() function definition
 # ===============================================
 import_wp_db() {
-  # 🎨 Define colors locally for use within the function (Self-contained scope)
+  # 🎨 Define colors locally for use within the function scope
   local GREEN="\033[0;32m"
   local YELLOW="\033[1;33m"
   local RED="\033[0;31m"
@@ -76,9 +75,8 @@ import_wp_db() {
     return 1
   fi
 
-  # ⚙️ NEW HELPER FUNCTION: Safely execute WP-CLI commands
-  # This function ensures that common Homebrew paths (where php/wp-cli often reside)
-  # are prepended to the PATH for reliable execution in subshells.
+  # ⚙️ HELPER FUNCTION: Safely execute WP-CLI commands
+  # Ensures common environment variables and paths are set for reliable execution.
   execute_wp_cli() {
       # Arguments: WP-CLI command parts (e.g., core is-installed)
       # Execution environment: Export a robust PATH and run the command
@@ -92,7 +90,7 @@ import_wp_db() {
       )
   }
 
-  # Utility function to clean strings (removes leading/trailing whitespace/CR)
+  # Utility function to clean strings (removes leading/trailing whitespace/CR/LF)
   clean_string() {
       local s="$1"
       # Only remove carriage returns and newlines - keep it simple
@@ -100,14 +98,15 @@ import_wp_db() {
       s="${s//$'\n'/}"
       # Use printf to naturally trim and return
       printf "%s" "$s"
-  }  # 🧹 Define and set up cleanup for temporary log files
+  }
+  # 🧹 Define and set up cleanup for temporary log and data files
   local DB_LOG="/tmp/wp_db_import_$$.log"
   local SR_LOG_SINGLE="/tmp/wp_replace_single_$$.log"
   local REVISION_LOG="/tmp/wp_revision_delete_$$.log"
-  local SUBSITE_DATA="/tmp/wp_subsite_data_$$.csv" # File to store subsite CSV data
+  local SUBSITE_DATA="/tmp/wp_subsite_data_$$.csv" # Temporary file to store subsite CSV data from WP-CLI
 
   cleanup() {
-    # 🧹 Comprehensive cleanup of all temporary files created by this script
+    # 🧹 Comprehensive cleanup of all temporary files created by this script (using PID $$)
     local files_to_remove=(
       "$DB_LOG"
       "$SR_LOG_SINGLE"
@@ -130,12 +129,12 @@ import_wp_db() {
     find /tmp -type f -name "*_$$.csv" -delete 2>/dev/null
     find /tmp -type f -name "*_$$.tmp" -delete 2>/dev/null
 
-    # Clean up any WordPress CLI cache files that might have been created
+    # Clean up any WordPress CLI cache files older than 1 day
     find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
   }
   trap cleanup EXIT
 
-  # 🌀 Spinner function with elapsed time
+  # 🌀 Spinner function with elapsed time for long operations
   show_spinner() {
     local pid=$1
     local message=$2
@@ -156,20 +155,20 @@ import_wp_db() {
       done
     done
     printf "\r"
-    printf "%s" "                                                                                                   "
+    printf "%s" "                                                                                                   " # Clear the line
     printf "\r"
   }
 
   printf "\n${CYAN}${BOLD}🔧 WordPress Database Import & Domain Replace Tool${RESET}\n"
   printf "---------------------------------------------------\n\n"
 
-  # 🧩 Ask for SQL file name (with fallback)
+  # 🧩 Prompt for SQL file name
   local sql_file
   printf "📦 Enter SQL file name (default: vip-db.sql): "
   read -r sql_file
   sql_file=${sql_file:-vip-db.sql}
 
-  # 🔍 Locate WordPress root
+  # 🔍 Locate WordPress root by searching for wp-config.php
   local wp_root
   wp_root=$(pwd)
   while [[ "$wp_root" != "/" && ! -f "$wp_root/wp-config.php" ]]; do
@@ -187,19 +186,19 @@ import_wp_db() {
   fi
   printf "${GREEN}✅ WordPress root found:${RESET} %s\n\n" "$wp_root"
 
-  # 🧠 Check WP-CLI installation
+  # 🧠 Verify WP-CLI availability
   if [[ -z "$WP_COMMAND" ]]; then
     printf "${RED}❌ WP-CLI not found. Please install WP-CLI first (or check your shell PATH).${RESET}\n"
     return 1
   fi
 
-  # 🧱 Verify WordPress installation
+  # 🧱 Verify WordPress installation integrity
   if ! execute_wp_cli core is-installed &>/dev/null; then
     printf "${RED}❌ No WordPress installation detected in this directory.${RESET}\n"
     return 1
   fi
 
-  # 🧾 Validate SQL file
+  # 🧾 Validate SQL file existence
   if [[ ! -f "$sql_file" ]]; then
     printf "${RED}❌ File '%s' not found.${RESET}\n" "$sql_file"
     printf "${YELLOW}💡 Hint:${RESET} Place the file in current directory or specify the full path.\n"
@@ -208,10 +207,10 @@ import_wp_db() {
 
   printf "${GREEN}✅ Found SQL file:${RESET} %s\n\n" "$sql_file"
 
-  # 🌐 Ask for main domain mapping (MANDATORY - no defaults allowed)
+  # 🌐 Get the main domain mapping (Source/Search and Destination/Replace)
   local search_domain replace_domain confirm
 
-  # Get OLD (production) domain - mandatory input
+  # Get OLD (production/source) domain - mandatory input
   while true; do
     printf "🌍 Enter the OLD (production) domain to search for: "
     read -r search_domain
@@ -223,7 +222,7 @@ import_wp_db() {
     fi
   done
 
-  # Get NEW (local) domain - mandatory input
+  # Get NEW (local/destination) domain - mandatory input
   while true; do
     printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
     read -r replace_domain
@@ -289,10 +288,10 @@ import_wp_db() {
   confirm="${confirm:-y}"
   [[ "$confirm" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
 
-  # 📥 Import database (with spinner)
+  # 📥 Import the database using WP-CLI (with a spinner)
   printf "\n${CYAN}⏳ Importing database...${RESET}\n"
   local import_start_time=$(date +%s)
-  # FIXED: Ensure PATH is available for the db import subshell
+  # Ensure the environment PATH is robust for the db import subshell
   /bin/sh -c "(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; \"$WP_COMMAND\" db import \"$sql_file\") &> \"$DB_LOG\"" &
   local spinner_pid=$!
   show_spinner $spinner_pid "Importing"
@@ -311,7 +310,7 @@ import_wp_db() {
 
   printf "${GREEN}✅ Database import successful! ${CYAN}[Completed in %02d:%02d]${RESET}\n\n" "$import_minutes" "$import_seconds"
 
-  # 🧩 Enhanced multisite detection logic (Post-import database introspection)
+  # 🧩 Enhanced multisite detection logic (Post-import database introspection using multiple methods)
   printf "${CYAN}🔍 Checking WordPress installation type...${RESET}\n"
 
   # Method 1: Direct database queries (most reliable after import)
@@ -363,14 +362,14 @@ import_wp_db() {
   # Determine multisite type if it's multisite
   if [[ "$is_multisite" == "yes" ]]; then
     network_flag="--network"
-    multisite_type="subdomain" && printf "\n"
+    multisite_type="subdomain" && printf "\n" # Placeholder; further analysis needed for subdirectory, but subdomain is a common default
   else
     printf "${GREEN}✅ Multisite status:${RESET} no\n"
   fi
 
   printf "\n"
 
-  # 🗑️ Ask for revision cleanup
+  # 🗑️ Prompt for revision cleanup
   local cleanup_revisions
   printf "Clear ALL post revisions? (improves search-replace speed) (Y/n): "
   read -r cleanup_revisions
@@ -379,7 +378,7 @@ import_wp_db() {
   if [[ "$cleanup_revisions" =~ ^[Yy]$ ]]; then
     printf "${CYAN}🗑️ Clearing ALL Post Revisions (improves search-replace speed)...${RESET}\n"
 
-  # Clean revision cleanup function - minimal output
+  # Function to perform revision cleanup silently and quickly
   clean_revisions_silent() {
     # Description: Deletes all post revisions for the current site or a specified subsite.
     # It uses 'wp post list' piped to 'xargs wp post delete' for high-speed, reliable bulk operation,
@@ -417,7 +416,7 @@ import_wp_db() {
     # Count IDs for verification and logging.
     revision_count_before=$(echo "$trimmed_output" | wc -w | tr -d ' ')
 
-    printf "${CYAN}   Revisions found: %s${RESET}\n" "$revision_count_before"
+    printf "${CYAN}  Revisions found: %s${RESET}\n" "$revision_count_before"
 
     local xargs_command_output
     local xargs_exit_code
@@ -463,7 +462,7 @@ import_wp_db() {
     fi
   }
 
-  # Clear revisions based on site type
+  # Clear revisions based on site type (Multisite or Single-site)
   printf "${CYAN}🗑️ REVISION CLEANUP - STEP BY STEP${RESET}\n"
   printf "=====================================================\n\n"
 
@@ -472,7 +471,7 @@ import_wp_db() {
     printf "  ${YELLOW}Step A:${RESET} Getting list of all sites in the network\n"
 
     # Get all site URLs for multisite
-    # FIXED: Use execute_wp_cli
+    # Ensure WP-CLI execution environment is used
     local site_urls
     site_urls=$(execute_wp_cli site list --field=url --url="$search_domain" 2>/dev/null)
 
@@ -514,7 +513,7 @@ import_wp_db() {
     printf "${YELLOW}⏭️  Skipping revision cleanup as requested.${RESET}\n\n"
   fi
 
-  # ⚙️ Ask for --all-tables
+  # ⚙️ Prompt to include --all-tables flag
   local include_all all_tables_flag
   printf "Include ${BOLD}--all-tables${RESET} (recommended for full DB imports)? (Y/n): "
   read -r include_all
@@ -527,7 +526,7 @@ import_wp_db() {
     printf "${YELLOW}ℹ️ Limiting to WordPress tables only.${RESET}\n"
   fi
 
-  # ⚙️ Ask for --dry-run
+  # ⚙️ Prompt for dry-run mode
   local dry_run dry_run_flag
   printf "\n"
   printf "Run in ${BOLD}dry-run mode${RESET} (no data will be changed)? (y/N): "
@@ -543,13 +542,15 @@ import_wp_db() {
 
   # --- Search-Replace Execution Function (Handles Double Pass with Domain+Path Logic) ---
   #
-  # Enhanced to handle domain+path combinations from wp_blogs table with intelligent slash handling.
+  # This function executes the critical two-pass search-replace operation.
+  # It intelligently handles domain+path combinations from the wp_blogs table,
+  # ensuring correct slash handling for both source and destination URLs in serialized data.
   #
   # Key Features:
-  # - Searches for domain+path as per wp_blogs table structure
-  # - Conditional slash handling: only adds trailing slash to source if destination has trailing slash
-  # - Maintains backward compatibility for single-site and simple domain-only replacements
-  # - Supports both subdomain and subdirectory multisite configurations
+  # - Searches for domain+path as per wp_blogs table structure.
+  # - Conditional slash handling: ensures consistency between source and destination formats.
+  # - Maintains compatibility for single-site and simple domain-only replacements.
+  # - Supports both subdomain and subdirectory multisite configurations.
   #
   # Arguments: $1=old_domain $2=new_domain $3=log_file $4=url_flag $5=old_path (optional) $6=new_path (optional)
   run_search_replace() {
@@ -570,7 +571,7 @@ import_wp_db() {
       local search_domain_with_path="$old_domain"
       local replace_domain_with_path="$new_domain"
 
-      # CRITICAL REGRESSION PROTECTION: Only use path logic for actual multisite contexts
+      # CRITICAL LOGIC: Only apply path handling in a multisite context with non-root paths.
       # Path logic should only execute when:
       # 1. Paths are provided AND meaningful (not just "/")
       # 2. We're in a multisite context (indicated by --url flag)
@@ -643,10 +644,10 @@ import_wp_db() {
 
       local sr1_old="//${search_domain_with_path}"
       local sr1_new="//${replace_domain_with_path}"
-      local sr2_old="\\\\//${search_domain_with_path}"
-      local sr2_new="\\\\//${replace_domain_with_path}"
+      local sr2_old="\\\\//${search_domain_with_path}" # Double-escaped for serialized string matching
+      local sr2_new="\\\\//${replace_domain_with_path}" # Double-escaped for serialized string replacement
 
-      # --- Pass 1 Execution (Blocking/Sequential) ---
+      # --- Pass 1 Execution (Standard replacement - Blocking/Sequential) ---
       if [[ -n "$old_path" && "$old_path" != "/" ]]; then
           printf "  [Pass 1] Domain+Path replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old" "$sr1_new"
       else
@@ -674,12 +675,12 @@ import_wp_db() {
           cmd_args+=("$dry_run_flag")
       fi
 
-      # FIXED: Use execute_wp_cli for reliable command execution
+      # Execute Pass 1
       if ! execute_wp_cli "${cmd_args[@]}" &> "$log_file"; then
           return 1
       fi
 
-      # --- Pass 2 Execution (Blocking/Sequential) ---
+      # --- Pass 2 Execution (Serialized data repair - Blocking/Sequential) ---
       printf "  [Pass 2] Serialized replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr2_old" "$sr2_new"
 
       # Rebuild command args for pass 2
@@ -703,7 +704,7 @@ import_wp_db() {
           cmd_args+=("$dry_run_flag")
       fi
 
-      # FIXED: Use execute_wp_cli for reliable command execution
+      # Execute Pass 2
       if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
           return 1
       fi
@@ -711,17 +712,17 @@ import_wp_db() {
       return 0
   }
 
-  # 🌐 Handle Multisite (Single logic for all types, enabling per-site mapping)
+  # 🌐 Handle Multisite (Logic for site list, mapping, and per-site replacement)
   if [[ "$is_multisite" == "yes" ]]; then
 
       local confirm_replace
       printf "${CYAN}🌐 Multisite (%s) detected — gathering subsites for mapping...${RESET}\n\n" "$multisite_type"
 
       # --- Data Retrieval ---
-      # FIXED: Use execute_wp_cli
+      # Retrieve site data (ID, domain, path) in CSV format for later parsing
       execute_wp_cli site list --fields=blog_id,domain,path --format=csv --url="$search_domain" 2>"$REVISION_LOG" > "$SUBSITE_DATA"
 
-      # 🔍 Main Site ID Detection Block (NEW LOGIC)
+      # 🔍 Main Site ID Detection Block (Robustly determines the main site's Blog ID)
       local main_site_id
       local temp_min_blog_id=999999 # Initialize with a large number
       local found_main_by_path="" # ID of the site with path='/'
@@ -778,7 +779,7 @@ import_wp_db() {
           fi
       done < "$SUBSITE_DATA"
 
-      # Assign the Main Site ID
+      # Assign the Main Site ID (prefer path match, then lowest ID, then fallback to 1)
       if [[ -n "$found_main_by_path" ]]; then
           main_site_id="$found_main_by_path"
       elif [[ "$temp_min_blog_id" -ne 999999 ]]; then
@@ -801,7 +802,7 @@ import_wp_db() {
       if [[ $wp_exit_code -ne 0 ]]; then
         printf "${RED}❌ WP-CLI command failed with exit code %s:${RESET}\n" "$wp_exit_code"
         printf "${RED}Error output: %s${RESET}\n" "$site_list"
-        # Since this call failed, the CSV data might be missing, so we must exit here.
+        # Exit if the site list command failed.
         return 1
       elif [[ -z "$site_list" ]]; then
         printf "${YELLOW}⚠️ WP-CLI command succeeded but returned empty output${RESET}\n"
@@ -810,11 +811,11 @@ import_wp_db() {
       fi
       printf "\n"
 
-      # FIXED: Handle subdirectory vs subdomain multisite differently for search-replace
+      # Determine if multisite is subdirectory or subdomain (affects search-replace logic)
       if [[ "$multisite_type" == "subdirectory" ]]; then
           # For subdirectory multisite: All sites share the same domain
           printf "${CYAN}🏠 Subdirectory Multisite Detected${RESET}\n"
-          printf "All subsites share the same domain. Only one search-replace operation needed.\n\n"
+          printf "All subsites share the same domain. Only one network-wide search-replace operation is required.\n\n"
 
           printf "🌍 Enter the NEW domain for all sites:\n"
           printf "→ Replace '%s' with: (%s) " "$search_domain" "$replace_domain"
@@ -838,7 +839,7 @@ import_wp_db() {
 
           printf "\n${CYAN}🔄 Starting network-wide search-replace...${RESET}\n"
 
-          # For subdirectory multisite, use network flag and main domain
+          # For subdirectory multisite, run search-replace using the main domain/network-flag
           if run_search_replace "$search_domain" "$network_domain" "$SR_LOG_SINGLE" ""; then
               printf "\n${GREEN}✅ Network-wide search-replace completed successfully!${RESET}\n"
           else
@@ -851,15 +852,15 @@ import_wp_db() {
           domain_values=("$network_domain")
 
       else
-          # For subdomain multisite: Handle individual site mappings (original logic)
+          # For subdomain multisite: Handle individual site mappings (Interactive mapping logic)
           printf "${CYAN}🌐 Subdomain Multisite Detected${RESET}\n"
-          printf "Each subsite has its own domain. Individual mapping required.\n\n"
+          printf "Each subsite has its own domain. Individual mapping input is required.\n\n"
 
-          # Use parallel arrays instead of associative arrays (more compatible)
+          # Use parallel arrays to store mappings (more compatible than associative arrays)
           local domain_keys=()
           local domain_values=()
-          local domain_blog_ids=() # Added array to track blog IDs
-          local domain_paths=() # Added array to track paths from wp_blogs
+          local domain_blog_ids=() # Array to track blog IDs
+          local domain_paths=() # Array to track paths from wp_blogs
 
           printf "${BOLD}Enter the NEW URL/Domain for each site:${RESET}\n"
           printf "(Example: Map 'sub1.example.com' to 'sub1.example.local')\n\n"
@@ -968,7 +969,7 @@ import_wp_db() {
 
           printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
 
-          # --- Summary Loop using parallel arrays (more compatible) ---
+          # --- Summary Loop using parallel arrays ---
           local array_length=${#domain_keys[@]}
 
           for ((i=1; i<=array_length; i++)); do
@@ -1059,7 +1060,7 @@ import_wp_db() {
       fi  # End of subdirectory vs subdomain multisite logic
 
   else
-    # 🧩 Single site (Original logic)
+    # 🧩 Single site logic
     printf "${CYAN}🧩 Single site detected.${RESET}\n"
     printf "Proceed with search-replace now? (Y/n): "
     read -r confirm_replace
@@ -1068,7 +1069,7 @@ import_wp_db() {
 
     printf "\n🔁 Running search-replace (Double Pass)...${RESET}\n"
 
-    # Pass search_domain and replace_domain, with no --url flag
+    # Execute search-replace for single site (Pass search_domain and replace_domain, with no --url flag)
     if run_search_replace "$search_domain" "$replace_domain" "$SR_LOG_SINGLE" ""; then
       printf "\n${GREEN}✅ Search-replace completed successfully!${RESET}\n"
     else
@@ -1077,26 +1078,27 @@ import_wp_db() {
     fi
   fi
 
-  # 🧹 Flush caches and transients
+  # 🧹 Flush caches and transients (post-search-replace operations)
   printf "\n${CYAN}🧹 Flushing WordPress and WP-CLI caches & transients...${RESET}\n"
 
   # 1. Clear object cache (if persistent caching is used)
-  # FIXED: Use execute_wp_cli
+  # Use execute_wp_cli for reliable command execution
   if ! execute_wp_cli cache flush $network_flag &>/dev/null; then
       printf "${YELLOW}  ⚠️ Failed to flush object cache (Not always necessary/available).${RESET}\n"
   else
       printf "${GREEN}  ✅ Object cache flushed.${RESET}\n"
   fi
 
-  # FIXED: Use execute_wp_cli
+  # 2. Flush rewrite rules (hard flush for robust update)
+  # Use execute_wp_cli for reliable command execution
   if ! execute_wp_cli rewrite flush --hard $network_flag &>/dev/null; then
       printf "${YELLOW}  ⚠️ Failed to flush rewrite rule (Not always necessary/available).${RESET}\n"
   else
       printf "${GREEN}  ✅ Rewrite rule flushed.${RESET}\n"
   fi
 
-  # 2. Delete transients
-  # FIXED: Use execute_wp_cli
+  # 3. Delete transients
+  # Use execute_wp_cli for reliable command execution
   if ! execute_wp_cli transient delete --all $network_flag &>/dev/null; then
       printf "${YELLOW}  ⚠️ Transient deletion finished (No transients found or minor error).${RESET}\n"
   else
@@ -1105,18 +1107,18 @@ import_wp_db() {
 
   printf "\n${GREEN}${BOLD}🎉 All done!${RESET} Database import and replacements completed successfully.\n\n"
 
-  # 📋 Generate and display MySQL commands for manual execution in phpMyAdmin
+  # 📋 Generate and display MySQL commands for manual execution (required for multisite wp_blogs/wp_site updates)
   if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 ]]; then
     printf "\n================================================================\n"
     printf "\n${CYAN}${BOLD}📋 MySQL Commands for Manual Execution in phpMyAdmin:${RESET}\n"
     printf "\n================================================================\n\n"
 
-    # Extract the base domain from the first mapped domain (main site)
+    # Extract the base domain from the main site mapping for wp_site update
     local base_domain=""
     local main_site_new_domain=""
     local main_site_old_domain=""
 
-    # Find the main site mapping for base_domain calculation
+    # Find the main site mapping for base_domain calculation (using standard 0-based array iteration)
     local array_length=${#domain_keys[@]}
     for ((i=0; i<array_length; i++)); do
         local blog_id="${domain_blog_ids[i]}"
@@ -1139,9 +1141,9 @@ import_wp_db() {
     fi
 
     if [[ -n "$base_domain" ]]; then
-      printf "-- 1. Update blog domains and paths for SUB-SITES (ID != %s)\n\n" "$main_site_id"
+      printf "-- 1. Update wp_blogs table: blog domain and path for SUB-SITES (ID != %s)\n\n" "$main_site_id"
 
-      # Generate commands for each mapped domain
+      # Generate commands for each mapped subsite domain
       local processed_blog_ids=() # Track processed blog_ids to prevent duplicates
 
       # --- Subsite Commands (ID != main_site_id) ---
@@ -1215,7 +1217,7 @@ import_wp_db() {
         printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Subsite)\n" "$target_domain" "$site_path" "$blog_id" "$old_domain" "$new_domain"
       done
 
-      printf "\n-- 2. Update blog domain and path for MAIN SITE (ID = %s)\n\n" "$main_site_id"
+      printf "\n-- 2. Update wp_blogs table: blog domain and path for MAIN SITE (ID = %s)\n\n" "$main_site_id"
 
       # --- Main Site wp_blogs Command (ID = main_site_id) ---
       if [[ -n "$main_site_new_domain" ]]; then
@@ -1240,7 +1242,7 @@ import_wp_db() {
           printf "-- WARNING: Main site mapping (ID %s) not found to generate wp_blogs command.\n" "$main_site_id"
       fi
 
-      printf "\n-- 3. Update the main network site domain (ID = 1)\n"
+      printf "\n-- 3. Update wp_site table: the main network site domain (ID = 1)\n"
       printf "UPDATE wp_site SET domain = '%s' WHERE id = 1;\n\n" "$base_domain"
 
       printf "\n${YELLOW}💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.${RESET}\n"
@@ -1259,7 +1261,7 @@ import_wp_db() {
 
   printf "\n================================================================\n\n"
 
-  # 🔍 Ask for confirmation that MySQL commands have been executed (for multisite)
+  # 🔍 Prompt for confirmation that MySQL commands have been executed (Crucial for multisite completion)
   local sql_executed="y"
   if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 ]]; then
     printf "${CYAN}${BOLD}📋 MySQL Commands Confirmation${RESET}\n"
@@ -1276,7 +1278,7 @@ import_wp_db() {
     printf "\n"
   fi
 
-  # 🔍 Stage File Proxy Plugin Setup (only if SQL commands confirmed)
+  # 🔍 Stage File Proxy Plugin Setup (only if SQL commands confirmed and proceeding)
   if [[ "$sql_executed" == [Yy]* ]]; then
     # Ask user if they want to setup stage file proxy for media management
     local setup_stage_proxy
@@ -1287,7 +1289,7 @@ import_wp_db() {
 
     if [[ "$setup_stage_proxy" == [Yy]* ]]; then
       # Check if stage-file-proxy plugin is already installed
-      # FIXED: Use execute_wp_cli
+      # Use execute_wp_cli for reliable command execution
       if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
         printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
       else
@@ -1328,7 +1330,8 @@ import_wp_db() {
               rm -f "$temp_plugin_file" 2>/dev/null
             fi
           fi
-        fi        # Handle installation result
+        fi
+        # Handle installation result
         if [[ "$install_success" == true ]]; then
           # Verify installation was actually successful
           if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
@@ -1374,10 +1377,10 @@ import_wp_db() {
       if [[ "$setup_stage_proxy" == [Yy]* ]]; then
 
     # Check if plugin is active and activate if needed
-    # FIXED: Use execute_wp_cli
+    # Use execute_wp_cli for reliable command execution
     if ! execute_wp_cli plugin is-active stage-file-proxy $network_flag &>/dev/null; then
       printf "${CYAN}📦 Activating stage-file-proxy plugin...${RESET}\n"
-      # FIXED: Use execute_wp_cli
+      # Use execute_wp_cli for reliable command execution
       if execute_wp_cli plugin activate stage-file-proxy $network_flag &>/dev/null; then
         printf "${GREEN}✅ Plugin activated successfully${RESET}\n"
       else
@@ -1387,7 +1390,7 @@ import_wp_db() {
       printf "${GREEN}✅ Plugin already active${RESET}\n"
     fi
 
-    # Function to sanitize and validate domain input (Enhanced version for new plugin structure)
+    # Function to sanitize and validate domain input for Stage File Proxy (expects full URL)
     sanitize_stage_proxy_domain() {
         local input="$1"
         local clean_domain
@@ -1428,16 +1431,15 @@ import_wp_db() {
         # Remove trailing slashes
         clean_domain=${clean_domain%/}
 
-        # UPDATED: Ensure https:// protocol for database storage (new plugin expects full URL)
-        # Remove any existing protocol first
+        # Prepare for HTTPS: Remove any existing protocol first
         clean_domain="${clean_domain#http://}"
         clean_domain="${clean_domain#https://}"
 
-        # Add https:// protocol (required for database storage)
+        # Add https:// protocol (required for database storage by plugin)
         clean_domain="https://$clean_domain"
 
         # Validate URL format more thoroughly (with required https protocol)
-        # Domain must have at least one dot (.) for a valid TLD, except for localhost and IP addresses
+        # Domain must have at least one dot (.), except for localhost and IP addresses
         if [[ "$clean_domain" =~ ^https://localhost([:]([0-9]{1,5}))?(/.*)?$ ]]; then
             # Allow localhost with optional port and path
             :
@@ -1465,10 +1467,7 @@ import_wp_db() {
         return 0
     }
 
-    # Function to escape JSON values safely (Enhanced version) - REMOVED as no longer needed
-    # The new plugin version uses separate options instead of JSON format
-
-    # Function to configure site-specific stage-file-proxy settings (Updated for new plugin structure)
+    # Function to configure site-specific stage-file-proxy settings (using sfp_url and sfp_mode options)
     configure_site_proxy() {
       local source_domain="$1"
       local target_site="$2"
@@ -1479,7 +1478,7 @@ import_wp_db() {
         wp_url_flag="--url=$target_site"
       fi
 
-      # UPDATED: Enhanced settings configuration with validation and user feedback for new plugin structure
+      # Configure sfp_url (production source)
       local sanitized_domain
       sanitized_domain=$(sanitize_stage_proxy_domain "$source_domain")
       if [[ $? -ne 0 ]]; then
@@ -1487,7 +1486,7 @@ import_wp_db() {
         return 1
       fi
 
-      # UPDATED: Configure sfp_url (replaces old source_domain)
+      # Configure sfp_url
       local wp_url_output wp_url_exit_code
       wp_url_output=$(execute_wp_cli option update sfp_url "$sanitized_domain" $wp_url_flag 2>&1)
       wp_url_exit_code=$?
@@ -1498,6 +1497,7 @@ import_wp_db() {
         return 1
       fi
 
+      # Configure sfp_mode
       local wp_mode_output wp_mode_exit_code
       wp_mode_output=$(execute_wp_cli option update sfp_mode "$mode" $wp_url_flag 2>&1)
       wp_mode_exit_code=$?
@@ -1534,8 +1534,7 @@ import_wp_db() {
             continue
           fi
 
-          # UPDATED: Configure stage-file-proxy with new plugin structure
-          # sfp_url (production source) → target_site (local site), default mode 'header'
+          # Configure stage-file-proxy: production source (old_domain) → target site (new_domain)
           configure_site_proxy "$old_domain" "$new_domain" "header"
         done
       fi
