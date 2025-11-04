@@ -4,13 +4,16 @@
 # This function activates and configures the Stage File Proxy plugin for WordPress
 # Supports both single site and multisite installations
 #
-# UPDATED: Enhanced input sanitization and protocol handling
-# - All domains are now stored with https:// protocol in the database for security
+# UPDATED: Compatible with new Stage File Proxy plugin structure (v101+)
+# - Uses separate 'sfp_url' and 'sfp_mode' options instead of JSON format
+# - 'source_domain' → 'sfp_url'
+# - 'method' → 'sfp_mode' with default value 'header'
+# - All domains are stored with https:// protocol in the database for security
 # - Improved user input validation and sanitization
 # - Better user feedback about what gets stored in the database
 # - Automatic protocol conversion (http:// → https://, missing protocol → https://)
 
-# Function to sanitize and validate domain input
+# Function to sanitize and validate domain input (Updated for new plugin structure)
 sanitize_domain() {
     local input="$1"
     local clean_domain
@@ -49,7 +52,7 @@ sanitize_domain() {
     # Remove trailing slashes
     clean_domain=${clean_domain%/}
 
-    # FIXED: Ensure https:// protocol for database storage
+    # UPDATED: Ensure https:// protocol for database storage (new plugin expects full URL)
     # Remove any existing protocol first
     clean_domain="${clean_domain#http://}"
     clean_domain="${clean_domain#https://}"
@@ -135,7 +138,7 @@ get_validated_domain() {
             continue
         fi
 
-        # FIXED: Show user what will be stored in database
+        # UPDATED: Show user what will be stored in database for new plugin structure
         local display_domain="$domain"
 
         # Auto-add https:// protocol if missing (required for database storage)
@@ -169,32 +172,31 @@ get_validated_domain() {
     done
 }
 
-# Function to safely escape JSON values
-escape_json() {
-    local input="$1"
-    # Use printf and parameter expansion for reliable escaping
-    local escaped="$input"
-    escaped="${escaped//\\/\\\\}"    # Escape backslashes first
-    escaped="${escaped//\"/\\\"}"    # Escape quotes
-    escaped="${escaped//$'\t'/\\t}"  # Escape tabs
-    escaped="${escaped//$'\r'/\\r}"  # Escape carriage returns
-    escaped="${escaped//$'\n'/\\n}"  # Escape newlines
-    printf '%s' "$escaped"
-}
-
-# Function to create safe JSON settings
-create_safe_json_settings() {
+# Function to configure Stage File Proxy with new plugin structure
+configure_stage_file_proxy() {
     local domain="$1"
-    local method="$2"
+    local mode="${2:-header}"  # Default mode is 'header' as per new plugin
+    local site_url="$3"  # Optional site URL for multisite
+    local url_flag=""
 
-    # Escape the domain for JSON
-    local escaped_domain
-    local escaped_method
-    escaped_domain=$(escape_json "$domain")
-    escaped_method=$(escape_json "$method")
+    if [[ -n "$site_url" ]]; then
+        url_flag="--url=$site_url"
+    fi
 
-    # Create JSON with proper escaping
-    echo "{\"source_domain\":\"$escaped_domain\",\"method\":\"$escaped_method\"}"
+    # Configure sfp_url (replaces old source_domain)
+    if ! wp option update sfp_url "$domain" $url_flag --quiet 2>/dev/null; then
+        echo "❌ Failed to set sfp_url"
+        return 1
+    fi
+
+    # Configure sfp_mode (replaces old method)
+    if ! wp option update sfp_mode "$mode" $url_flag --quiet 2>/dev/null; then
+        echo "❌ Failed to set sfp_mode"
+        return 1
+    fi
+
+    echo "✅ Configuration successful (URL: $domain, Mode: $mode)"
+    return 0
 }
 
 setup_stage_file_proxy() {
@@ -256,17 +258,14 @@ setup_single_site() {
 
     # Get source domain from user with sanitization
     echo ""
-    echo "ℹ️  Note: Domain will be stored with https:// protocol."
+    echo "ℹ️  Note: Using new plugin structure with separate sfp_url and sfp_mode options."
     if get_validated_domain "Enter the production domain (e.g., example.com or https://example.com): "; then
         local source_domain="$VALIDATED_DOMAIN"
 
-        # Configure the plugin
+        # Configure the plugin with new structure
         echo ""
         echo "Configuring Stage File Proxy..."
-        local settings
-        settings=$(create_safe_json_settings "$source_domain" "redirect")
-
-        if wp option update stage-file-proxy-settings "$settings" --format=json --quiet; then
+        if configure_stage_file_proxy "$source_domain" "header"; then
             echo "✅ Plugin configured successfully"
         else
             echo "❌ Failed to configure plugin"
@@ -309,7 +308,7 @@ setup_multisite() {
     echo "$sites" | nl -w2 -s'. '
 
     echo ""
-    echo "ℹ️  Note: Domains are automatically stored with https:// protocol."
+    echo "ℹ️  Note: Using new plugin structure with separate sfp_url and sfp_mode options."
     echo "Now configuring each site..."
     echo ""
 
@@ -321,10 +320,8 @@ setup_multisite() {
 
         if get_validated_domain "Enter production domain for $site_url (press Enter to skip): "; then
             local source_domain="$VALIDATED_DOMAIN"
-            local settings
-            settings=$(create_safe_json_settings "$source_domain" "redirect")
 
-            if wp --url="$site_url" option update stage-file-proxy-settings "$settings" --format=json --quiet; then
+            if configure_stage_file_proxy "$source_domain" "header" "$site_url"; then
                 echo "✅ $site_url configured"
             else
                 echo "❌ Failed to configure site: $site_url"
@@ -352,23 +349,25 @@ show_stage_file_proxy_config() {
         while IFS= read -r site_url; do
             echo ""
             echo "Site: $site_url"
-            local config
-            config=$(wp --url="$site_url" option get stage-file-proxy-settings --format=json --quiet 2>/dev/null)
-            if [[ -n "$config" && "$config" != "false" ]]; then
-                echo "  Settings: $config"
-            else
-                echo "  Settings: Not configured"
-            fi
+
+            # Get sfp_url and sfp_mode separately (new plugin structure)
+            local sfp_url sfp_mode
+            sfp_url=$(wp --url="$site_url" option get sfp_url --quiet 2>/dev/null || echo "Not set")
+            sfp_mode=$(wp --url="$site_url" option get sfp_mode --quiet 2>/dev/null || echo "Not set")
+
+            echo "  sfp_url: $sfp_url"
+            echo "  sfp_mode: $sfp_mode"
         done <<< "$sites"
     else
         echo "Single Site Configuration:"
-        local config
-        config=$(wp option get stage-file-proxy-settings --format=json --quiet 2>/dev/null)
-        if [[ -n "$config" && "$config" != "false" ]]; then
-            echo "Settings: $config"
-        else
-            echo "Settings: Not configured"
-        fi
+
+        # Get sfp_url and sfp_mode separately (new plugin structure)
+        local sfp_url sfp_mode
+        sfp_url=$(wp option get sfp_url --quiet 2>/dev/null || echo "Not set")
+        sfp_mode=$(wp option get sfp_mode --quiet 2>/dev/null || echo "Not set")
+
+        echo "sfp_url: $sfp_url"
+        echo "sfp_mode: $sfp_mode"
     fi
 }
 
@@ -383,11 +382,9 @@ bulk_configure_multisite() {
     fi
 
     echo "=== Bulk Configure All Sites ==="
-    echo "ℹ️  Note: Domain will be stored with https:// protocol."
+    echo "ℹ️  Note: Using new plugin structure with separate sfp_url and sfp_mode options."
     if get_validated_domain "Enter the production domain to use for ALL sites (e.g., example.com): "; then
         local source_domain="$VALIDATED_DOMAIN"
-        local settings
-        settings=$(create_safe_json_settings "$source_domain" "redirect")
 
         echo ""
         echo "Applying configuration to all sites..."
@@ -398,7 +395,7 @@ bulk_configure_multisite() {
 
         while IFS= read -r site_url; do
             echo "Configuring: $site_url"
-            if wp --url="$site_url" option update stage-file-proxy-settings "$settings" --format=json --quiet; then
+            if configure_stage_file_proxy "$source_domain" "header" "$site_url"; then
                 echo "✅ $site_url configured"
             else
                 echo "❌ Failed to configure $site_url"
@@ -414,11 +411,24 @@ bulk_configure_multisite() {
 
 # Help function
 show_help() {
-    echo "Stage File Proxy Setup Functions:"
+    echo "Stage File Proxy Setup Functions (Compatible with new plugin v101+):"
     echo ""
     echo "setup_stage_file_proxy        - Main setup function (interactive)"
     echo "show_stage_file_proxy_config  - Display current configuration"
     echo "bulk_configure_multisite      - Set same domain for all sites (multisite only)"
+    echo ""
+    echo "Plugin Structure Changes:"
+    echo "• OLD: JSON format with 'stage-file-proxy-settings' option"
+    echo "• NEW: Separate 'sfp_url' and 'sfp_mode' options"
+    echo "• 'source_domain' → 'sfp_url'"
+    echo "• 'method' → 'sfp_mode' (default: 'header')"
+    echo ""
+    echo "Available Proxy Modes:"
+    echo "• header     - HTTP redirect to remote files (fastest, default)"
+    echo "• download   - Download and save files locally"
+    echo "• photon     - Use Photon/Jetpack for image processing"
+    echo "• local      - Use local fallback images if remote fails"
+    echo "• lorempixel - Use placeholder service for missing images"
     echo ""
     echo "Usage Examples:"
     echo "  setup_stage_file_proxy"

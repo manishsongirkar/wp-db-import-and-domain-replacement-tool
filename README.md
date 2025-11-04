@@ -25,7 +25,7 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 - ✅ **Progress indicators** with elapsed time tracking and spinners
 - ✅ **Multi-site type support** (subdomain networks, subdirectory networks)
 - ✅ **Input validation** with dangerous character detection and sanitization
-- ✅ **JSON-safe escaping** for plugin configuration data
+- ✅ **Modern plugin support** for Stage File Proxy
 - ✅ **Network-wide operations** with site-specific processing
 - ✅ **Protocol enforcement** (automatic HTTPS for stage-file-proxy)
 
@@ -183,14 +183,12 @@ The script provides sophisticated **Stage File Proxy** integration for seamless 
    - **Plugin Activation**: Network-wide activation for multisite, site-wide for single-site
    - **Domain Mapping**: Uses existing domain mappings from the import process
    - **Protocol Security**: Enforces HTTPS protocol for all source domains
-   - **JSON Sanitization**: Safe escaping of configuration data for database storage
-
-### Enhanced Features
+   - **Separate Options**: Uses new `sfp_url` and `sfp_mode` options
 
 #### Security & Validation
 - **Input Sanitization**: Comprehensive validation of domain inputs with dangerous character detection
 - **Protocol Enforcement**: Automatic conversion of HTTP to HTTPS for security
-- **JSON Safety**: Proper escaping of special characters in configuration data
+- **Option Safety**: Direct WordPress option updates with proper validation
 - **Length Validation**: URL length limits to prevent buffer overflow attacks
 
 #### Multisite Support
@@ -204,25 +202,23 @@ The script provides sophisticated **Stage File Proxy** integration for seamless 
 #### Single Site:
 ```
 🔍 stage-file-proxy plugin found! Configuring...
-ℹ️  Note: All domains will be stored with https:// protocol for security.
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🧩 Configuring single site stage-file-proxy...
-  ✅ Configured successfully: example.local
+  ✅ Configured successfully: example.local (URL: https://production.example.com, Mode: header)
 🎉 stage-file-proxy configuration complete!
 ```
 
 #### Multisite:
 ```
 🔍 stage-file-proxy plugin found! Configuring...
-ℹ️  Note: All domains will be stored with https:// protocol for security.
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
 ✅ Configuring 3 sites with stage-file-proxy
-  ✅ Configured successfully: example.local
-  ✅ Configured successfully: blog.example.local
-  ✅ Configured successfully: shop.example.local
+  ✅ Configured successfully: example.local (URL: https://example.com, Mode: header)
+  ✅ Configured successfully: blog.example.local (URL: https://blog.example.com, Mode: header)
+  ✅ Configured successfully: shop.example.local (URL: https://shop.example.com, Mode: header)
 🎉 stage-file-proxy configuration complete!
 ```
 
@@ -234,6 +230,19 @@ The script provides sophisticated **Stage File Proxy** integration for seamless 
 - **⏱️ Smart Timing**: Only runs after database structure is properly updated
 - **🔇 Non-Intrusive**: Silent operation when plugin not present
 - **🔒 Security First**: HTTPS enforcement and input validation
+- **✨ Modern Structure**: Compatible with latest plugin architecture
+
+### Available Proxy Modes
+
+The new plugin supports multiple proxy modes with `header` as the default:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **header** | HTTP redirect to remote files (fastest) | **Default** - Best for most setups |
+| **download** | Download and save files locally | When you want local file caching |
+| **photon** | Use Photon/Jetpack for image processing | For sites using Jetpack |
+| **local** | Use local fallback images if remote fails | When you have local replacement images |
+| **lorempixel** | Use placeholder service for missing images | For design/development work |
 
 ### Manual Setup Alternative
 
@@ -257,10 +266,9 @@ show_stage_file_proxy_config
 
 #### Available Functions:
 - **`setup_stage_file_proxy`**: Interactive setup with validation
-- **`show_stage_file_proxy_config`**: Display current settings
-- **`bulk_configure_multisite`**: Apply same domain to all sites
-- **`sanitize_domain`**: Utility function for domain validation
-- **`create_safe_json_settings`**: Generate properly escaped JSON
+- **`show_stage_file_proxy_config`**: Display current settings (shows new separate options)
+- **`bulk_configure_multisite`**: Set same domain for all sites (multisite only)
+- **`configure_stage_file_proxy`**: Core configuration function (new plugin structure)
 
 #### Enhanced Input Handling:
 - **Domain Validation**: URL format validation with TLD requirements
@@ -356,11 +364,10 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 🚀 Database Migration Completed Successfully!
 
 🔍 stage-file-proxy plugin found! Configuring...
-ℹ️  Note: All domains will be stored with https:// protocol for security.
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🧩 Configuring single site stage-file-proxy...
-  ✅ Configured successfully: example.local
+  ✅ Configured successfully: example.local (URL: https://example.com, Mode: header)
 🎉 stage-file-proxy configuration complete!
 ```
 
@@ -535,15 +542,14 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 🚀 Database Migration Completed Successfully!
 
 🔍 stage-file-proxy plugin found! Configuring...
-ℹ️  Note: All domains will be stored with https:// protocol for security.
 📦 Activating stage-file-proxy plugin...
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
 ✅ Configuring 4 sites with stage-file-proxy
-  ✅ Configured successfully: example.test
-  ✅ Configured successfully: us.example.test
-  ✅ Configured successfully: demo.example.test
-  ✅ Configured successfully: blog.example.test
+  ✅ Configured successfully: example.test (URL: https://vip.example.com, Mode: header)
+  ✅ Configured successfully: us.example.test (URL: https://us.example.com, Mode: header)
+  ✅ Configured successfully: demo.example.test (URL: https://demo.example.com, Mode: header)
+  ✅ Configured successfully: blog.example.test (URL: https://blog.example.com, Mode: header)
 🎉 stage-file-proxy configuration complete!
 ```
 
@@ -581,7 +587,6 @@ Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): y
 
 #### Stage File Proxy Security:
 - **HTTPS Enforcement**: All source domains stored with HTTPS protocol
-- **JSON Escaping**: Proper escaping of special characters in configuration
 - **Input Validation**: Comprehensive validation of domain inputs
 - **Protocol Conversion**: Automatic HTTP to HTTPS upgrade for security
 

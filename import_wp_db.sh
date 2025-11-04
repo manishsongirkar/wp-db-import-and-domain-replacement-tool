@@ -1281,7 +1281,6 @@ import_wp_db() {
     # FIXED: Use execute_wp_cli
     if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
       printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
-      printf "${CYAN}ℹ️  Note: All domains will be stored with https:// protocol for security.${RESET}\n"
 
     # Check if plugin is active and activate if needed
     # FIXED: Use execute_wp_cli
@@ -1295,7 +1294,9 @@ import_wp_db() {
       fi
     else
       printf "${GREEN}✅ Plugin already active${RESET}\n"
-    fi    # Function to sanitize and validate domain input (Enhanced version)
+    fi
+
+    # Function to sanitize and validate domain input (Enhanced version for new plugin structure)
     sanitize_stage_proxy_domain() {
         local input="$1"
         local clean_domain
@@ -1336,7 +1337,7 @@ import_wp_db() {
         # Remove trailing slashes
         clean_domain=${clean_domain%/}
 
-        # FIXED: Ensure https:// protocol for database storage
+        # UPDATED: Ensure https:// protocol for database storage (new plugin expects full URL)
         # Remove any existing protocol first
         clean_domain="${clean_domain#http://}"
         clean_domain="${clean_domain#https://}"
@@ -1373,75 +1374,50 @@ import_wp_db() {
         return 0
     }
 
-    # Function to escape JSON values safely (Enhanced version)
-    escape_json_value() {
-      local input="$1"
-      # Use printf and parameter expansion for reliable escaping
-      local escaped="$input"
-      escaped="${escaped//\\/\\\\}"    # Escape backslashes first
-      escaped="${escaped//\"/\\\"}"    # Escape quotes
-      escaped="${escaped//$'\t'/\\t}"  # Escape tabs
-      escaped="${escaped//$'\r'/\\r}"  # Escape carriage returns
-      escaped="${escaped//$'\n'/\\n}"  # Escape newlines
-      printf '%s' "$escaped"
-    }
+    # Function to escape JSON values safely (Enhanced version) - REMOVED as no longer needed
+    # The new plugin version uses separate options instead of JSON format
 
-    # Function to create JSON settings for stage-file-proxy (Enhanced version)
-    create_stage_proxy_settings() {
-      local source_domain="$1"
-      local method="${2:-redirect}"
-
-      # FIXED: Use enhanced domain sanitization instead of basic protocol check
-      local sanitized_domain
-      sanitized_domain=$(sanitize_stage_proxy_domain "$source_domain")
-      if [[ $? -ne 0 ]]; then
-        printf "${RED}❌ Invalid domain format for stage-file-proxy: '%s'${RESET}\n" "$source_domain" >&2
-        return 1
-      fi
-
-      local escaped_domain escaped_method
-      escaped_domain=$(escape_json_value "$sanitized_domain")
-      escaped_method=$(escape_json_value "$method")
-
-      echo "{\"source_domain\":\"$escaped_domain\",\"method\":\"$escaped_method\"}"
-      return 0
-    }
-
-    # Function to configure site-specific stage-file-proxy settings (Enhanced version)
+    # Function to configure site-specific stage-file-proxy settings (Updated for new plugin structure)
     configure_site_proxy() {
       local source_domain="$1"
       local target_site="$2"
+      local mode="${3:-header}"  # Default mode is 'header'.
       local wp_url_flag=""
 
       if [[ "$is_multisite" == "yes" ]]; then
         wp_url_flag="--url=$target_site"
       fi
 
-      # FIXED: Enhanced settings creation with validation and user feedback
-      local settings
-      settings=$(create_stage_proxy_settings "$source_domain" "redirect")
+      # UPDATED: Enhanced settings configuration with validation and user feedback for new plugin structure
+      local sanitized_domain
+      sanitized_domain=$(sanitize_stage_proxy_domain "$source_domain")
       if [[ $? -ne 0 ]]; then
         printf "${RED}  ❌ Configuration failed for %s (invalid domain)${RESET}\n" "$target_site"
         return 1
       fi
 
-      # Execute WP-CLI command
-      local wp_command=("option" "update" "stage-file-proxy-settings" "$settings" "--format=json" "$wp_url_flag")
+      # UPDATED: Configure sfp_url (replaces old source_domain)
+      local wp_url_output wp_url_exit_code
+      wp_url_output=$(execute_wp_cli option update sfp_url "$sanitized_domain" $wp_url_flag 2>&1)
+      wp_url_exit_code=$?
 
-      # Execute with error capture
-      local wp_output
-      local wp_exit_code
-      # FIXED: Use execute_wp_cli
-      wp_output=$(execute_wp_cli "${wp_command[@]}" 2>&1)
-      wp_exit_code=$?
-
-      if [[ $wp_exit_code -eq 0 ]]; then
-        printf "${GREEN}  ✅ Configured successfully: %s${RESET}\n" "$target_site"
-      else
-        printf "${RED}  ❌ Configuration failed for %s${RESET}\n" "$target_site"
-        printf "${RED}     WP-CLI Error: %s${RESET}\n" "$wp_output"
+      if [[ $wp_url_exit_code -ne 0 ]]; then
+        printf "${RED}  ❌ Failed to set sfp_url for %s${RESET}\n" "$target_site"
+        printf "${RED}     WP-CLI Error: %s${RESET}\n" "$wp_url_output"
         return 1
       fi
+
+      local wp_mode_output wp_mode_exit_code
+      wp_mode_output=$(execute_wp_cli option update sfp_mode "$mode" $wp_url_flag 2>&1)
+      wp_mode_exit_code=$?
+
+      if [[ $wp_mode_exit_code -ne 0 ]]; then
+        printf "${RED}  ❌ Failed to set sfp_mode for %s${RESET}\n" "$target_site"
+        printf "${RED}     WP-CLI Error: %s${RESET}\n" "$wp_mode_output"
+        return 1
+      fi
+
+      printf "${GREEN}  ✅ Configured successfully: %s (URL: %s, Mode: %s)${RESET}\n" "$target_site" "$sanitized_domain" "$mode"
       return 0
     }
 
@@ -1454,7 +1430,7 @@ import_wp_db() {
 
       if [[ $array_length -eq 0 ]]; then
         printf "${YELLOW}⚠️ No domain mappings found. Using fallback configuration.${RESET}\n"
-        configure_site_proxy "$search_domain" "$search_domain"
+        configure_site_proxy "$search_domain" "$search_domain" "header"
       else
         printf "${GREEN}✅ Configuring %d sites with stage-file-proxy${RESET}\n" "$array_length"
 
@@ -1467,14 +1443,15 @@ import_wp_db() {
             continue
           fi
 
-          # Configure stage-file-proxy: source_domain (production) → target_site (local)
-          configure_site_proxy "$old_domain" "$new_domain"
+          # UPDATED: Configure stage-file-proxy with new plugin structure
+          # sfp_url (production source) → target_site (local site), default mode 'header'
+          configure_site_proxy "$old_domain" "$new_domain" "header"
         done
       fi
 
     else
       printf "${CYAN}🧩 Configuring single site stage-file-proxy...${RESET}\n"
-      configure_site_proxy "$search_domain" "$replace_domain"
+      configure_site_proxy "$search_domain" "$replace_domain" "header"
     fi
 
     printf "${GREEN}🎉 stage-file-proxy configuration complete!${RESET}\n"
