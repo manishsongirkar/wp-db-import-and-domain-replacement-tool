@@ -1,6 +1,6 @@
 # 🧩 WordPress Database Import & Domain Replacement Tool
 
-A comprehensive **interactive Bash toolkit** that automates importing WordPress database dumps (`.sql` files), performs **intelligent domain replacements**, handles **complex multisite setups**, and provides **stage-file-proxy integration** — all with sophisticated error handling, progress tracking, and detailed logging.
+A comprehensive **interactive Bash toolkit** with **modular architecture** that automates importing WordPress database dumps (`.sql` files), performs **intelligent domain replacements**, handles **complex multisite setups**, provides **clickable site links**, and offers **stage-file-proxy integration** — all with sophisticated error handling, lazy loading, and detailed logging.
 
 ---
 
@@ -20,6 +20,7 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 
 ### Technical Features
 - ✅ **Smart WordPress root detection** (works from any subdirectory)
+- ✅ **Modular architecture** with separate function files for better maintainability
 - ✅ **Process-safe temporary files** with automatic cleanup on exit using PID
 - ✅ **Enhanced error handling** with detailed logging and recovery options
 - ✅ **Progress indicators** with elapsed time tracking and spinners
@@ -29,6 +30,7 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 - ✅ **Network-wide operations** with site-specific processing
 - ✅ **Protocol enforcement** (automatic HTTPS for stage-file-proxy)
 - ✅ **Main site detection** using multiple criteria (path and blog_id analysis)
+- ✅ **Standalone function support** with independent show_local_site_links utility
 
 ### User Experience
 - ✅ **Color-coded terminal output** with status indicators and progress bars
@@ -37,6 +39,7 @@ A comprehensive **interactive Bash toolkit** that automates importing WordPress 
 - ✅ **Step-by-step guidance** with clear confirmation points
 - ✅ **Detailed summary reports** showing all changes made
 - ✅ **Automatic fallback mechanisms** for failed operations
+- ✅ **Local site links** with dedicated show_local_site_links function
 
 ---
 
@@ -338,6 +341,19 @@ show_stage_file_proxy_config
 
 ---
 
+## 🌐 Show Local Site Links Function
+
+The `show_local_site_links` function is independent tool for displaying clickable WordPress site links.
+
+### Features:
+- ✅ **Automatic WordPress detection** (single-site or multisite)
+- ✅ **Smart WordPress root discovery** (works from any subdirectory)
+- ✅ **Clickable terminal links** for easy site access
+- ✅ **Multisite support** with individual site listings
+- ✅ **Network admin links** for multisite installations
+
+---
+
 ## 🧪 Example Terminal Sessions
 
 ### 🟢 Single-Site Example
@@ -427,7 +443,7 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 
 ---
 
-### 🟢 Multisite Subdomain Example
+#### Multisite Subdomain Database Import Example
 
 This comprehensive example demonstrates the enhanced domain+path replacement logic and automatic database updates for complex multisite setups:
 
@@ -604,7 +620,7 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 
 ---
 
-### 🟢 Multisite Subdirectory Example
+#### Multisite Subdirectory Database Import Example
 
 ```
 $ import_wp_db
@@ -1164,10 +1180,11 @@ type import_wp_db && echo "✅ Installation successful" || echo "❌ Installatio
 cd /path/to/your/wordpress/site
 import_wp_db
 
-# 7. Optional: Manual stage-file-proxy setup (if uncommented in step 3)
-# setup_stage_file_proxy
-# show_stage_file_proxy_config
-# bulk_configure_multisite  # For multisite only
+# 7. Optional: Manual stage-file-proxy setup
+setup_stage_file_proxy
+
+# 8. Optional: To view Single or Multisite links (Local site)
+show_local_site_links
 ```
 
 ---

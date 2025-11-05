@@ -35,6 +35,12 @@
 #   4. Run the function: import_wp_db
 #   5. Follow the interactive prompts.
 #
+# Additional Functions:
+#   show_local_site_links - Display clickable links to local WordPress sites (sourced from show_local_site_links.sh)
+#     Usage: show_local_site_links
+#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
+#     Note: Function is loaded from show_local_site_links.sh in the same directory
+#
 # Supported WordPress Types:
 #   - Single-site installations
 #   - Multisite subdomain networks
@@ -54,6 +60,48 @@
 # Author: Manish Songirkar (@manishsongirkar)
 # Repository: https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool
 #
+# ===============================================
+# Source external function files
+# ===============================================
+
+# Define a lazy loading function for show_local_site_links
+# This approach only loads the function when needed and handles missing files gracefully
+show_local_site_links() {
+    # Get the directory of the current script for relative path resolution
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local LINKS_SCRIPT="$SCRIPT_DIR/show_local_site_links.sh"
+
+    # Try multiple possible locations for the show_local_site_links.sh file
+    local possible_locations=(
+        "$SCRIPT_DIR/show_local_site_links.sh"
+        "$HOME/wp-db-import-and-domain-replacement-tool/show_local_site_links.sh"
+        "$(dirname "${BASH_SOURCE[0]}")/show_local_site_links.sh"
+    )
+
+    local found_script=""
+    for location in "${possible_locations[@]}"; do
+        if [[ -f "$location" ]]; then
+            found_script="$location"
+            break
+        fi
+    done
+
+    if [[ -n "$found_script" ]]; then
+        # Source the actual function and replace this placeholder
+        source "$found_script"
+        # Call the real function now that it's loaded
+        show_local_site_links "$@"
+    else
+        printf "\033[0;31m❌ Error: show_local_site_links.sh not found.\033[0m\n"
+        printf "\033[1;33m💡 Tried locations:\033[0m\n"
+        for location in "${possible_locations[@]}"; do
+            printf "    - %s\n" "$location"
+        done
+        printf "\033[1;33m💡 Please ensure show_local_site_links.sh is available in one of these locations.\033[0m\n"
+        return 1
+    fi
+}
+
 # ===============================================
 # import_wp_db() function definition
 # ===============================================
@@ -1260,7 +1308,7 @@ import_wp_db() {
 
                 # Determine overall success and show clean output
                 if [[ $failed_commands -eq 0 ]]; then
-                  printf "${GREEN}✅ All database tables updated successfully!${RESET}\n"
+                  printf "${GREEN}✅ Database tables wp_blogs & wp_site updated successfully!${RESET}\n"
                   local auto_updates_successful="yes"
                 else
                   printf "${RED}❌ Database update failed!${RESET}\n"
@@ -2002,12 +2050,22 @@ import_wp_db() {
     fi
 
     printf "${GREEN}🎉 stage-file-proxy configuration complete!${RESET}\n"
+
+    # Call the separate function to display local site access links
+    show_local_site_links
+
       fi
     else
       printf "${YELLOW}ℹ️ Skipping stage-file-proxy setup as requested${RESET}\n"
+
+      # Call the separate function to display local site access links
+      show_local_site_links
     fi
   else
     printf "${YELLOW}ℹ️ Skipping stage-file-proxy configuration (SQL commands not confirmed or not applicable).${RESET}\n"
+
+    # Call the separate function to display local site access links
+    show_local_site_links
   fi
 
   printf "\n"
