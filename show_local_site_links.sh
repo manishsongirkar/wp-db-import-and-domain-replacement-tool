@@ -66,7 +66,12 @@ show_local_site_links() {
   local wp_root
   wp_root=$(pwd)
   while [[ "$wp_root" != "/" && ! -f "$wp_root/wp-config.php" ]]; do
-    wp_root=$(dirname "$wp_root")
+    # Use bash built-in parameter expansion instead of dirname command
+    wp_root="${wp_root%/*}"
+    # Handle edge case where wp_root becomes empty (would happen at filesystem root)
+    if [[ -z "$wp_root" ]]; then
+      wp_root="/"
+    fi
   done
 
   if [[ ! -f "$wp_root/wp-config.php" ]]; then
@@ -80,8 +85,10 @@ show_local_site_links() {
     return 1
   fi
 
-  # 🧠 Check WP-CLI availability
+  # 🧠 Check WP-CLI availability with enhanced PATH
   local WP_COMMAND
+  # Ensure we have a robust PATH that includes common WP-CLI installation locations
+  export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
   WP_COMMAND=$(command -v wp)
   if [[ -z "$WP_COMMAND" ]]; then
     printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"
@@ -89,10 +96,11 @@ show_local_site_links() {
     return 1
   fi
 
-  # ⚙️ HELPER FUNCTION: Safely execute WP-CLI commands
+  # ⚙️ HELPER FUNCTION: Safely execute WP-CLI commands with enhanced PATH
   execute_wp_cli() {
       (
-          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          # Ensure robust PATH with common WP-CLI locations
+          export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
           export PHP_INI_SCAN_DIR=""
           "$WP_COMMAND" "$@"
       )

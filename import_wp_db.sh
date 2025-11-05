@@ -68,14 +68,19 @@
 # This approach only loads the function when needed and handles missing files gracefully
 show_local_site_links() {
     # Get the directory of the current script for relative path resolution
-    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # Use bash built-in parameter expansion instead of dirname command for better compatibility
+    local SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+    if [[ "$SCRIPT_DIR" == "${BASH_SOURCE[0]}" ]]; then
+        SCRIPT_DIR="."
+    fi
+    SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
     local LINKS_SCRIPT="$SCRIPT_DIR/show_local_site_links.sh"
 
     # Try multiple possible locations for the show_local_site_links.sh file
     local possible_locations=(
         "$SCRIPT_DIR/show_local_site_links.sh"
         "$HOME/wp-db-import-and-domain-replacement-tool/show_local_site_links.sh"
-        "$(dirname "${BASH_SOURCE[0]}")/show_local_site_links.sh"
+        "${BASH_SOURCE[0]%/*}/show_local_site_links.sh"
     )
 
     local found_script=""
@@ -88,9 +93,14 @@ show_local_site_links() {
 
     if [[ -n "$found_script" ]]; then
         # Source the actual function and replace this placeholder
-        source "$found_script"
-        # Call the real function now that it's loaded
-        show_local_site_links "$@"
+        if source "$found_script" 2>/dev/null; then
+            # Call the real function now that it's loaded
+            show_local_site_links "$@"
+        else
+            # Fallback if sourcing fails
+            printf "\033[1;33m⚠️ Could not load show_local_site_links.sh properly.\033[0m\n"
+            printf "\033[1;33m💡 You can manually access your WordPress sites using the configured domains.\033[0m\n"
+        fi
     else
         printf "\033[0;31m❌ Error: show_local_site_links.sh not found.\033[0m\n"
         printf "\033[1;33m💡 Tried locations:\033[0m\n"
@@ -447,7 +457,11 @@ import_wp_db() {
     if [[ -n "$url_param" ]]; then
       wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
     else
-      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "$network_flag")
+      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
+      # Only add network flag if it's not empty (i.e., for multisite)
+      if [[ -n "$network_flag" ]]; then
+        wp_cli_args+=("$network_flag")
+      fi
     fi
 
     # Execute the command and capture IDs.
@@ -475,7 +489,10 @@ import_wp_db() {
     if [[ -n "$url_param" ]]; then
         wp_args+=("--url=$url_param")
     else
-        wp_args+=("$network_flag")
+        # Only add network flag if it's not empty (i.e., for multisite)
+        if [[ -n "$network_flag" ]]; then
+          wp_args+=("$network_flag")
+        fi
     fi
 
     # Use xargs to pipeline the list of IDs, calling 'wp post delete' in batches of 500.
@@ -498,7 +515,21 @@ import_wp_db() {
     # 3. --- Verification Step ---
     local revisions_after
     # Check the remaining revision count by executing wp post list again.
-    revisions_after=$(execute_wp_cli post list --post_type=revision --format=ids "${url_param:+--url=$url_param}" "$network_flag" 2>/dev/null | wc -w | tr -d ' ')
+    # Use the same command structure as the initial revision retrieval for consistency
+    local verify_wp_cli_args
+    if [[ -n "$url_param" ]]; then
+      verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
+    else
+      verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
+      # Only add network flag if it's not empty (i.e., for multisite)
+      if [[ -n "$network_flag" ]]; then
+        verify_wp_cli_args+=("$network_flag")
+      fi
+    fi
+
+    local verify_output
+    verify_output=$(execute_wp_cli "${verify_wp_cli_args[@]}" 2>/dev/null)
+    revisions_after=$(echo "$verify_output" | wc -w | tr -d ' ')
     revisions_after="${revisions_after:-0}"
 
     # Final check for total success
