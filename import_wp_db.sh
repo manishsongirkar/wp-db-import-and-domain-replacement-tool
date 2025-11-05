@@ -721,20 +721,44 @@ import_wp_db() {
           fi
       fi
 
-      local sr1_old="//${search_domain_with_path}"
-      local sr1_new="//${replace_domain_with_path}"
-      local sr2_old="\\\\//${search_domain_with_path}" # Double-escaped for serialized string matching
-      local sr2_new="\\\\//${replace_domain_with_path}" # Double-escaped for serialized string replacement
+      # Enhanced www/non-www handling - determine source domain variations
+      local base_domain_with_path="$search_domain_with_path"
+      local www_domain_with_path
+      local non_www_domain_with_path
+      local has_www=false
 
-      # --- Pass 1 Execution (Standard replacement - Blocking/Sequential) ---
-      if [[ -n "$old_path" && "$old_path" != "/" ]]; then
-          printf "  [Pass 1] Domain+Path replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old" "$sr1_new"
+      # Check if the search domain starts with www
+      if [[ "$search_domain_with_path" =~ ^www\. ]]; then
+          # Source is www.domain - create non-www variant
+          www_domain_with_path="$search_domain_with_path"
+          non_www_domain_with_path="${search_domain_with_path#www.}"
+          has_www=true
       else
-          printf "  [Pass 1] Simple replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old" "$sr1_new"
+          # Source is non-www domain - only handle non-www variant
+          non_www_domain_with_path="$search_domain_with_path"
+          www_domain_with_path="www.${search_domain_with_path}"
+          has_www=false
       fi
 
+      # Define search-replace patterns
+      local sr1_old_non_www="//${non_www_domain_with_path}"
+      local sr2_old_non_www="\\\\//${non_www_domain_with_path}"
+      local sr_new="//${replace_domain_with_path}"
+      local sr_new_escaped="\\\\//${replace_domain_with_path}"
+
+      # Only define www patterns if source has www
+      local sr1_old_www
+      local sr2_old_www
+      if [[ "$has_www" == true ]]; then
+          sr1_old_www="//${www_domain_with_path}"
+          sr2_old_www="\\\\//${www_domain_with_path}"
+      fi
+
+      # --- Pass 1 Execution (Standard replacement for non-www variant - always executed) ---
+      printf "[Pass 1] Updating standard domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_non_www" "$sr_new"
+
       # Build the command array to avoid word splitting issues
-      local cmd_args=("search-replace" "$sr1_old" "$sr1_new")
+      local cmd_args=("search-replace" "$sr1_old_non_www" "$sr_new")
 
       if [[ -n "$url_flag" ]]; then
           cmd_args+=("$url_flag")
@@ -754,16 +778,55 @@ import_wp_db() {
           cmd_args+=("$dry_run_flag")
       fi
 
-      # Execute Pass 1
+      # Execute Pass 1 (non-www variant - always executed)
       if ! execute_wp_cli "${cmd_args[@]}" &> "$log_file"; then
           return 1
       fi
 
-      # --- Pass 2 Execution (Serialized data repair - Blocking/Sequential) ---
-      printf "  [Pass 2] Serialized replacement: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr2_old" "$sr2_new"
+      # --- Pass 2 Execution (Standard replacement for www variant - only if source has www) ---
+      if [[ "$has_www" == true ]]; then
+          printf "[Pass 3] Updating standard domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_www" "$sr_new"
 
-      # Rebuild command args for pass 2
-      cmd_args=("search-replace" "$sr2_old" "$sr2_new")
+          # Rebuild command args for pass 2 (www variant)
+          cmd_args=("search-replace" "$sr1_old_www" "$sr_new")
+
+          if [[ -n "$url_flag" ]]; then
+              cmd_args+=("$url_flag")
+          fi
+
+          cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
+
+          if [[ -n "$all_tables_flag" ]]; then
+              cmd_args+=("$all_tables_flag")
+          fi
+
+          if [[ -n "$network_flag" ]]; then
+              cmd_args+=("$network_flag")
+          fi
+
+          if [[ -n "$dry_run_flag" ]]; then
+              cmd_args+=("$dry_run_flag")
+          fi
+
+          # Execute Pass 2 (www variant)
+          if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
+              return 1
+          fi
+      fi
+
+      # --- Serialized Data Pass Execution (Conditional numbering based on www presence) ---
+      local serialized_pass_num
+      if [[ "$has_www" == true ]]; then
+          serialized_pass_num="2"
+      else
+          serialized_pass_num="2"
+      fi
+
+      # --- Serialized data repair for non-www variant (always executed) ---
+      printf "[Pass %s] Updating serialized domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$serialized_pass_num" "$sr2_old_non_www" "$sr_new_escaped"
+
+      # Rebuild command args for serialized non-www variant
+      cmd_args=("search-replace" "$sr2_old_non_www" "$sr_new_escaped")
 
       if [[ -n "$url_flag" ]]; then
           cmd_args+=("$url_flag")
@@ -783,9 +846,40 @@ import_wp_db() {
           cmd_args+=("$dry_run_flag")
       fi
 
-      # Execute Pass 2
+      # Execute serialized non-www variant
       if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
           return 1
+      fi
+
+      # --- Final Pass Execution (Serialized data repair for www variant - only if source has www) ---
+      if [[ "$has_www" == true ]]; then
+          printf "[Pass 4] Updating serialized domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr2_old_www" "$sr_new_escaped"
+
+          # Rebuild command args for serialized www variant
+          cmd_args=("search-replace" "$sr2_old_www" "$sr_new_escaped")
+
+          if [[ -n "$url_flag" ]]; then
+              cmd_args+=("$url_flag")
+          fi
+
+          cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
+
+          if [[ -n "$all_tables_flag" ]]; then
+              cmd_args+=("$all_tables_flag")
+          fi
+
+          if [[ -n "$network_flag" ]]; then
+              cmd_args+=("$network_flag")
+          fi
+
+          if [[ -n "$dry_run_flag" ]]; then
+              cmd_args+=("$dry_run_flag")
+          fi
+
+          # Execute serialized www variant
+          if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
+              return 1
+          fi
       fi
 
       return 0
@@ -1424,7 +1518,7 @@ import_wp_db() {
     confirm_replace="${confirm_replace:-y}"
     [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
 
-    printf "\n🔁 Running search-replace (Double Pass)...${RESET}\n"
+    printf "\n🔁 Running search-replace operations...\n"
 
     # Execute search-replace for single site (Pass search_domain and replace_domain, with no --url flag)
     if run_search_replace "$search_domain" "$replace_domain" "$SR_LOG_SINGLE" ""; then
@@ -1784,10 +1878,6 @@ import_wp_db() {
       printf "${YELLOW}⚠️ Could not generate MySQL commands - no base domain found.${RESET}\n"
     fi
   elif [[ "$is_multisite" != "yes" ]]; then
-    printf "${CYAN}${BOLD}📋 MySQL Commands for Single Site:${RESET}\n"
-    printf "================================================================\n\n"
-    printf "-- Single site setup - domain updated via WP-CLI search-replace\n"
-    printf "-- No additional MySQL commands needed for single site installations\n\n"
     printf "${GREEN}✅ Single site domain replacement completed via WP-CLI.${RESET}\n"
   fi
 
