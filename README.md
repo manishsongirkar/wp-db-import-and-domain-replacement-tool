@@ -27,43 +27,7 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 | **PHP** | PHP runtime for WP-CLI operations | 7.4+ recommended |
 | **File System** | Read/write access to WordPress directory | Sufficient disk space for import |
 
-
-## 📦 Installation
-
-1. **Download the tool:**
-   ```bash
-   git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
-   cd wp-db-import-and-domain-replacement-tool
-   ```
-
-2. **Make the script executable:**
-   ```bash
-   chmod +x import_wp_db.sh
-   ```
-
-3. **Verify WP-CLI is installed:**
-   ```bash
-   wp --info
-   ```
-   If not installed, [install WP-CLI](https://wp-cli.org/#installing)
-
-## 🚀 Usage
-
-### Basic Usage
-
-1. **Place your SQL file** in the same directory as the script
-2. **Navigate to your WordPress root directory** (or any subdirectory)
-3. **Source the script:**
-   ```bash
-   source /path/to/wp-db-import-and-domain-replacement-tool/import_wp_db.sh
-   ```
-4. **Run the function:**
-   ```bash
-   import_wp_db
-   ```
-5. **Follow the interactive prompts**
-
-## Installation & Setup:
+## 📦 Installation & Setup:
 
 ```bash
 # 1. Clone repository into your main user directory, where your `.bashrc` or `.zshrc` file is located:
@@ -100,6 +64,18 @@ setup_stage_file_proxy
 # 8. Optional: To view Single or Multisite links (Local site)
 show_local_site_links
 ```
+
+## 🚀 Usage
+
+### Basic Usage
+
+1. Navigate to your WordPress root directory (where `wp-config.php` file present)
+1. Place your SQL (`.sql`) file in the same directory
+2. Run the function:
+   ```bash
+   import_wp_db
+   ```
+3. Follow the interactive prompts
 
 ## Pre-Operation Safety Checklist:
 
