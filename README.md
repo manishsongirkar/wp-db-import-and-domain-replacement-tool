@@ -1,47 +1,20 @@
 # 🧩 WordPress Database Import & Domain Replacement Tool
 
-A comprehensive **interactive Bash toolkit** with **modular architecture** that automates importing WordPress database dumps (`.sql` files), performs **intelligent domain replacements**, handles **complex multisite setups**, provides **clickable site links**, and offers **stage-file-proxy integration** — all with sophisticated error handling, lazy loading, and detailed logging.
+A robust bash utility for performing WordPress database imports and domain/URL replacements, commonly needed for migrating environments (e.g., production to local/staging). It efficiently handles single-site and multi-domain WordPress Multisite setups.
 
----
+## ✨ Features
 
-## 🚀 Features
-
-### Core Functionality
-- ✅ **Automatic WordPress installation detection** (single-site or multisite subdomain/subdirectory)
-- ✅ **Enhanced domain sanitization** with security validation and protocol handling
-- ✅ **Interactive domain mapping** with per-subsite configuration for multisite
-- ✅ **Enhanced www/non-www search-replace** (smart 2-4 pass system with conditional execution)
-- ✅ **Enhanced domain+path replacement** for complex multisite configurations with intelligent slash handling
-- ✅ **High-speed bulk post revision cleanup** using xargs for performance
-- ✅ **Comprehensive cache clearing** (object cache, rewrites, transients)
-- ✅ **Advanced dry-run mode** for safe testing and validation
-- ✅ **Automatic wp_blogs and wp_site table updates** via wp eval for multisite
-- ✅ **Integrated Stage File Proxy setup** with automatic installation and configuration
-
-### Technical Features
-- ✅ **Smart WordPress root detection** (works from any subdirectory)
-- ✅ **Modular architecture** with separate function files for better maintainability
-- ✅ **Process-safe temporary files** with automatic cleanup on exit using PID
-- ✅ **Enhanced error handling** with detailed logging and recovery options
-- ✅ **Progress indicators** with elapsed time tracking and spinners
-- ✅ **Multi-site type support** (subdomain networks, subdirectory networks)
-- ✅ **Input validation** with dangerous character detection and sanitization
-- ✅ **Robust WP-CLI execution** with PATH optimization and environment setup
-- ✅ **Network-wide operations** with site-specific processing
-- ✅ **Protocol enforcement** (automatic HTTPS for stage-file-proxy)
-- ✅ **Main site detection** using multiple criteria (path and blog_id analysis)
-- ✅ **Standalone function support** with independent show_local_site_links utility
-
-### User Experience
-- ✅ **Color-coded terminal output** with status indicators and progress bars
-- ✅ **Interactive prompts** with smart defaults and validation
-- ✅ **Comprehensive help documentation** with usage examples
-- ✅ **Step-by-step guidance** with clear confirmation points
-- ✅ **Detailed summary reports** showing all changes made
-- ✅ **Automatic fallback mechanisms** for failed operations
-- ✅ **Local site links** with dedicated show_local_site_links function
-
----
+- 🔄 **Automatic WordPress installation detection** (single-site or multisite)
+- ⚡ **High-Speed Bulk Post Revision Cleanup** (via xargs)
+- 🧹 **Intelligent domain sanitization** (removes protocols, trailing slashes)
+- 🌐 **Robust Multi-Domain/Per-Site Mapping** for Multisite
+- 🔁 **Two-pass search-replace** (standard + serialized data)
+- 🗑️ **Cache and transient clearing** via WP-CLI
+- 🧪 **Dry-run mode** for testing replacements
+- 📦 **MySQL command generation** for network domain tables
+- 🛡️ **Comprehensive error handling** and logging
+- 🎨 **Colored terminal output** with clear progress indicators
+- 📸 **Stage File Proxy Plugin** automatic installation and configuration
 
 ## 🧰 Requirements
 
@@ -54,88 +27,108 @@ A comprehensive **interactive Bash toolkit** with **modular architecture** that 
 | **PHP** | PHP runtime for WP-CLI operations | 7.4+ recommended |
 | **File System** | Read/write access to WordPress directory | Sufficient disk space for import |
 
-### Environment Validation Commands
-```bash
-# Check WP-CLI installation and version
-wp --info
-
-# Verify database connectivity
-wp db check
-
-# Test PHP version
-php --version
-
-# Confirm WordPress installation
-wp core version
-
-# Validate database permissions
-wp db query "SELECT 1 as test;"
-```
-
----
 
 ## 📦 Installation
 
-Follow these steps to install the `import_wp_db` tool globally on your system.
+1. **Download the tool:**
+   ```bash
+   git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
+   cd wp-db-import-and-domain-replacement-tool
+   ```
 
-### 1️⃣ Clone the repository
+2. **Make the script executable:**
+   ```bash
+   chmod +x import_wp_db.sh
+   ```
 
-Clone this repository into your **main user directory**, where your `.bashrc` or `.zshrc` file is located:
+3. **Verify WP-CLI is installed:**
+   ```bash
+   wp --info
+   ```
+   If not installed, [install WP-CLI](https://wp-cli.org/#installing)
+
+## 🚀 Usage
+
+### Basic Usage
+
+1. **Place your SQL file** in the same directory as the script
+2. **Navigate to your WordPress root directory** (or any subdirectory)
+3. **Source the script:**
+   ```bash
+   source /path/to/wp-db-import-and-domain-replacement-tool/import_wp_db.sh
+   ```
+4. **Run the function:**
+   ```bash
+   import_wp_db
+   ```
+5. **Follow the interactive prompts**
+
+## Installation & Setup:
 
 ```bash
+# 1. Clone repository into your main user directory, where your `.bashrc` or `.zshrc` file is located:
 cd ~
 git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
-```
 
-### 2️⃣ Update your shell configuration
+# 2. Add to your shell configuration (~/.bashrc or ~/.zshrc)
+echo '# WordPress Database Import Tool' >> ~/.zshrc
+echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then' >> ~/.zshrc
+echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.zshrc
+echo 'fi' >> ~/.zshrc
 
-Edit your shell configuration file (`.bashrc` or `.zshrc`) and add the following lines:
+# 3. Optional: Add Stage File Proxy manual setup tool
+echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
+echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
+echo 'fi' >> ~/.zshrc
 
-```bash
-# Import WordPress Database Tool
-# Check if the file exists before sourcing to prevent errors
-if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then
-    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"
-fi
-
-if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then
-    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"
-fi
-```
-
-### 3️⃣ Apply changes
-
-Reload your shell configuration:
-
-```bash
-source ~/.bashrc
-# or
+# 4. Reload your shell configuration
 source ~/.zshrc
-```
 
-### 4️⃣ Verify installation
+# or
+# source ~/.bashrc
 
-Run this to confirm the function is available:
+# 5. Verify installation
+type import_wp_db && echo "✅ Installation successful" || echo "❌ Installation failed"
 
-```bash
-type import_wp_db
-```
-
-Expected output:
-
-```
-import_wp_db is a function
-```
-
----
-
-## 🧩 Usage
-
-Once installed, navigate to your WordPress project directory (where `wp-config.php` exists) and run:
-
-```bash
+# 6. Navigate to your WordPress project and run
+cd /path/to/your/wordpress/site
 import_wp_db
+
+# 7. Optional: Manual stage-file-proxy setup
+setup_stage_file_proxy
+
+# 8. Optional: To view Single or Multisite links (Local site)
+show_local_site_links
 ```
+
+## Pre-Operation Safety Checklist:
+
+```bash
+# Create timestamped backup with compression
+wp db export "backup-$(date +%Y%m%d-%H%M%S).sql.gz" --compress
+
+# Verify backup integrity
+gunzip -t "backup-$(date +%Y%m%d-%H%M%S).sql.gz"
+
+# Store backup in secure location
+cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
+```
+
+## ⚡ Configuration Options
+
+| Option | Description | Default | Advanced Notes |
+| -------- | ----------- | ------- | -------------- |
+| **SQL filename** | Database dump file to import | `vip-db.sql` | Supports absolute and relative paths |
+| **Old Domain** | Production domain to search for | Required input | Auto-sanitized (protocols/slashes removed) |
+| **New Domain** | Local/staging domain to replace with | Required input | Security validation applied |
+| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | High-speed bulk operation using xargs |
+| **All tables** | Include non-WordPress prefixed tables | Recommended (Y/n) | Essential for full migrations |
+| **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact operations to be executed |
+| **Enhanced www/non-www handling** | Automatic detection and conditional processing of www variants | Automatic | Smart 2-4 pass system based on source domain |
+| **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Interactive prompts | Supports both subdomain and subdirectory |
+| **Automatic DB Updates** | wp_blogs and wp_site table updates via wp eval | Automatic for multisite | Executed before search-replace operations |
+| **Stage File Proxy Setup** | Interactive setup prompt for media management | Default Yes (Y/n) | Includes automatic plugin installation |
+| **Cache clearing** | Flush object cache, rewrites, and transients | Automatic | Network-wide for multisite |
 
 ### Complete Process Flow:
 
@@ -181,188 +174,12 @@ import_wp_db
    - **Smart plugin activation** (network-wide for multisite, site-wide for single-site)
    - **Source domain configuration** using existing mappings from import process
    - **HTTPS protocol enforcement** for security compliance
-   - **New plugin structure** using separate `sfp_url` and `sfp_mode` options
 
----
+## 📖 Usage Examples
 
-## 🔄 Stage File Proxy Integration
+### Single Site Example
 
-The script provides sophisticated **Stage File Proxy** integration for seamless local development workflows. This feature **automatically installs and configures** your local WordPress installation to fetch missing media files from the production server using the new plugin architecture.
-
-### How It Works
-
-1. **🔍 Interactive Setup Prompt**: After completing database operations, prompts user with clear options
-2. **📦 Automatic Plugin Installation**: If stage-file-proxy plugin is not installed, automatically downloads and installs from GitHub release
-3. **📋 Automatic Database Updates**: For multisite installations, automatically updates wp_blogs and wp_site tables via wp eval
-4. **⚙️ Smart Configuration**: When setup is requested:
-   - **Plugin Detection**: Checks if plugin is already installed using `wp plugin is-installed`
-   - **Auto-Installation**: Downloads from `https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip`
-   - **Plugin Activation**: Network-wide activation for multisite, site-wide for single-site
-   - **Domain Mapping**: Uses existing domain mappings from the import process
-   - **Protocol Security**: Enforces HTTPS protocol for all source domains
-   - **New Plugin Structure**: Uses separate `sfp_url` and `sfp_mode` options
-
-### New Plugin Structure
-
-The enhanced setup process now uses the new plugin architecture:
-
-```
-📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n):
-```
-
-**Default Response**: `Y` (Yes) - If user presses Enter without input, setup proceeds automatically.
-
-**Installation Flow**:
-- ✅ **Plugin Already Installed**: Proceeds directly to configuration
-- 📦 **Plugin Not Found**: Automatically installs from GitHub release, then configures
-- ❌ **Installation Fails**: Shows error message with manual installation options
-- ⏭️ **User Declines**: Skips entire setup with appropriate message
-
-#### Security & Validation
-- **Input Sanitization**: Comprehensive validation of domain inputs with dangerous character detection
-- **Protocol Enforcement**: Automatic conversion of HTTP to HTTPS for security
-- **Option Safety**: Direct WordPress option updates with proper validation
-- **Length Validation**: URL length limits to prevent buffer overflow attacks
-- **Character Filtering**: Removes control characters and non-printable content
-
-#### Multisite Support
-- **Individual Site Configuration**: Each subsite gets its own stage-file-proxy settings
-- **Automatic Configuration**: Uses domain mappings from the import process
-- **Network Detection**: Automatic detection of subdomain vs subdirectory networks
-- **Site-Specific Mapping**: Uses individual domain mappings from the import process
-
-### Example Configuration Output
-
-#### Single Site
-```
-📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n):
-🔍 stage-file-proxy plugin found! Configuring...
-📦 Activating stage-file-proxy plugin...
-✅ Plugin activated successfully
-🧩 Configuring single site stage-file-proxy...
-  ✅ Configured successfully: example.local (URL: https://production.example.com, Mode: header)
-🎉 stage-file-proxy configuration complete!
-```
-
-#### Multisite (Automatic Configuration):
-```
-📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-� stage-file-proxy plugin found! Configuring...
-📦 Activating stage-file-proxy plugin...
-✅ Plugin activated successfully
-🌐 Configuring multisite stage-file-proxy...
-✅ Configuring 3 sites with stage-file-proxy
-  ✅ Configured successfully: example.local (URL: https://example.com, Mode: header)
-  ✅ Configured successfully: blog.example.local (URL: https://blog.example.com, Mode: header)
-  ✅ Configured successfully: shop.example.local (URL: https://shop.example.com, Mode: header)
-🎉 stage-file-proxy configuration complete!
-```
-
-#### Installation Failure with Fallback Options:
-```
-📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-📦 Installing stage-file-proxy plugin...
-    Attempting installation from GitHub release...
-⚠️ GitHub installation failed, trying direct download method...
-    Attempting direct download method...
-❌ Failed to install plugin using all methods
-💡 Installation error details:
-   Last few lines from installation log:
-   Error: Could not create directory
-🔧 Manual installation options:
-   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip
-   2. Install via WP Admin: Plugins → Add New → Upload Plugin
-   3. Check internet connection and try again
-⚠️ Skipping stage-file-proxy configuration
-```
-
-### Benefits
-
-- **🔄 Zero Configuration**: Automatically inherits domain mappings from import process
-- **📦 Automatic Installation**: Downloads and installs plugin if not present with multiple fallback methods
-- **🖼️ Seamless Media**: Missing images/files automatically load from production
-- **🌐 Multisite Ready**: Individual configuration for each subsite using existing mappings
-- **⏱️ Smart Timing**: Runs after database structure is properly updated (automatic or manual)
-- **🎯 User Choice**: Interactive prompt with sensible defaults (Yes/No options)
-- **🔇 Non-Intrusive**: Silent operation when user declines setup
-- **🔒 Security First**: HTTPS enforcement and input validation
-- **✨ Modern Structure**: Compatible with new plugin architecture
-- **🛡️ Error Handling**: Graceful failure handling with clear manual options
-- **📋 Automatic Configuration**: Uses domain mappings from database import for seamless setup
-
-### Available Proxy Modes
-
-The new plugin supports multiple proxy modes with `header` as the default:
-
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| **header** | HTTP redirect to remote files (fastest) | **Default** - Best for most setups |
-| **download** | Download and save files locally | When you want local file caching |
-| **photon** | Use Photon/Jetpack for image processing | For sites using Jetpack |
-| **local** | Use local fallback images if remote fails | When you have local replacement images |
-| **lorempixel** | Use placeholder service for missing images | For design/development work |
-
-### Manual Setup Alternative
-
-For advanced users or custom setups, use the standalone setup script:
-
-```bash
-# Source the setup script (includes automatic installation)
-source ~/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh
-
-# Interactive setup with automatic plugin installation if needed
-setup_stage_file_proxy
-
-# Bulk configuration for multisite
-bulk_configure_multisite
-
-# View current configuration (shows new plugin structure)
-show_stage_file_proxy_config
-```
-
-**Note**: The standalone setup script automatically detects if the plugin is missing and installs it from the GitHub release before proceeding with configuration.
-
-### Configuration Functions
-
-#### Available Functions:
-- **`setup_stage_file_proxy`**: Interactive setup with validation and auto-installation
-- **`show_stage_file_proxy_config`**: Display current settings (shows separate `sfp_url` and `sfp_mode` options)
-- **`bulk_configure_multisite`**: Set same domain for all sites (multisite only)
-- **`configure_stage_file_proxy`**: Core configuration function (new plugin structure)
-
-#### Enhanced Features:
-- **Automatic Installation**: Downloads and installs plugin if not present
-- **Multiple Download Methods**: Tries GitHub release, then direct download with curl/wget
-- **Domain Validation**: URL format validation with TLD requirements
-- **Localhost Support**: Special handling for localhost and IP addresses
-- **Protocol Conversion**: Automatic HTTP to HTTPS conversion
-- **Whitespace Cleaning**: Automatic trimming of input strings
-- **Character Filtering**: Prevention of dangerous characters and injection attempts
-- **New Plugin Structure**: Uses separate `sfp_url` and `sfp_mode` options for better organization
-
----
-
-## 🌐 Show Local Site Links Function
-
-The `show_local_site_links` function is independent tool for displaying clickable WordPress site links.
-
-### Features:
-- ✅ **Automatic WordPress detection** (single-site or multisite)
-- ✅ **Smart WordPress root discovery** (works from any subdirectory)
-- ✅ **Clickable terminal links** for easy site access
-- ✅ **Multisite support** with individual site listings
-- ✅ **Network admin links** for multisite installations
-
----
-
-## 🧪 Example Terminal Sessions
-
-### 🟢 Single-Site Example
-
+**Terminal Input/Output:**
 ```
 $ import_wp_db
 
@@ -454,11 +271,9 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 ================================================================
 ```
 
----
-### 🟢 Multisite Example
+### Multisite Example
 
-This comprehensive example demonstrates the enhanced domain+path replacement logic and automatic database updates for complex multisite setups:
-
+**Terminal Input/Output:**
 ```
 $ import_wp_db
 
@@ -689,79 +504,80 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 ================================================================
 ```
 
----
+## 🌟 Supported WordPress Types
 
-## ⚡ Configuration Options
+- **Single-site installations**
+- **Multisite subdomain networks**
+- **Multisite subdirectory networks** (including multi-domain to single-domain migrations)
 
-| Option | Description | Default | Advanced Notes |
-| -------- | ----------- | ------- | -------------- |
-| **SQL filename** | Database dump file to import | `vip-db.sql` | Supports absolute and relative paths |
-| **Old Domain** | Production domain to search for | Required input | Auto-sanitized (protocols/slashes removed) |
-| **New Domain** | Local/staging domain to replace with | Required input | Security validation applied |
-| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | High-speed bulk operation using xargs |
-| **All tables** | Include non-WordPress prefixed tables | Recommended (Y/n) | Essential for full migrations |
-| **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact operations to be executed |
-| **Enhanced www/non-www handling** | Automatic detection and conditional processing of www variants | Automatic | Smart 2-4 pass system based on source domain |
-| **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Interactive prompts | Supports both subdomain and subdirectory |
-| **Automatic DB Updates** | wp_blogs and wp_site table updates via wp eval | Automatic for multisite | Executed before search-replace operations |
-| **Stage File Proxy Setup** | Interactive setup prompt for media management | Default Yes (Y/n) | Includes automatic plugin installation |
-| **Cache clearing** | Flush object cache, rewrites, and transients | Automatic | Network-wide for multisite |
+## Manual MySQL Commands (Fallback Only)
 
-### Advanced Configuration Details
+Manual commands are only shown if automatic updates fail:
 
-#### Enhanced www/non-www Domain Handling:
-1. **Automatic Detection**: Uses regex pattern `^www\.` to detect source domain type
-2. **Conditional Processing**: Only executes www-related passes when source domain contains www
-3. **Smart Pass System**:
-   - **Non-www source**: 2 passes (standard + serialized)
-   - **www source**: 4 passes (non-www standard + www standard + non-www serialized + www serialized)
-4. **Clean Output**: No confusing "skipping" messages, dynamic pass numbering
-5. **Pattern Matching**: Handles both `//domain.com` and `\\//domain.com` patterns
+### Multisite Commands (Subdomain Network):
+```sql
+-- Update the main network domain
+UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
 
-#### Domain Sanitization Process:
-1. **Protocol Removal**: Strips `http://` and `https://` prefixes
-2. **Whitespace Cleaning**: Removes leading/trailing spaces and control characters
-3. **Slash Normalization**: Removes trailing slashes for consistency
-4. **Security Validation**: Blocks dangerous characters and injection attempts
-5. **Format Validation**: Ensures valid domain format with TLD requirements
+-- Update individual blog domains (each subsite gets unique domain)
+UPDATE wp_blogs SET domain = "blog.example.test", path = "/" WHERE blog_id = 2;
+UPDATE wp_blogs SET domain = "shop.example.test", path = "/" WHERE blog_id = 3;
+UPDATE wp_blogs SET domain = "news.example.test", path = "/" WHERE blog_id = 4;
+UPDATE wp_blogs SET domain = "support.example.test", path = "/" WHERE blog_id = 6;
+UPDATE wp_blogs SET domain = "docs.example.test", path = "/" WHERE blog_id = 7;
+```
 
-#### Multisite Handling:
-- **Subdirectory Networks**: Single network-wide replacement with shared domain
-- **Subdomain Networks**: Individual site mapping with custom local domains
-- **Path Detection**: Automatic blog path generation for subdirectory setups
-- **Blog ID Mapping**: Precise mapping of blog_id to domain/path combinations
-- **Automatic Updates**: wp_blogs and wp_site tables updated via wp eval before search-replace
+### Multisite Commands (Subdirectory Network):
+```sql
+-- Update the main network domain
+UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
 
-#### Stage File Proxy Security:
-- **HTTPS Enforcement**: All source domains stored with HTTPS protocol
-- **Input Validation**: Comprehensive validation of domain inputs
-- **Protocol Conversion**: Automatic HTTP to HTTPS upgrade for security
-- **New Plugin Structure**: Uses separate `sfp_url` and `sfp_mode` options
+-- Update blog domains (shared domain with individual paths)
+UPDATE wp_blogs SET domain = "example.test", path = "/" WHERE blog_id = 1;      -- Main site
+UPDATE wp_blogs SET domain = "example.test", path = "/blog/" WHERE blog_id = 2;
+UPDATE wp_blogs SET domain = "example.test", path = "/shop/" WHERE blog_id = 3;
+UPDATE wp_blogs SET domain = "example.test", path = "/news/" WHERE blog_id = 4;
+UPDATE wp_blogs SET domain = "example.test", path = "/support/" WHERE blog_id = 6;
+UPDATE wp_blogs SET domain = "example.test", path = "/docs/" WHERE blog_id = 7;
+```
 
----
+## 🔧 Additional Functions
 
-## 📂 Enhanced Logging System
+### Show Local Site Links
+Display clickable links to local WordPress sites:
 
-The tool creates comprehensive logs with process-specific names for debugging and audit trails:
+```bash
+show_local_site_links
+```
 
-| File Pattern | Purpose | Lifecycle | Content |
-| ------------ | ------- | --------- | ------- |
-| `/tmp/wp_db_import_$$.log` | Database import operations | Process duration | Import success/failure, SQL errors |
-| `/tmp/wp_replace_single_$$.log` | Single-site search-replace | Process duration | URL replacements, serialized data changes |
-| `/tmp/wp_replace_<blogid>_$$.log` | Multisite per-site operations | Process duration | Site-specific URL replacements |
-| `/tmp/wp_revision_delete_$$.log` | Post revision cleanup | Process duration | Bulk revision deletion results using xargs |
-| `/tmp/wp_subsite_data_$$.csv` | Multisite site information | Process duration | Blog ID, domain, path mappings |
-| `/tmp/wp_plugin_install_$$.log` | Stage File Proxy installation | Process duration | Plugin download and installation details |
+**Requirements:** Must be run from within a WordPress directory with WP-CLI installed
 
-### Log Management Features:
-- **🔄 Automatic Cleanup**: All temporary files deleted on successful exit via trap
-- **💥 Crash Recovery**: Manual cleanup commands provided for interrupted processes
-- **🔍 Process Isolation**: PID-based naming ($$) prevents conflicts in concurrent runs
-- **📊 Audit Trail**: Complete record of all operations for troubleshooting
-- **🗂️ Structured Data**: CSV format for multisite data enables easy parsing
-- **🔧 Installation Logs**: Detailed logging for Stage File Proxy installation attempts
+## 🛡️ Security Features
 
-### Manual Cleanup Commands:
+- Uses absolute paths to prevent directory traversal
+- Validates all user inputs
+- Sanitizes domain inputs
+- Uses temporary files with process-specific names
+- Prevents SQL injection in generated commands
+
+## 📁 File Structure
+
+- Creates temporary log files in `/tmp/` for debugging (uses PID to prevent collision)
+- Automatically cleans up temporary files on exit
+- Logs all WP-CLI operations for troubleshooting
+
+## Log Analysis:
+
+```bash
+# Check recent error logs
+tail -100 /tmp/wp_*_$$.log | grep -i error
+
+# Monitor WordPress debug logs
+tail -f wp-content/debug.log | grep -E "(FATAL|ERROR|WARNING)"
+```
+
+### Manual Logs Cleanup Commands:
+
 ```bash
 # Remove all logs for current process
 rm -f /tmp/wp_*_$$.log /tmp/wp_*_$$.csv
@@ -777,380 +593,14 @@ find /tmp -name "wp_*_*.csv" -mtime +1 -delete
 find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
 ```
 
----
+## 🤝 Contributing
 
-## 🧮 Enhanced Database Management
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-### Automatic Database Updates (New Feature)
+## 📄 License
 
-The script now **automatically updates** the wp_blogs and wp_site tables using `wp eval` commands for multisite installations, eliminating the need for manual MySQL execution in most cases.
+This project is licensed under the MIT License.
 
-#### Automatic Update Process:
-```sql
--- The script automatically executes these operations via wp eval:
--- 1. Update wp_site table for network domain
--- 2. Update wp_blogs table for all subsites
--- 3. Update wp_blogs table for main site
--- All operations are executed before search-replace for optimal compatibility
-```
+## 👨‍💻 Author
 
-#### Execution Flow:
-1. **Pre-Search-Replace**: Database structure updates happen first
-2. **WP Eval Commands**: Uses WordPress's built-in database functions
-3. **Error Handling**: Automatic fallback to manual commands if auto-updates fail
-4. **Verification**: Success/failure reporting for each operation
-
-### Manual MySQL Commands (Fallback Only)
-
-Manual commands are only shown if automatic updates fail:
-
-#### Single-Site Commands:
-```sql
--- Single site installations use WP-CLI search-replace exclusively
--- No additional MySQL commands needed
--- Domain replacement handled automatically via WordPress core functions
-```
-
-#### Multisite Commands (Subdomain Network):
-```sql
--- Only generated if automatic updates fail
--- Update the main network domain
-UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
-
--- Update individual blog domains (each subsite gets unique domain)
-UPDATE wp_blogs SET domain = "blog.example.local", path = "/" WHERE blog_id = 2;
-UPDATE wp_blogs SET domain = "shop.example.local", path = "/" WHERE blog_id = 3;
-UPDATE wp_blogs SET domain = "news.example.local", path = "/" WHERE blog_id = 4;
-```
-
-#### Multisite Commands (Subdirectory Network):
-```sql
--- Only generated if automatic updates fail
--- Update the main network domain
-UPDATE wp_site SET domain = 'example.local' WHERE id = 1;
-
--- Update blog domains (shared domain with individual paths)
-UPDATE wp_blogs SET domain = "example.local", path = "/" WHERE blog_id = 1;      -- Main site
-UPDATE wp_blogs SET domain = "example.local", path = "/blog/" WHERE blog_id = 2;
-UPDATE wp_blogs SET domain = "example.local", path = "/shop/" WHERE blog_id = 3;
-```
-
-### Advanced Features:
-
-#### Intelligent Execution:
-- **Connection Testing**: Verifies WP-CLI database connectivity before execution
-- **Individual Operations**: Each table update is executed and verified separately
-- **Success Tracking**: Detailed reporting of successful vs failed operations
-- **Graceful Degradation**: Falls back to manual commands if needed
-
-#### Security & Validation:
-- **SQL Injection Protection**: All values properly escaped via WordPress functions
-- **Blog ID Validation**: Ensures blog_id exists before generating commands
-- **Domain Validation**: Validates domain format before database updates
-- **Transaction Safety**: Each operation is atomic and reversible
-
-#### Performance Optimization:
-- **Bulk Operations**: Efficiently processes multiple sites
-- **Minimal Queries**: Optimized to reduce database load
-- **Error Recovery**: Continues processing even if individual operations fail
-
----
-
-## 🧹 Advanced Cleanup & Maintenance
-
-### Automatic Cleanup Features:
-- **🔄 Exit Traps**: Comprehensive cleanup on script completion or interruption
-- **🗂️ Process Isolation**: PID-based file naming prevents conflicts
-- **🧹 Multi-Pattern Cleanup**: Removes logs, CSV files, and temporary data
-- **⏰ Time-Based Cleanup**: Automatic removal of old WP-CLI cache files
-- **🛡️ Safe Removal**: Validates file existence before deletion attempts
-
-### Manual Cleanup Commands:
-
-#### For Current Process:
-```bash
-# Remove logs for current shell session
-rm -f /tmp/wp_*_$$.log /tmp/wp_*_$$.csv /tmp/wp_*_$$.tmp
-
-# Clean up any missed files with current PID
-find /tmp -name "*_$$.*" -type f -delete 2>/dev/null
-```
-
-#### For All WordPress Tool Processes:
-```bash
-# Remove all WordPress migration tool logs
-find /tmp -type f -name "wp_db_import_*.log" -delete 2>/dev/null
-find /tmp -type f -name "wp_replace_*.log" -delete 2>/dev/null
-find /tmp -type f -name "wp_revision_*.log" -delete 2>/dev/null
-find /tmp -type f -name "wp_subsite_*.csv" -delete 2>/dev/null
-
-# Clean old WP-CLI cache files (older than 1 day)
-find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
-```
-
-#### Emergency Cleanup (if process was killed):
-```bash
-# Nuclear option - removes ALL temporary WordPress-related files
-sudo find /tmp -type f \( -name "wp_*" -o -name "wp-cli-*" \) -delete 2>/dev/null
-
-# Check remaining temp files
-ls -la /tmp/wp_* 2>/dev/null | head -10
-```
-
-### Cleanup Verification:
-```bash
-# Check for remaining WordPress tool files
-ls -la /tmp/wp_* 2>/dev/null && echo "Files found" || echo "All clean"
-
-# Monitor temp directory size
-du -sh /tmp/ | grep -E "[0-9]+[MG]" && echo "Large temp directory detected"
-```
-
----
-
-## 🧩 Comprehensive Troubleshooting
-
-### Common Issues & Advanced Solutions
-
-| Problem Category | Symptoms | Root Cause | Advanced Solution |
-| --------------- | -------- | ---------- | ----------------- |
-| **WP-CLI Issues** | `❌ WP-CLI not found in PATH` | Missing or incorrect installation | Install via Homebrew: `brew install wp-cli`<br/>Or Composer: `composer global require wp-cli/wp-cli`<br/>Add to PATH: `export PATH="$PATH:$HOME/.composer/vendor/bin"` |
-| **File System** | `❌ File 'filename.sql' not found` | Incorrect path or permissions | Use absolute path: `import_wp_db` then enter `/full/path/to/file.sql`<br/>Check permissions: `ls -la filename.sql` |
-| **WordPress Detection** | `❌ WordPress root not found` | Script run from wrong directory | Navigate to WordPress root: `cd /path/to/wordpress`<br/>Or any subdirectory containing wp-config.php |
-| **Database Connection** | `❌ Database import failed` | Invalid credentials or privileges | Check wp-config.php credentials<br/>Test connection: `wp db check`<br/>Verify user privileges: `GRANT ALL ON database.* TO 'user'@'localhost';` |
-| **Memory/Performance** | Search-replace fails midway | PHP memory limits or timeouts | Increase PHP memory: `ini_set('memory_limit', '512M')`<br/>Use revision cleanup first<br/>Run in smaller batches |
-| **Multisite Complexity** | Site mapping confusion | Complex network setup | Use dry-run mode first<br/>Document existing site structure<br/>Test with backup database |
-| **Stage File Proxy** | Plugin not configuring | Missing plugin or wrong timing | Install plugin: `wp plugin install stage-file-proxy`<br/>Confirm MySQL commands executed<br/>Check plugin compatibility |
-
-### Advanced Debugging Techniques
-
-#### Verbose WP-CLI Output:
-```bash
-# Run WP-CLI commands with debug info
-wp --debug import database.sql
-
-# Check WP-CLI configuration
-wp cli info
-
-# Test specific WordPress functions
-wp eval 'echo is_multisite() ? "multisite" : "single-site";'
-```
-
-#### Database Connection Testing:
-```bash
-# Test database connectivity
-wp db query "SELECT COUNT(*) as posts FROM wp_posts;"
-
-# Check table permissions
-wp db query "SHOW GRANTS FOR CURRENT_USER();"
-
-# Validate database structure
-wp db check --repair
-```
-
-#### File System Diagnostics:
-```bash
-# Check WordPress file permissions
-find /path/to/wordpress -type f -not -perm 644 -o -type d -not -perm 755
-
-# Verify wp-config.php accessibility
-wp config list
-
-# Test write permissions in WordPress directory
-touch /path/to/wordpress/test_write.tmp && rm /path/to/wordpress/test_write.tmp
-```
-
-### Performance Optimization
-
-#### For Large Databases:
-```bash
-# Skip revision cleanup if database is very large
-# Select "n" for revision cleanup option
-
-# Use specific table targeting instead of --all-tables
-# Select "n" for all-tables option
-
-# Run search-replace in smaller chunks
-wp search-replace "old.com" "new.com" --dry-run | head -50
-```
-
-#### For Multisite Networks:
-```bash
-# Process sites individually if network-wide operations fail
-wp site list --field=url | while read url; do
-  wp --url="$url" search-replace "old.com" "new.com" --dry-run
-done
-
-# Check multisite configuration
-wp network meta list 1
-```
-
-### Security Considerations
-
-#### Input Validation Errors:
-- **Dangerous Characters**: Script blocks `;`, `|`, `&`, `$`, backticks, quotes
-- **Control Characters**: Non-printable characters automatically filtered
-- **Length Limits**: URL inputs limited to 2048 characters
-- **Protocol Enforcement**: HTTPS automatically applied for stage-file-proxy
-
-#### Safe Recovery Procedures:
-```bash
-# Create database backup before any operation
-wp db export backup-$(date +%Y%m%d-%H%M%S).sql
-
-# Test operations in staging environment first
-wp --url=staging.site.com search-replace "prod.com" "staging.com" --dry-run
-
-# Rollback using backup if needed
-wp db import backup-YYYYMMDD-HHMMSS.sql
-```
-
----
-
-## 🛡️ Enhanced Safety & Security Recommendations
-
-### Pre-Operation Safety Checklist:
-
-#### Database Protection:
-```bash
-# Create timestamped backup with compression
-wp db export "backup-$(date +%Y%m%d-%H%M%S).sql.gz" --compress
-
-# Verify backup integrity
-gunzip -t "backup-$(date +%Y%m%d-%H%M%S).sql.gz"
-
-# Store backup in secure location
-cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
-```
-
-#### Configuration Backup:
-```bash
-# Backup critical WordPress files
-tar -czf "wp-config-backup-$(date +%Y%m%d).tar.gz" wp-config.php .htaccess
-
-# Backup multisite configuration (if applicable)
-wp network meta list 1 > network-config-backup.txt
-```
-
-### Security Best Practices:
-
-#### Input Validation Features:
-- **🔍 Domain Sanitization**: Automatic removal of protocols, trailing slashes, and dangerous characters
-- **🛡️ Injection Prevention**: Blocks shell metacharacters (`;`, `|`, `&`, `$`, backticks)
-- **📏 Length Validation**: Enforces reasonable URL length limits (2048 chars)
-- **🔒 Protocol Security**: Enforces HTTPS for stage-file-proxy configurations
-- **🧹 Character Filtering**: Removes control characters and non-printable content
-
-#### Operational Security:
-```bash
-# Run in dry-run mode first for all new migrations
-import_wp_db  # Select "y" for dry-run when prompted
-
-# Verify search-replace operations before applying
-wp search-replace "old.com" "new.com" --dry-run --report-changed-only
-
-# Test database connectivity before import
-wp db check && echo "Database OK" || echo "Database Issues"
-
-# Monitor system resources during operation
-watch -n 1 'ps aux | grep "wp\|mysql" | head -10'
-```
-
-### Environment Validation:
-
-#### Pre-Flight Checks:
-```bash
-# Comprehensive environment validation
-wp --info | grep -E "(PHP version|MySQL|WP-CLI version)"
-df -h . | grep -v "Filesystem"  # Check disk space
-free -h | grep -E "(Mem|Swap)"  # Check memory
-```
-
-#### Permission Verification:
-```bash
-# WordPress directory permissions
-find . -type f -exec chmod 644 {} \; -o -type d -exec chmod 755 {} \;
-
-# Verify write access
-touch test-write.tmp && rm test-write.tmp && echo "Write OK" || echo "Write Failed"
-```
-
-### Recovery Procedures:
-
-#### Emergency Rollback:
-```bash
-# Quick database restore (if backup exists)
-wp db import backup-YYYYMMDD-HHMMSS.sql
-
-# Reset multisite network (if structure corrupted)
-wp site list --format=ids | xargs -I {} wp site delete {} --yes
-wp network meta delete 1 --all
-```
-
-#### Log Analysis:
-```bash
-# Check recent error logs
-tail -100 /tmp/wp_*_$$.log | grep -i error
-
-# Monitor WordPress debug logs
-tail -f wp-content/debug.log | grep -E "(FATAL|ERROR|WARNING)"
-```
-
-### Testing & Validation:
-
-#### Staged Deployment Workflow:
-1. **🧪 Development**: Test with small database subset
-2. **🔍 Staging**: Full test with production data copy
-3. **📊 Validation**: Verify all URLs, images, and links work
-4. **🚀 Production**: Apply with confidence after validation
-
-#### Post-Migration Checks:
-```bash
-# Verify WordPress functionality
-wp option get home
-wp option get siteurl
-wp user list --field=user_email | head -5
-
-# Test multisite network (if applicable)
-wp site list --field=url
-wp network meta get 1 site_name
-```
-
----
-
-🟩 **Quick Start Guide:**
-
-```bash
-# 1. Clone the repository to your home directory
-cd ~
-git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
-
-# 2. Add to your shell configuration (~/.bashrc or ~/.zshrc)
-echo '# WordPress Database Import Tool' >> ~/.zshrc
-echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then' >> ~/.zshrc
-echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.zshrc
-echo 'fi' >> ~/.zshrc
-
-# 3. Optional: Add Stage File Proxy manual setup tool
-echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
-echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
-echo 'fi' >> ~/.zshrc
-
-# 4. Reload your shell configuration
-source ~/.zshrc  # or ~/.bashrc
-
-# 5. Verify installation
-type import_wp_db && echo "✅ Installation successful" || echo "❌ Installation failed"
-
-# 6. Navigate to your WordPress project and run
-cd /path/to/your/wordpress/site
-import_wp_db
-
-# 7. Optional: Manual stage-file-proxy setup
-setup_stage_file_proxy
-
-# 8. Optional: To view Single or Multisite links (Local site)
-show_local_site_links
-```
-
----
+**Manish Songirkar** ([@manishsongirkar](https://github.com/manishsongirkar))
