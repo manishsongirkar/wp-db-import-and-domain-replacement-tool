@@ -519,6 +519,13 @@ UPDATE wp_blogs SET domain = "example.test", path = "/docs/" WHERE blog_id = 7;
 
 ## 🔧 Additional Functions
 
+### Manual Setup Stage File Proxy
+Setup the Stage File Proxy plugin, follow the interactive prompts for domain mapping.
+
+```bash
+setup_stage_file_proxy
+```
+
 ### Show Local Site Links
 Display clickable links to local WordPress sites:
 
