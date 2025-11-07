@@ -243,6 +243,18 @@ import_wp_db() {
   local BOLD="\033[1m"
   local RESET="\033[0m"
 
+  # ⏱️ Start timer for total execution tracking
+  local start_time=$(date +%s)
+
+  # Helper function to display execution time before early exit
+  display_execution_time() {
+    local end_time=$(date +%s)
+    local total_elapsed=$((end_time - start_time))
+    local total_minutes=$((total_elapsed / 60))
+    local total_seconds=$((total_elapsed % 60))
+    printf "\n${CYAN}${BOLD}⏱️ Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
+  }
+
   # 📊 Track revision cleanup status for end-of-process reporting
   local revision_cleanup_declined=false
   local revisions_remain_after_cleanup=false
@@ -253,6 +265,7 @@ import_wp_db() {
 
   if [[ -z "$WP_COMMAND" ]]; then
     printf "${RED}❌ WP-CLI not found in PATH. Exiting.${RESET}\n"
+    display_execution_time
     return 1
   fi
 
@@ -359,6 +372,7 @@ import_wp_db() {
 
   if [[ ! -f "$wp_root/wp-config.php" ]]; then
     printf "${RED}❌ WordPress root not found (wp-config.php missing).${RESET}\n"
+    display_execution_time
     return 1
   fi
 
@@ -481,6 +495,7 @@ import_wp_db() {
 
   if [[ $? -ne 0 ]]; then
     printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$DB_LOG"
+    display_execution_time
     return 1
   fi
 
@@ -2330,6 +2345,14 @@ import_wp_db() {
     # Call the separate function to display local site access links
     show_local_site_links
   fi
+
+  # ⏱️ Calculate and display total execution time
+  local end_time=$(date +%s)
+  local total_elapsed=$((end_time - start_time))
+  local total_minutes=$((total_elapsed / 60))
+  local total_seconds=$((total_elapsed % 60))
+
+  printf "\n${CYAN}${BOLD}⏱️ Total Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
 
   printf "\n"
 
