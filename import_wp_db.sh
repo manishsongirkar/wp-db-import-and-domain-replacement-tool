@@ -12,6 +12,7 @@
 # Features:
 #   - Automatic WordPress installation detection (single-site or multisite)
 #   - **High-Speed Bulk Post Revision Cleanup (via xargs)**
+#   - **MySQL Commands for Manual Revision Cleanup (when automatic cleanup is skipped)**
 #   - Intelligent domain sanitization (removes protocols, trailing slashes)
 #   - **Robust Multi-Domain/Per-Site Mapping for Multisite**
 #   - Two-pass search-replace (standard + serialized data)
@@ -40,6 +41,17 @@
 #     Usage: show_local_site_links
 #     Requirements: Must be run from within a WordPress directory with WP-CLI installed
 #     Note: Function is loaded from show_local_site_links.sh in the same directory
+#
+#   show_revision_cleanup_commands - Generate MySQL commands for manual revision cleanup
+#     Usage: show_revision_cleanup_commands [single|multisite|test|test-multisite|test-subdirectory]
+#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
+#     Note: Function is loaded from show_revision_cleanup_commands.sh in the same directory
+#     Available globally after sourcing this script
+#
+#   show_revision_cleanup_if_needed - Helper function that conditionally shows revision cleanup commands
+#     Usage: show_revision_cleanup_if_needed (called automatically during import)
+#     Requirements: Variables cleanup_revisions and is_multisite should be set
+#     Note: Available globally after sourcing this script
 #
 # Supported WordPress Types:
 #   - Single-site installations
@@ -112,6 +124,113 @@ show_local_site_links() {
     fi
 }
 
+# Define a lazy loading function for show_revision_cleanup_commands
+# This approach only loads the function when needed and handles missing files gracefully
+show_revision_cleanup_commands() {
+    # Get the directory of the current script for relative path resolution
+    # Use bash built-in parameter expansion instead of dirname command for better compatibility
+    local SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+    if [[ "$SCRIPT_DIR" == "${BASH_SOURCE[0]}" ]]; then
+        SCRIPT_DIR="."
+    fi
+    SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
+
+    # Try multiple possible locations for the show_revision_cleanup_commands.sh file
+    local possible_locations=(
+        "$SCRIPT_DIR/show_revision_cleanup_commands.sh"
+        "$HOME/wp-db-import-and-domain-replacement-tool/show_revision_cleanup_commands.sh"
+        "${BASH_SOURCE[0]%/*}/show_revision_cleanup_commands.sh"
+    )
+
+    local found_script=""
+    for location in "${possible_locations[@]}"; do
+        if [[ -f "$location" ]]; then
+            found_script="$location"
+            break
+        fi
+    done
+
+    if [[ -n "$found_script" ]]; then
+        # Source the actual function and replace this placeholder
+        if source "$found_script" 2>/dev/null; then
+            # Call the real function now that it's loaded
+            show_revision_cleanup_commands "$@"
+        else
+            # Fallback if sourcing fails
+            printf "\033[1;33m⚠️ Could not load show_revision_cleanup_commands.sh properly.\033[0m\n"
+            printf "\033[1;33m💡 Manual revision cleanup: Use WP-CLI or phpMyAdmin to remove revisions.\033[0m\n"
+        fi
+    else
+        printf "\033[0;31m❌ Error: show_revision_cleanup_commands.sh not found.\033[0m\n"
+        printf "\033[1;33m💡 Tried locations:\033[0m\n"
+        for location in "${possible_locations[@]}"; do
+            printf "    - %s\n" "$location"
+        done
+        printf "\033[1;33m💡 Please ensure show_revision_cleanup_commands.sh is available in one of these locations.\033[0m\n"
+        return 1
+    fi
+}
+
+# Define helper function for conditional revision cleanup during import
+# This function calls show_revision_cleanup_commands when automatic cleanup is skipped
+show_revision_cleanup_if_needed() {
+    # Check if cleanup_revisions variable exists and is not Y/y
+    if [[ "${cleanup_revisions:-}" != [Yy]* ]]; then
+        # Call the external revision cleanup function directly from WordPress directory
+        # This ensures proper detection using WP-CLI from the correct working directory
+        if command -v show_revision_cleanup_commands >/dev/null 2>&1; then
+            show_revision_cleanup_commands
+        else
+            printf "${YELLOW}⚠️ Revision cleanup commands not available. Manual cleanup may be needed.${RESET}\n"
+        fi
+        printf "\n"
+    fi
+}
+
+# Define function to show revision cleanup commands at the end of the process
+# This function is called after stage file proxy setup and before showing local site links
+# It only shows commands in two specific cases:
+# 1. User declined revision cleanup (said "n")
+# 2. Some revisions remain after cleanup attempt
+show_revision_cleanup_at_end() {
+    local should_show_commands=false
+
+    # Check if we should show revision cleanup commands
+    if [[ "$revision_cleanup_declined" == true ]]; then
+        should_show_commands=true
+        printf "\n${CYAN}${BOLD}🗑️ Revision Cleanup Commands${RESET}\n"
+        printf "${YELLOW}Since you declined automatic revision cleanup, here are the MySQL commands to clean up revisions manually:${RESET}\n\n"
+    elif [[ "$revisions_remain_after_cleanup" == true ]]; then
+        should_show_commands=true
+        printf "\n${CYAN}${BOLD}🗑️ Revision Cleanup Commands${RESET}\n"
+        printf "${YELLOW}Some revisions could not be automatically removed. Here are the MySQL commands to complete the cleanup:${RESET}\n\n"
+    fi
+
+    if [[ "$should_show_commands" == true ]]; then
+        # Call the external revision cleanup function directly from WordPress directory
+        # This ensures proper detection using WP-CLI from the correct working directory
+        if command -v show_revision_cleanup_commands >/dev/null 2>&1; then
+            # Ensure proper PATH and environment, and preserve current working directory
+            (
+                # Export a robust PATH to ensure system commands are available
+                export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+                # Export multisite information for the function to use if needed
+                export WP_MULTISITE_DETECTED="$is_multisite"
+                # Ensure we're in the WordPress root directory
+                cd "$wp_root" 2>/dev/null || cd "$(pwd)"
+                # Call the function from the WordPress directory
+                show_revision_cleanup_commands
+            )
+        else
+            printf "${YELLOW}⚠️ Revision cleanup commands not available. Manual cleanup may be needed.${RESET}\n"
+            printf "${CYAN}💡 You can manually remove revisions using:${RESET}\n"
+            printf "   - WP-CLI: ${YELLOW}wp post delete \$(wp post list --post_type=revision --format=ids) --force${RESET}\n"
+            printf "   - phpMyAdmin: ${YELLOW}DELETE FROM wp_posts WHERE post_type = 'revision';${RESET}\n"
+        fi
+        printf "\n"
+    fi
+}
+
 # ===============================================
 # import_wp_db() function definition
 # ===============================================
@@ -123,6 +242,10 @@ import_wp_db() {
   local CYAN="\033[0;36m"
   local BOLD="\033[1m"
   local RESET="\033[0m"
+
+  # 📊 Track revision cleanup status for end-of-process reporting
+  local revision_cleanup_declined=false
+  local revisions_remain_after_cleanup=false
 
   # Determine absolute path to WP-CLI for robust execution in subshells
   local WP_COMMAND
@@ -157,6 +280,7 @@ import_wp_db() {
       # Use printf to naturally trim and return
       printf "%s" "$s"
   }
+
   # 🧹 Define and set up cleanup for temporary log and data files
   local DB_LOG="/tmp/wp_db_import_$$.log"
   local SR_LOG_SINGLE="/tmp/wp_replace_single_$$.log"
@@ -433,6 +557,11 @@ import_wp_db() {
   read -r cleanup_revisions
   cleanup_revisions="${cleanup_revisions:-y}"
 
+  # Track if user declined revision cleanup
+  if [[ "$cleanup_revisions" != [Yy]* ]]; then
+    revision_cleanup_declined=true
+  fi
+
   if [[ "$cleanup_revisions" =~ ^[Yy]$ ]]; then
     printf "${CYAN}🗑️ Clearing ALL Post Revisions (improves search-replace speed)...${RESET}\n"
 
@@ -573,7 +702,9 @@ import_wp_db() {
       if [[ -n "$site_url" ]]; then
         printf "  ${CYAN}🌍 Site %d/%d: %s${RESET}\n" "$site_counter" "$site_count" "$site_url"
         printf "  "
-        clean_revisions_silent "$site_url"
+        if ! clean_revisions_silent "$site_url"; then
+          revisions_remain_after_cleanup=true
+        fi
         printf "\n"
         ((site_counter++))
       fi
@@ -583,7 +714,9 @@ import_wp_db() {
     printf "  ${YELLOW}Step A:${RESET} Processing revisions for the main site\n\n"
     printf "  ${CYAN}🌍 Processing Main Site${RESET}\n"
     printf "  "
-    clean_revisions_silent ""
+    if ! clean_revisions_silent ""; then
+      revisions_remain_after_cleanup=true
+    fi
     printf "\n"
   fi
 
@@ -2172,6 +2305,9 @@ import_wp_db() {
 
     printf "${GREEN}🎉 stage-file-proxy configuration complete!${RESET}\n"
 
+    # Show revision cleanup commands at the end if needed
+    show_revision_cleanup_at_end
+
     # Call the separate function to display local site access links
     show_local_site_links
 
@@ -2179,11 +2315,17 @@ import_wp_db() {
     else
       printf "${YELLOW}ℹ️ Skipping stage-file-proxy setup as requested${RESET}\n"
 
+      # Show revision cleanup commands at the end if needed
+      show_revision_cleanup_at_end
+
       # Call the separate function to display local site access links
       show_local_site_links
     fi
   else
     printf "${YELLOW}ℹ️ Skipping stage-file-proxy configuration (SQL commands not confirmed or not applicable).${RESET}\n"
+
+    # Show revision cleanup commands at the end if needed
+    show_revision_cleanup_at_end
 
     # Call the separate function to display local site access links
     show_local_site_links

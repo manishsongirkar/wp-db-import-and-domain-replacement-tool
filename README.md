@@ -5,7 +5,11 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 ## ✨ Features
 
 - 🔄 **Automatic WordPress installation detection** (single-site or multisite)
-- ⚡ **High-Speed Bulk Post Revision Cleanup** (via xargs)
+- ⚡ **High-Speed Bulk Post Revision Cleanup** (via WP-CLI)
+- 🧹 **Smart MySQL Commands for Manual Revision Cleanup** (when automatic cleanup is skipped)
+  - ✅ **Auto-detects multisite** using WP-CLI site functions
+  - ✅ **Generates clean commands** without problematic OPTIMIZE TABLE statements
+  - ✅ **Works from any directory** with WordPress path detection
 - 🧹 **Intelligent domain sanitization** (removes protocols, trailing slashes)
 - 🌐 **Robust Multi-Domain/Per-Site Mapping** for Multisite
 - 🔁 **Two-pass search-replace** (standard + serialized data)
@@ -61,7 +65,10 @@ import_wp_db
 # 7. Optional: Manual stage-file-proxy setup
 setup_stage_file_proxy
 
-# 8. Optional: To view Single or Multisite links (Local site)
+# 8. Optional: Show MySQL commands for revision cleanup
+show_revision_cleanup_commands
+
+# 9. Optional: To view Single or Multisite links (Local site)
 show_local_site_links
 ```
 
@@ -97,7 +104,7 @@ cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
 | **SQL filename** | Database dump file to import | `vip-db.sql` | Supports absolute and relative paths |
 | **Old Domain** | Production domain to search for | Required input | Auto-sanitized (protocols/slashes removed) |
 | **New Domain** | Local/staging domain to replace with | Required input | Security validation applied |
-| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | High-speed bulk operation using xargs |
+| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | High-speed bulk operation using xargs; MySQL commands shown when skipped |
 | **All tables** | Include non-WordPress prefixed tables | Recommended (Y/n) | Essential for full migrations |
 | **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact operations to be executed |
 | **Enhanced www/non-www handling** | Automatic detection and conditional processing of www variants | Automatic | Smart 2-4 pass system based on source domain |
@@ -121,6 +128,7 @@ cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
 
 3. **🗂️ Pre-Processing Operations**
    - High-speed bulk revision cleanup using xargs (optional, site-by-site for multisite)
+   - MySQL commands for manual revision cleanup (shown when automatic cleanup is skipped)
    - Table scope selection (`--all-tables` option)
    - Dry-run mode selection for safe testing
 
@@ -486,6 +494,28 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 - **Multisite subdomain networks**
 - **Multisite subdirectory networks** (including multi-domain to single-domain migrations)
 
+## 🧹 Enhanced Revision Cleanup System
+
+The tool includes a sophisticated revision cleanup system that automatically generates MySQL commands when automatic cleanup is skipped or unavailable.
+
+### Key Features:
+
+✅ **Smart Auto-Detection:**
+- Automatically detects single site vs multisite installations
+- Uses WP-CLI `wp site list` for robust multisite detection
+- Works even when direct database queries fail
+
+✅ **Clean Command Generation:**
+- Generates safe DELETE commands
+- Individual commands for each subsite in multisite networks
+- Clean output format with blog ID labeling
+
+✅ **Flexible Usage:**
+- Can be run from any directory with WordPress path parameter
+- Integrates seamlessly with main import script
+- Available as standalone function: `show_revision_cleanup_commands`
+- Conditional display when automatic cleanup is skipped
+
 ## Manual MySQL Commands (Fallback Only)
 
 Manual commands are only shown if automatic updates fail:
@@ -534,6 +564,20 @@ show_local_site_links
 ```
 
 **Requirements:** Must be run from within a WordPress directory with WP-CLI installed
+
+### Show Revision Cleanup Commands
+Generate MySQL commands for manual revision cleanup with enhanced auto-detection:
+
+```bash
+# Auto-detect WordPress installation and generate commands
+show_revision_cleanup_commands
+
+# Check for revisions and show commands conditionally
+show_revision_cleanup_if_needed
+
+# Use from any directory with WordPress path
+show_revision_cleanup_if_needed /path/to/wordpress
+```
 
 ## 🛡️ Security Features
 
