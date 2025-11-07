@@ -73,6 +73,30 @@
 # Repository: https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool
 #
 # ===============================================
+# Global Configuration
+# ===============================================
+
+# Get the directory where the script is located
+# Handle both direct execution and sourcing scenarios
+if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # Fallback for edge cases
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
+# Import centralized colors with error handling but don't execute anything
+if [[ -f "$SCRIPT_DIR/colors.sh" ]]; then
+    source "$SCRIPT_DIR/colors.sh" 2>/dev/null
+else
+    # Fallback: define a minimal colors function if colors.sh is not found
+    colors() {
+        echo "Warning: colors.sh not found, using no colors" >&2
+        return 0
+    }
+fi
+
+# ===============================================
 # Source external function files
 # ===============================================
 
@@ -109,17 +133,21 @@ show_local_site_links() {
             # Call the real function now that it's loaded
             show_local_site_links "$@"
         else
+            # Load scoped colors for error messages
+            eval "$(colors)"
             # Fallback if sourcing fails
-            printf "\033[1;33m⚠️ Could not load show_local_site_links.sh properly.\033[0m\n"
-            printf "\033[1;33m💡 You can manually access your WordPress sites using the configured domains.\033[0m\n"
+            printf "${YELLOW}⚠️ Could not load show_local_site_links.sh properly.${RESET}\n"
+            printf "${YELLOW}💡 You can manually access your WordPress sites using the configured domains.${RESET}\n"
         fi
     else
-        printf "\033[0;31m❌ Error: show_local_site_links.sh not found.\033[0m\n"
-        printf "\033[1;33m💡 Tried locations:\033[0m\n"
+        # Load scoped colors for error messages
+        eval "$(colors)"
+        printf "${RED}❌ Error: show_local_site_links.sh not found.${RESET}\n"
+        printf "${YELLOW}💡 Tried locations:${RESET}\n"
         for location in "${possible_locations[@]}"; do
             printf "    - %s\n" "$location"
         done
-        printf "\033[1;33m💡 Please ensure show_local_site_links.sh is available in one of these locations.\033[0m\n"
+        printf "${YELLOW}💡 Please ensure show_local_site_links.sh is available in one of these locations.${RESET}\n"
         return 1
     fi
 }
@@ -156,17 +184,21 @@ show_revision_cleanup_commands() {
             # Call the real function now that it's loaded
             show_revision_cleanup_commands "$@"
         else
+            # Load scoped colors for error messages
+            eval "$(colors)"
             # Fallback if sourcing fails
-            printf "\033[1;33m⚠️ Could not load show_revision_cleanup_commands.sh properly.\033[0m\n"
-            printf "\033[1;33m💡 Manual revision cleanup: Use WP-CLI or phpMyAdmin to remove revisions.\033[0m\n"
+            printf "${YELLOW}⚠️ Could not load show_revision_cleanup_commands.sh properly.${RESET}\n"
+            printf "${YELLOW}💡 Manual revision cleanup: Use WP-CLI or phpMyAdmin to remove revisions.${RESET}\n"
         fi
     else
-        printf "\033[0;31m❌ Error: show_revision_cleanup_commands.sh not found.\033[0m\n"
-        printf "\033[1;33m💡 Tried locations:\033[0m\n"
+        # Load scoped colors for error messages
+        eval "$(colors)"
+        printf "${RED}❌ Error: show_revision_cleanup_commands.sh not found.${RESET}\n"
+        printf "${YELLOW}💡 Tried locations:${RESET}\n"
         for location in "${possible_locations[@]}"; do
             printf "    - %s\n" "$location"
         done
-        printf "\033[1;33m💡 Please ensure show_revision_cleanup_commands.sh is available in one of these locations.\033[0m\n"
+        printf "${YELLOW}💡 Please ensure show_revision_cleanup_commands.sh is available in one of these locations.${RESET}\n"
         return 1
     fi
 }
@@ -235,13 +267,8 @@ show_revision_cleanup_at_end() {
 # import_wp_db() function definition
 # ===============================================
 import_wp_db() {
-  # 🎨 Define colors locally for use within the function scope
-  local GREEN="\033[0;32m"
-  local YELLOW="\033[1;33m"
-  local RED="\033[0;31m"
-  local CYAN="\033[0;36m"
-  local BOLD="\033[1m"
-  local RESET="\033[0m"
+  # Load scoped colors from centralized color management
+  eval "$(colors)"
 
   # ⏱️ Start timer for total execution tracking
   local start_time=$(date +%s)
@@ -2352,7 +2379,7 @@ import_wp_db() {
   local total_minutes=$((total_elapsed / 60))
   local total_seconds=$((total_elapsed % 60))
 
-  printf "\n${CYAN}${BOLD}⏱️ Total Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
+  printf "\n${CYAN}${BOLD}⏱️  Total Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
 
   printf "\n"
 

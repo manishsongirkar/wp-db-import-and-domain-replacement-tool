@@ -3,15 +3,30 @@
 # WordPress Database Revision Cleanup Commands Generator
 # This script generates MySQL commands to remove post revisions
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-RESET='\033[0m'
+# Get the directory where the script is located
+# Handle both direct execution and sourcing scenarios
+if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # Fallback for edge cases
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
+# Import centralized colors with error handling
+if [[ -f "$SCRIPT_DIR/colors.sh" ]]; then
+    source "$SCRIPT_DIR/colors.sh"
+else
+    # Fallback: define a minimal colors function if colors.sh is not found
+    colors() {
+        echo "Warning: colors.sh not found, using no colors" >&2
+        return 0
+    }
+fi
 
 show_revision_cleanup_commands() {
+  # Load scoped colors
+  eval "$(colors)"
+
   printf "\n"
   printf "================================================================\n"
   printf "${CYAN}${BOLD}🧹 MYSQL COMMANDS FOR REVISION CLEANUP${RESET}\n"

@@ -33,6 +33,26 @@
 #
 #   3. Direct function call after sourcing:
 #      show_local_site_links
+
+# Get the directory where the script is located
+# Handle both direct execution and sourcing scenarios
+if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # Fallback for edge cases
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
+# Import centralized colors with error handling
+if [[ -f "$SCRIPT_DIR/colors.sh" ]]; then
+    source "$SCRIPT_DIR/colors.sh"
+else
+    # Fallback: define a minimal colors function if colors.sh is not found
+    colors() {
+        echo "Warning: colors.sh not found, using no colors" >&2
+        return 0
+    }
+fi
 #
 # Supported WordPress Types:
 #   - Single-site installations
@@ -54,13 +74,8 @@
 # This function displays clickable terminal links for WordPress sites
 # It automatically detects single site vs multisite and shows appropriate links
 show_local_site_links() {
-  # 🎨 Define colors for the function
-  local GREEN="\033[0;32m"
-  local YELLOW="\033[1;33m"
-  local RED="\033[0;31m"
-  local CYAN="\033[0;36m"
-  local BOLD="\033[1m"
-  local RESET="\033[0m"
+  # Load scoped colors from centralized color management
+  eval "$(colors)"
 
   # 🔍 Locate WordPress root by searching for wp-config.php
   local wp_root
