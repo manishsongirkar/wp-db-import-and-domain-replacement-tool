@@ -39,15 +39,28 @@ cd ~
 git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
 
 # 2. Add to your shell configuration (~/.bashrc or ~/.zshrc)
+# For zsh:
 echo '# WordPress Database Import Tool' >> ~/.zshrc
 echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then' >> ~/.zshrc
 echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.zshrc
 echo 'fi' >> ~/.zshrc
 
-# 3. Optional: Add Stage File Proxy manual setup tool
+# For bash:
+echo '# WordPress Database Import Tool' >> ~/.bashrc
+echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then' >> ~/.bashrc
+echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.bashrc
+echo 'fi' >> ~/.bashrc
+
+# 3. Add Stage File Proxy manual setup tool
+# For zsh:
 echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
 echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
 echo 'fi' >> ~/.zshrc
+
+# For bash:
+echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.bashrc
+echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.bashrc
+echo 'fi' >> ~/.bashrc
 
 # 4. Reload your shell configuration
 source ~/.zshrc
