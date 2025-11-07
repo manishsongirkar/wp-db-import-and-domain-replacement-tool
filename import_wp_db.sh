@@ -918,7 +918,7 @@ import_wp_db() {
 
       # --- Pass 2 Execution (Standard replacement for www variant - only if source has www) ---
       if [[ "$has_www" == true ]]; then
-          printf "[Pass 3] Updating standard domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_www" "$sr_new"
+          printf "[Pass 2] Updating standard domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_www" "$sr_new"
 
           # Rebuild command args for pass 2 (www variant)
           cmd_args=("search-replace" "$sr1_old_www" "$sr_new")
@@ -950,7 +950,7 @@ import_wp_db() {
       # --- Serialized Data Pass Execution (Conditional numbering based on www presence) ---
       local serialized_pass_num
       if [[ "$has_www" == true ]]; then
-          serialized_pass_num="2"
+          serialized_pass_num="3"
       else
           serialized_pass_num="2"
       fi
