@@ -43,16 +43,38 @@ else
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 
-# Import centralized colors with error handling
-if [[ -f "$SCRIPT_DIR/colors.sh" ]]; then
-    source "$SCRIPT_DIR/colors.sh"
+# ================================================================
+# Load Module System (if not already loaded)
+# ================================================================
+# Check if modules are already loaded by parent script
+if [[ -z "${WP_IMPORT_MODULES_LOADED:-}" ]]; then
+    MODULE_LOADER="$SCRIPT_DIR/lib/module_loader.sh"
+    if [[ ! -f "$MODULE_LOADER" ]]; then
+        echo "❌ Error: Module loader not found at:"
+        echo "   $MODULE_LOADER"
+        echo "💡 Please ensure 'lib/module_loader.sh' exists and is readable."
+        exit 1
+    fi
+
+    # Load module loader safely and silently
+    if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
+        echo "❌ Failed to load module system."
+        echo "Check: $MODULE_LOADER"
+        echo "Error log saved to /tmp/wp_import_errors.log"
+        exit 1
+    fi
+
+    # Load all modules silently
+    if ! load_modules >/dev/null 2>&1; then
+        echo "❌ Error: Failed to load core modules."
+        exit 1
+    fi
 else
-    # Fallback: define a minimal colors function if colors.sh is not found
-    colors() {
-        echo "Warning: colors.sh not found, using no colors" >&2
-        return 0
-    }
+    # Modules already loaded by parent script, just ensure colors are available
+    # Colors are automatically initialized by utils module
+    :  # No-op command
 fi
+
 #
 # Supported WordPress Types:
 #   - Single-site installations
@@ -74,9 +96,6 @@ fi
 # This function displays clickable terminal links for WordPress sites
 # It automatically detects single site vs multisite and shows appropriate links
 show_local_site_links() {
-  # Load scoped colors from centralized color management
-  eval "$(colors)"
-
   # 🔍 Locate WordPress root by searching for wp-config.php
   local wp_root
   wp_root=$(pwd)

@@ -11,6 +11,7 @@
 # System files
 .DS_Store
 Thumbs.db
+temp/
 
 # WordPress CLI cache
 .wp-cli/

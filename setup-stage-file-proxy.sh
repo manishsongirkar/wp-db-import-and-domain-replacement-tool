@@ -22,15 +22,36 @@ else
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 
-# Import centralized colors with error handling
-if [[ -f "$SCRIPT_DIR/colors.sh" ]]; then
-    source "$SCRIPT_DIR/colors.sh"
+# ================================================================
+# Load Module System (if not already loaded)
+# ================================================================
+# Check if modules are already loaded by parent script
+if [[ -z "${WP_IMPORT_MODULES_LOADED:-}" ]]; then
+    MODULE_LOADER="$SCRIPT_DIR/lib/module_loader.sh"
+    if [[ ! -f "$MODULE_LOADER" ]]; then
+        echo "❌ Error: Module loader not found at:"
+        echo "   $MODULE_LOADER"
+        echo "💡 Please ensure 'lib/module_loader.sh' exists and is readable."
+        exit 1
+    fi
+
+    # Load module loader safely and silently
+    if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
+        echo "❌ Failed to load module system."
+        echo "Check: $MODULE_LOADER"
+        echo "Error log saved to /tmp/wp_import_errors.log"
+        exit 1
+    fi
+
+    # Load all modules silently
+    if ! load_modules >/dev/null 2>&1; then
+        echo "❌ Error: Failed to load core modules."
+        exit 1
+    fi
 else
-    # Fallback: define a minimal colors function if colors.sh is not found
-    colors() {
-        echo "Warning: colors.sh not found, using no colors" >&2
-        return 0
-    }
+    # Modules already loaded by parent script, just ensure colors are available
+    # Colors are automatically initialized by utils module
+    :  # No-op command
 fi
 
 # Function to sanitize and validate domain input (Updated for new plugin structure)
@@ -112,7 +133,7 @@ sanitize_domain() {
 # Function to get and validate domain input interactively
 get_validated_domain() {
     # Load scoped colors
-    eval "$(colors)"
+    # Colors already available from utils
 
     local prompt="$1"
     local domain
@@ -198,7 +219,7 @@ get_validated_domain() {
 # Function to configure Stage File Proxy plugin settings
 configure_sfp() {
     # Load scoped colors
-    eval "$(colors)"
+    # Colors already available from utils
 
     local domain="$1"
     local mode="${2:-header}"  # Default mode is 'header' as per new plugin
@@ -226,7 +247,7 @@ configure_sfp() {
 
 setup_stage_file_proxy() {
     # Load scoped colors
-    eval "$(colors)"
+    # Colors already available from utils
 
     printf "${CYAN}${BOLD}=== Stage File Proxy Setup ===${RESET}\n"
     echo ""
@@ -350,7 +371,7 @@ setup_stage_file_proxy() {
 
 setup_single_site() {
     # Load scoped colors
-    eval "$(colors)"
+    # Colors already available from utils
 
     echo ""
     printf "${CYAN}${BOLD}=== Setting up for Single Site ===${RESET}\n"
@@ -392,7 +413,7 @@ setup_single_site() {
 }
 
 setup_multisite() {
-    eval "$(colors)"
+    # Colors already available from utils
     printf "\n"
     printf "${CYAN}=== Setting up for Multisite ===$NC\n"
 
@@ -448,7 +469,7 @@ setup_multisite() {
 
 # Function to display current configuration
 show_stage_file_proxy_config() {
-    eval "$(colors)"
+    # Colors already available from utils
     printf "${CYAN}=== Current Stage File Proxy Configuration ===$NC\n"
 
     local is_multisite
@@ -485,7 +506,7 @@ show_stage_file_proxy_config() {
 
 # Function to quickly set all sites to the same domain (for multisite)
 bulk_configure_multisite() {
-    eval "$(colors)"
+    # Colors already available from utils
     local is_multisite
     is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
 
@@ -523,7 +544,7 @@ bulk_configure_multisite() {
 
 # Help function
 show_help() {
-    eval "$(colors)"
+    # Colors already available from utils
     printf "${CYAN}Stage File Proxy Setup Functions (Compatible with new plugin v101+):$NC\n"
     printf "\n"
     printf "${GREEN}setup_stage_file_proxy$NC        - Main setup function (interactive)\n"
@@ -552,7 +573,7 @@ show_help() {
 # If script is run directly (not sourced), show help
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     # Import colors for direct execution
-    eval "$(colors)" 2>/dev/null || true
+    # Colors already available from utils
 
     printf "${CYAN}This script contains functions for setting up Stage File Proxy.$NC\n"
     printf "Source this script to use the functions:\n"

@@ -85,15 +85,29 @@ else
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 
-# Import centralized colors with error handling but don't execute anything
-if [[ -f "$SCRIPT_DIR/colors.sh" ]]; then
-    source "$SCRIPT_DIR/colors.sh" 2>/dev/null
-else
-    # Fallback: define a minimal colors function if colors.sh is not found
-    colors() {
-        echo "Warning: colors.sh not found, using no colors" >&2
-        return 0
-    }
+# ================================================================
+# Load Module System
+# ================================================================
+MODULE_LOADER="$SCRIPT_DIR/lib/module_loader.sh"
+if [[ ! -f "$MODULE_LOADER" ]]; then
+    echo "${RED}❌ Error: Module loader not found at:$RESET"
+    echo "   $MODULE_LOADER"
+    echo "💡 Please ensure 'lib/module_loader.sh' exists and is readable."
+    exit 1
+fi
+
+# Load module loader safely and silently
+if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
+    echo "${RED}❌ Failed to load module system.${RESET}"
+    echo "Check: $MODULE_LOADER"
+    echo "Error log saved to /tmp/wp_import_errors.log"
+    exit 1
+fi
+
+# Load all modules silently
+if ! load_modules >/dev/null 2>&1; then
+    echo "${RED}❌ Error: Failed to load core modules.${RESET}"
+    exit 1
 fi
 
 # ===============================================
@@ -133,15 +147,11 @@ show_local_site_links() {
             # Call the real function now that it's loaded
             show_local_site_links "$@"
         else
-            # Load scoped colors for error messages
-            eval "$(colors)"
             # Fallback if sourcing fails
             printf "${YELLOW}⚠️ Could not load show_local_site_links.sh properly.${RESET}\n"
             printf "${YELLOW}💡 You can manually access your WordPress sites using the configured domains.${RESET}\n"
         fi
     else
-        # Load scoped colors for error messages
-        eval "$(colors)"
         printf "${RED}❌ Error: show_local_site_links.sh not found.${RESET}\n"
         printf "${YELLOW}💡 Tried locations:${RESET}\n"
         for location in "${possible_locations[@]}"; do
@@ -184,15 +194,11 @@ show_revision_cleanup_commands() {
             # Call the real function now that it's loaded
             show_revision_cleanup_commands "$@"
         else
-            # Load scoped colors for error messages
-            eval "$(colors)"
             # Fallback if sourcing fails
             printf "${YELLOW}⚠️ Could not load show_revision_cleanup_commands.sh properly.${RESET}\n"
             printf "${YELLOW}💡 Manual revision cleanup: Use WP-CLI or phpMyAdmin to remove revisions.${RESET}\n"
         fi
     else
-        # Load scoped colors for error messages
-        eval "$(colors)"
         printf "${RED}❌ Error: show_revision_cleanup_commands.sh not found.${RESET}\n"
         printf "${YELLOW}💡 Tried locations:${RESET}\n"
         for location in "${possible_locations[@]}"; do
@@ -267,64 +273,62 @@ show_revision_cleanup_at_end() {
 # Utility Functions
 # ===============================================
 
-# 📊 Display file size in human-readable format
+# 📊 Display file size in human-readable format - COMMENTED OUT - Available in lib/core/utils.sh
 # Usage: show_file_size "/path/to/file"
 # Returns: Prints formatted file size (TB, GB, MB, KB)
-show_file_size() {
-    local file_path="$1"
-
-    if [[ -z "$file_path" ]]; then
-        printf "${RED}❌ Error: File path required${RESET}\n"
-        return 1
-    fi
-
-    if [[ ! -f "$file_path" ]]; then
-        printf "${RED}❌ Error: File not found${RESET}\n"
-        return 1
-    fi
-
-    local file_size_bytes file_size_human
-    file_size_bytes=$(stat -f%z "$file_path" 2>/dev/null || stat -c%s "$file_path" 2>/dev/null)
-
-    if [[ -n "$file_size_bytes" ]]; then
-        # Convert bytes to human-readable format (TB, GB, MB, KB only)
-        if command -v numfmt >/dev/null 2>&1; then
-            file_size_human=$(numfmt --to=iec-i --suffix=B "$file_size_bytes")
-        elif [[ "$file_size_bytes" -gt 1099511627776 ]]; then
-            file_size_human=$(awk "BEGIN {printf \"%.2f TB\", $file_size_bytes/1024/1024/1024/1024}")
-        elif [[ "$file_size_bytes" -gt 1073741824 ]]; then
-            file_size_human=$(awk "BEGIN {printf \"%.2f GB\", $file_size_bytes/1024/1024/1024}")
-        elif [[ "$file_size_bytes" -gt 1048576 ]]; then
-            file_size_human=$(awk "BEGIN {printf \"%.2f MB\", $file_size_bytes/1024/1024}")
-        elif [[ "$file_size_bytes" -gt 1024 ]]; then
-            file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
-        else
-            file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
-        fi
-        printf "${CYAN}📊 File size:${RESET} %s\n" "$file_size_human"
-    else
-        printf "${YELLOW}⚠️ Could not determine file size${RESET}\n"
-    fi
-}
+# show_file_size() {
+#     local file_path="$1"
+#
+#     if [[ -z "$file_path" ]]; then
+#         printf "${RED}❌ Error: File path required${RESET}\n"
+#         return 1
+#     fi
+#
+#     if [[ ! -f "$file_path" ]]; then
+#         printf "${RED}❌ Error: File not found${RESET}\n"
+#         return 1
+#     fi
+#
+#     local file_size_bytes file_size_human
+#     file_size_bytes=$(stat -f%z "$file_path" 2>/dev/null || stat -c%s "$file_path" 2>/dev/null)
+#
+#     if [[ -n "$file_size_bytes" ]]; then
+#         # Convert bytes to human-readable format (TB, GB, MB, KB only)
+#         if command -v numfmt >/dev/null 2>&1; then
+#             file_size_human=$(numfmt --to=iec-i --suffix=B "$file_size_bytes")
+#         elif [[ "$file_size_bytes" -gt 1099511627776 ]]; then
+#             file_size_human=$(awk "BEGIN {printf \"%.2f TB\", $file_size_bytes/1024/1024/1024/1024}")
+#         elif [[ "$file_size_bytes" -gt 1073741824 ]]; then
+#             file_size_human=$(awk "BEGIN {printf \"%.2f GB\", $file_size_bytes/1024/1024/1024}")
+#         elif [[ "$file_size_bytes" -gt 1048576 ]]; then
+#             file_size_human=$(awk "BEGIN {printf \"%.2f MB\", $file_size_bytes/1024/1024}")
+#         elif [[ "$file_size_bytes" -gt 1024 ]]; then
+#             file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
+#         else
+#             file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
+#         fi
+#         printf "${CYAN}📊 File size:${RESET} %s\n" "$file_size_human"
+#     else
+#         printf "${YELLOW}⚠️ Could not determine file size${RESET}\n"
+#     fi
+# }
 
 # ===============================================
 # import_wp_db() function definition
 # ===============================================
 import_wp_db() {
-  # Load scoped colors from centralized color management
-  eval "$(colors)"
 
   # ⏱️ Start timer for total execution tracking
   local start_time=$(date +%s)
 
-  # Helper function to display execution time before early exit
-  display_execution_time() {
-    local end_time=$(date +%s)
-    local total_elapsed=$((end_time - start_time))
-    local total_minutes=$((total_elapsed / 60))
-    local total_seconds=$((total_elapsed % 60))
-    printf "\n${CYAN}${BOLD}⏱️ Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
-  }
+  # Helper function to display execution time before early exit - COMMENTED OUT - Available in lib/core/utils.sh
+  # display_execution_time() {
+  #   local end_time=$(date +%s)
+  #   local total_elapsed=$((end_time - start_time))
+  #   local total_minutes=$((total_elapsed / 60))
+  #   local total_seconds=$((total_elapsed % 60))
+  #   printf "\n${CYAN}${BOLD}⏱️ Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
+  # }
 
   # 📊 Track revision cleanup status for end-of-process reporting
   local revision_cleanup_declined=false
@@ -336,7 +340,7 @@ import_wp_db() {
 
   if [[ -z "$WP_COMMAND" ]]; then
     printf "${RED}❌ WP-CLI not found in PATH. Exiting.${RESET}\n"
-    display_execution_time
+    display_execution_time "$start_time"
     return 1
   fi
 
@@ -355,15 +359,15 @@ import_wp_db() {
       )
   }
 
-  # Utility function to clean strings (removes leading/trailing whitespace/CR/LF)
-  clean_string() {
-      local s="$1"
-      # Only remove carriage returns and newlines - keep it simple
-      s="${s//$'\r'/}"
-      s="${s//$'\n'/}"
-      # Use printf to naturally trim and return
-      printf "%s" "$s"
-  }
+  # Utility function to clean strings (removes leading/trailing whitespace/CR/LF) - COMMENTED OUT - Available in lib/core/utils.sh
+  # clean_string() {
+  #     local s="$1"
+  #     # Only remove carriage returns and newlines - keep it simple
+  #     s="${s//$'\r'/}"
+  #     s="${s//$'\n'/}"
+  #     # Use printf to naturally trim and return
+  #     printf "%s" "$s"
+  # }
 
   # 🧹 Define and set up cleanup for temporary log and data files
   local DB_LOG="/tmp/wp_db_import_$$.log"
@@ -400,30 +404,30 @@ import_wp_db() {
   }
   trap cleanup EXIT
 
-  # 🌀 Spinner function with elapsed time for long operations
-  show_spinner() {
-    local pid=$1
-    local message=$2
-    local delay=0.15
-    local spin='|/-\'
-    local start_time=$(date +%s)
-
-    printf "  %s " "$message"
-    while ps -p "$pid" > /dev/null 2>&1; do
-      for i in $(seq 0 3); do
-        local current_time=$(date +%s)
-        local elapsed=$((current_time - start_time))
-        local minutes=$((elapsed / 60))
-        local seconds=$((elapsed % 60))
-
-        printf "\r  %s ${CYAN}%s${RESET} (%02d:%02d)" "$message" "${spin:$i:1}" "$minutes" "$seconds"
-        sleep $delay
-      done
-    done
-    printf "\r"
-    printf "%s" "                                                                                                   " # Clear the line
-    printf "\r"
-  }
+  # 🌀 Spinner function with elapsed time for long operations - COMMENTED OUT - Available in lib/core/utils.sh
+  # show_spinner() {
+  #   local pid=$1
+  #   local message=$2
+  #   local delay=0.15
+  #   local spin='|/-\'
+  #   local start_time=$(date +%s)
+  #
+  #   printf "  %s " "$message"
+  #   while ps -p "$pid" > /dev/null 2>&1; do
+  #     for i in $(seq 0 3); do
+  #       local current_time=$(date +%s)
+  #       local elapsed=$((current_time - start_time))
+  #       local minutes=$((elapsed / 60))
+  #       local seconds=$((elapsed % 60))
+  #
+  #       printf "\r  %s ${CYAN}%s${RESET} (%02d:%02d)" "$message" "${spin:$i:1}" "$minutes" "$seconds"
+  #       sleep $delay
+  #     done
+  #   done
+  #   printf "\r"
+  #   printf "%s" "                                                                                                   " # Clear the line
+  #   printf "\r"
+  # }
 
   printf "\n${CYAN}${BOLD}🔧 WordPress Database Import & Domain Replace Tool${RESET}\n"
   printf "---------------------------------------------------\n\n"
@@ -443,7 +447,7 @@ import_wp_db() {
 
   if [[ ! -f "$wp_root/wp-config.php" ]]; then
     printf "${RED}❌ WordPress root not found (wp-config.php missing).${RESET}\n"
-    display_execution_time
+    display_execution_time "$start_time"
     return 1
   fi
 
@@ -508,6 +512,8 @@ import_wp_db() {
   printf "\n"
 
   # 🧹 Sanitize domain inputs (remove protocols and trailing slashes)
+  # NOTE: This function was not in the original utils.sh list but is being used
+  # Consider moving to lib/core/utils.sh if needed for modularity
   sanitize_domain() {
     local domain="$1"
 
@@ -570,7 +576,7 @@ import_wp_db() {
 
   if [[ $? -ne 0 ]]; then
     printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$DB_LOG"
-    display_execution_time
+    display_execution_time "$start_time"
     return 1
   fi
 

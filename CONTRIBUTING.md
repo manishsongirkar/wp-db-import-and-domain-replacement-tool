@@ -402,7 +402,10 @@ Understanding the project structure helps with contributions:
 ```
 wp-db-import-and-domain-replacement-tool/
 ├── import_wp_db.sh                    # Main script with core functionality
-├── colors.sh                         # Centralized color management
+├── lib/                              # Modular library system
+│   ├── module_loader.sh              # Central module loading system
+│   └── core/
+│       └── utils.sh                  # Core utilities (includes color management)
 ├── setup-stage-file-proxy.sh         # Stage File Proxy plugin setup
 ├── show_local_site_links.sh          # Display local site access links
 ├── show_revision_cleanup_commands.sh # Generate MySQL cleanup commands
@@ -415,7 +418,8 @@ wp-db-import-and-domain-replacement-tool/
 ### Core Files
 
 - **`import_wp_db.sh`** - Main entry point, contains the primary `import_wp_db()` function
-- **`colors.sh`** - Color definitions used across all scripts
+- **`lib/core/utils.sh`** - Core utilities including color management (`init_colors()` function)
+- **`lib/module_loader.sh`** - Central module loading system for modular architecture
 - **Utility scripts** - Modular functions for specific tasks
 
 ### Adding New Features
