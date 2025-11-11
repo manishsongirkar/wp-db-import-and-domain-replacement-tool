@@ -270,65 +270,12 @@ show_revision_cleanup_at_end() {
 }
 
 # ===============================================
-# Utility Functions
-# ===============================================
-
-# 📊 Display file size in human-readable format - COMMENTED OUT - Available in lib/core/utils.sh
-# Usage: show_file_size "/path/to/file"
-# Returns: Prints formatted file size (TB, GB, MB, KB)
-# show_file_size() {
-#     local file_path="$1"
-#
-#     if [[ -z "$file_path" ]]; then
-#         printf "${RED}❌ Error: File path required${RESET}\n"
-#         return 1
-#     fi
-#
-#     if [[ ! -f "$file_path" ]]; then
-#         printf "${RED}❌ Error: File not found${RESET}\n"
-#         return 1
-#     fi
-#
-#     local file_size_bytes file_size_human
-#     file_size_bytes=$(stat -f%z "$file_path" 2>/dev/null || stat -c%s "$file_path" 2>/dev/null)
-#
-#     if [[ -n "$file_size_bytes" ]]; then
-#         # Convert bytes to human-readable format (TB, GB, MB, KB only)
-#         if command -v numfmt >/dev/null 2>&1; then
-#             file_size_human=$(numfmt --to=iec-i --suffix=B "$file_size_bytes")
-#         elif [[ "$file_size_bytes" -gt 1099511627776 ]]; then
-#             file_size_human=$(awk "BEGIN {printf \"%.2f TB\", $file_size_bytes/1024/1024/1024/1024}")
-#         elif [[ "$file_size_bytes" -gt 1073741824 ]]; then
-#             file_size_human=$(awk "BEGIN {printf \"%.2f GB\", $file_size_bytes/1024/1024/1024}")
-#         elif [[ "$file_size_bytes" -gt 1048576 ]]; then
-#             file_size_human=$(awk "BEGIN {printf \"%.2f MB\", $file_size_bytes/1024/1024}")
-#         elif [[ "$file_size_bytes" -gt 1024 ]]; then
-#             file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
-#         else
-#             file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
-#         fi
-#         printf "${CYAN}📊 File size:${RESET} %s\n" "$file_size_human"
-#     else
-#         printf "${YELLOW}⚠️ Could not determine file size${RESET}\n"
-#     fi
-# }
-
-# ===============================================
 # import_wp_db() function definition
 # ===============================================
 import_wp_db() {
 
   # ⏱️ Start timer for total execution tracking
   local start_time=$(date +%s)
-
-  # Helper function to display execution time before early exit - COMMENTED OUT - Available in lib/core/utils.sh
-  # display_execution_time() {
-  #   local end_time=$(date +%s)
-  #   local total_elapsed=$((end_time - start_time))
-  #   local total_minutes=$((total_elapsed / 60))
-  #   local total_seconds=$((total_elapsed % 60))
-  #   printf "\n${CYAN}${BOLD}⏱️ Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
-  # }
 
   # 📊 Track revision cleanup status for end-of-process reporting
   local revision_cleanup_declined=false
@@ -358,16 +305,6 @@ import_wp_db() {
           "$WP_COMMAND" "$@"
       )
   }
-
-  # Utility function to clean strings (removes leading/trailing whitespace/CR/LF) - COMMENTED OUT - Available in lib/core/utils.sh
-  # clean_string() {
-  #     local s="$1"
-  #     # Only remove carriage returns and newlines - keep it simple
-  #     s="${s//$'\r'/}"
-  #     s="${s//$'\n'/}"
-  #     # Use printf to naturally trim and return
-  #     printf "%s" "$s"
-  # }
 
   # 🧹 Define and set up cleanup for temporary log and data files
   local DB_LOG="/tmp/wp_db_import_$$.log"
@@ -403,31 +340,6 @@ import_wp_db() {
     find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
   }
   trap cleanup EXIT
-
-  # 🌀 Spinner function with elapsed time for long operations - COMMENTED OUT - Available in lib/core/utils.sh
-  # show_spinner() {
-  #   local pid=$1
-  #   local message=$2
-  #   local delay=0.15
-  #   local spin='|/-\'
-  #   local start_time=$(date +%s)
-  #
-  #   printf "  %s " "$message"
-  #   while ps -p "$pid" > /dev/null 2>&1; do
-  #     for i in $(seq 0 3); do
-  #       local current_time=$(date +%s)
-  #       local elapsed=$((current_time - start_time))
-  #       local minutes=$((elapsed / 60))
-  #       local seconds=$((elapsed % 60))
-  #
-  #       printf "\r  %s ${CYAN}%s${RESET} (%02d:%02d)" "$message" "${spin:$i:1}" "$minutes" "$seconds"
-  #       sleep $delay
-  #     done
-  #   done
-  #   printf "\r"
-  #   printf "%s" "                                                                                                   " # Clear the line
-  #   printf "\r"
-  # }
 
   printf "\n${CYAN}${BOLD}🔧 WordPress Database Import & Domain Replace Tool${RESET}\n"
   printf "---------------------------------------------------\n\n"
