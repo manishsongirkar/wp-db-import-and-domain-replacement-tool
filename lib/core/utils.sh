@@ -208,6 +208,51 @@ show_file_size() {
 }
 
 # -----------------------------------------------
+# Detect preferred protocol for a URL (http or https)
+# -----------------------------------------------
+detect_protocol() {
+    local url="$1"
+
+    # If URL already has a protocol, preserve it
+    if [[ "$url" =~ ^https:// ]]; then
+        echo "https://"
+    elif [[ "$url" =~ ^http:// ]]; then
+        echo "http://"
+    else
+        # Default to https for modern local development
+        echo "https://"
+    fi
+}
+
+# -----------------------------------------------
+# Execute WP-CLI commands safely
+# -----------------------------------------------
+execute_wp_cli() {
+    # Check if WP_COMMAND is set
+    if [[ -z "${WP_COMMAND:-}" ]]; then
+        local wp_path
+        wp_path=$(command -v wp)
+        if [[ -z "$wp_path" ]]; then
+            printf "${RED}❌ WP-CLI not found in PATH. Please install WP-CLI or check your PATH.${RESET}\n" >&2
+            return 1
+        fi
+        WP_COMMAND="$wp_path"
+        export WP_COMMAND
+    fi
+
+    # Arguments: WP-CLI command parts (e.g., core is-installed)
+    # Execution environment: Export a robust PATH and run the command
+    (
+        # Prepend common paths (Homebrew, /usr/local) to the current PATH
+        export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        # Disable OPcache warnings that can interfere with output parsing
+        export PHP_INI_SCAN_DIR=""
+        # Execute the command passed as arguments
+        "$WP_COMMAND" "$@"
+    )
+}
+
+# -----------------------------------------------
 # Check if script is sourced
 # -----------------------------------------------
 is_sourced() {
@@ -226,6 +271,8 @@ if is_sourced; then
         export -f calculate_elapsed_time
         export -f display_execution_time
         export -f show_file_size
+        export -f detect_protocol
+        export -f execute_wp_cli
         export -f is_sourced
     } 2>/dev/null
 fi

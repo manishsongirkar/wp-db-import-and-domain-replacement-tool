@@ -282,7 +282,6 @@ import_wp_db() {
   local revisions_remain_after_cleanup=false
 
   # Determine absolute path to WP-CLI for robust execution in subshells
-  local WP_COMMAND
   WP_COMMAND=$(command -v wp)
 
   if [[ -z "$WP_COMMAND" ]]; then
@@ -291,20 +290,8 @@ import_wp_db() {
     return 1
   fi
 
-  # ⚙️ HELPER FUNCTION: Safely execute WP-CLI commands
-  # Ensures common environment variables and paths are set for reliable execution.
-  execute_wp_cli() {
-      # Arguments: WP-CLI command parts (e.g., core is-installed)
-      # Execution environment: Export a robust PATH and run the command
-      (
-          # Prepend common paths (Homebrew, /usr/local) to the current PATH
-          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          # Disable OPcache warnings that can interfere with output parsing
-          export PHP_INI_SCAN_DIR=""
-          # Execute the command passed as arguments
-          "$WP_COMMAND" "$@"
-      )
-  }
+  # Export WP_COMMAND for use in utility functions
+  export WP_COMMAND
 
   # 🧹 Define and set up cleanup for temporary log and data files
   local DB_LOG="/tmp/wp_db_import_$$.log"

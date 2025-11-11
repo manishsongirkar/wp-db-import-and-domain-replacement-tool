@@ -120,25 +120,19 @@ show_local_site_links() {
   fi
 
   # 🧠 Check WP-CLI availability with enhanced PATH
-  local WP_COMMAND
-  # Ensure we have a robust PATH that includes common WP-CLI installation locations
-  export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-  WP_COMMAND=$(command -v wp)
-  if [[ -z "$WP_COMMAND" ]]; then
-    printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"
-    printf "${YELLOW}💡 Please install WP-CLI to use this function.${RESET}\n"
-    return 1
+  # Use global WP_COMMAND if available, otherwise detect it
+  if [[ -z "${WP_COMMAND:-}" ]]; then
+    # Ensure we have a robust PATH that includes common WP-CLI installation locations
+    export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+    WP_COMMAND=$(command -v wp)
+    if [[ -z "$WP_COMMAND" ]]; then
+      printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"
+      printf "${YELLOW}💡 Please install WP-CLI to use this function.${RESET}\n"
+      return 1
+    fi
+    # Export for use in execute_wp_cli (needed because execute_wp_cli runs in a subshell)
+    export WP_COMMAND
   fi
-
-  # ⚙️ HELPER FUNCTION: Safely execute WP-CLI commands with enhanced PATH
-  execute_wp_cli() {
-      (
-          # Ensure robust PATH with common WP-CLI locations
-          export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-          export PHP_INI_SCAN_DIR=""
-          "$WP_COMMAND" "$@"
-      )
-  }
 
   # 🧱 Verify WordPress installation integrity
   if ! execute_wp_cli core is-installed &>/dev/null; then
@@ -186,6 +180,11 @@ show_local_site_links() {
   printf "================================================================\n\n"
 
   if [[ "$is_multisite" == "yes" ]]; then
+    # Store current shell options
+    local shell_options="$-"
+
+    set +x +v
+
     printf "${GREEN}✅ Your WordPress Multisite is ready:${RESET}\n\n"
 
     # Get the current site URL to determine the local domain pattern
@@ -219,13 +218,16 @@ show_local_site_links() {
             continue
           fi
 
-          # Clean the site URL
+          local protocol=""
+          protocol=$(detect_protocol "$site_url")
+
+          # Clean the site URL but preserve protocol preference
           local clean_site_url="$site_url"
           clean_site_url="${clean_site_url#http://}"
           clean_site_url="${clean_site_url#https://}"
           clean_site_url="${clean_site_url%/}"
 
-          local clickable_url="https://$clean_site_url"
+          local clickable_url="${protocol}${clean_site_url}"
 
           # Mark main site
           if [[ "$blog_id" == "$main_site_id" ]]; then
@@ -247,6 +249,9 @@ show_local_site_links() {
       printf "${YELLOW}⚠️ Could not detect site URLs. Please check your WordPress configuration.${RESET}\n"
     fi
 
+    if [[ "$shell_options" == *x* ]]; then set -x; fi
+    if [[ "$shell_options" == *v* ]]; then set -v; fi
+
   else
     printf "${GREEN}✅ Your WordPress Single Site is ready:${RESET}\n\n"
 
@@ -255,14 +260,17 @@ show_local_site_links() {
     site_url=$(execute_wp_cli option get siteurl 2>/dev/null || echo "")
 
     if [[ -n "$site_url" ]]; then
-      # Clean the domain and ensure it has a protocol for clickable links
+      local protocol=""
+      protocol=$(detect_protocol "$site_url")
+
+      # Clean the domain but preserve protocol preference
       local clean_site_url="$site_url"
       clean_site_url="${clean_site_url#http://}"
       clean_site_url="${clean_site_url#https://}"
       clean_site_url="${clean_site_url%/}"
 
-      local frontend_url="http://$clean_site_url"
-      local admin_url="http://$clean_site_url/wp-admin"
+      local frontend_url="${protocol}${clean_site_url}"
+      local admin_url="${protocol}${clean_site_url}/wp-admin"
 
       printf "  🏠 ${BOLD}Frontend:${RESET} \033]8;;%s\033\\%s\033]8;;\033\\" "$frontend_url" "$frontend_url"
       printf "\n"
