@@ -1,0 +1,28 @@
+# Temporary files
+*.tmp
+*.log
+*.cache
+*.bak
+*.orig
+*~
+.#*
+#*#
+
+# System files
+.DS_Store
+Thumbs.db
+
+# WordPress CLI cache
+.wp-cli/
+
+# WordPress database files
+*.sql
+*.sql.gz
+
+# Runtime logs
+wp_*_*.log
+wp_*_*.csv
+
+# Local development
+.vscode/
+.idea/

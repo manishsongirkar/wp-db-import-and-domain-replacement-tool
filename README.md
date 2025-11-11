@@ -36,7 +36,7 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 ```bash
 # 1. Clone repository into your main user directory, where your `.bashrc` or `.zshrc` file is located:
 cd ~
-git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
+git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git ~/wp-db-import-and-domain-replacement-tool
 
 # 2. Add to your shell configuration (~/.bashrc or ~/.zshrc)
 # For zsh:
@@ -53,11 +53,13 @@ echo 'fi' >> ~/.bashrc
 
 # 3. Add Stage File Proxy manual setup tool
 # For zsh:
+echo '# Manual Stage File Proxy plugin setup' >> ~/.zshrc
 echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
 echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
 echo 'fi' >> ~/.zshrc
 
 # For bash:
+echo '# Manual Stage File Proxy plugin setup' >> ~/.zshrc
 echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.bashrc
 echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.bashrc
 echo 'fi' >> ~/.bashrc
