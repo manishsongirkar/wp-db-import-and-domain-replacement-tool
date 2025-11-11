@@ -264,6 +264,50 @@ show_revision_cleanup_at_end() {
 }
 
 # ===============================================
+# Utility Functions
+# ===============================================
+
+# 📊 Display file size in human-readable format
+# Usage: show_file_size "/path/to/file"
+# Returns: Prints formatted file size (TB, GB, MB, KB)
+show_file_size() {
+    local file_path="$1"
+
+    if [[ -z "$file_path" ]]; then
+        printf "${RED}❌ Error: File path required${RESET}\n"
+        return 1
+    fi
+
+    if [[ ! -f "$file_path" ]]; then
+        printf "${RED}❌ Error: File not found${RESET}\n"
+        return 1
+    fi
+
+    local file_size_bytes file_size_human
+    file_size_bytes=$(stat -f%z "$file_path" 2>/dev/null || stat -c%s "$file_path" 2>/dev/null)
+
+    if [[ -n "$file_size_bytes" ]]; then
+        # Convert bytes to human-readable format (TB, GB, MB, KB only)
+        if command -v numfmt >/dev/null 2>&1; then
+            file_size_human=$(numfmt --to=iec-i --suffix=B "$file_size_bytes")
+        elif [[ "$file_size_bytes" -gt 1099511627776 ]]; then
+            file_size_human=$(awk "BEGIN {printf \"%.2f TB\", $file_size_bytes/1024/1024/1024/1024}")
+        elif [[ "$file_size_bytes" -gt 1073741824 ]]; then
+            file_size_human=$(awk "BEGIN {printf \"%.2f GB\", $file_size_bytes/1024/1024/1024}")
+        elif [[ "$file_size_bytes" -gt 1048576 ]]; then
+            file_size_human=$(awk "BEGIN {printf \"%.2f MB\", $file_size_bytes/1024/1024}")
+        elif [[ "$file_size_bytes" -gt 1024 ]]; then
+            file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
+        else
+            file_size_human=$(awk "BEGIN {printf \"%.2f KB\", $file_size_bytes/1024}")
+        fi
+        printf "${CYAN}📊 File size:${RESET} %s\n" "$file_size_human"
+    else
+        printf "${YELLOW}⚠️ Could not determine file size${RESET}\n"
+    fi
+}
+
+# ===============================================
 # import_wp_db() function definition
 # ===============================================
 import_wp_db() {
@@ -428,7 +472,11 @@ import_wp_db() {
     return 1
   fi
 
-  printf "${GREEN}✅ Found SQL file:${RESET} %s\n\n" "$sql_file"
+  printf "${GREEN}✅ Found SQL file:${RESET} %s\n" "$sql_file"
+
+  # 📊 Display file size information
+  show_file_size "$sql_file"
+  printf "\n"
 
   # 🌐 Get the main domain mapping (Source/Search and Destination/Replace)
   local search_domain replace_domain confirm
