@@ -1023,12 +1023,19 @@ import_wp_db() {
       # Retrieve site data (ID, domain, path) in CSV format for later parsing
       execute_wp_cli site list --fields=blog_id,domain,path --format=csv --url="$search_domain" 2>"$REVISION_LOG" > "$SUBSITE_DATA"
 
-      # 🔍 Main Site ID Detection Block (Robustly determines the main site's Blog ID)
-      local main_site_id
-      local temp_min_blog_id=999999 # Initialize with a large number
-      local found_main_by_path="" # ID of the site with path='/'
+      # 🔍 Main Site ID Detection Block (Using WordPress database structure)
+      local main_site_info main_site_id main_site_url
+      printf "${CYAN}🔍 Detecting main site using WordPress database structure...${RESET}\n"
 
-      # Read the CSV data using a simple and reliable method
+      # Use the robust main site detection function
+      main_site_info=$(detect_main_site "$is_multisite" "$search_domain")
+
+      # Parse the result (format: blog_id|site_url)
+      IFS='|' read -r main_site_id main_site_url <<< "$main_site_info"
+
+      printf "${GREEN}✅ Main site detected:${RESET} Blog ID %s, URL: %s\n" "$main_site_id" "$main_site_url"
+
+      # Read the CSV data for subsite processing
       local subsite_lines=()
 
       # Ensure the CSV file ends with a newline to prevent missing the last line
@@ -1059,35 +1066,9 @@ import_wp_db() {
           # Add valid lines only if they contain actual data
           if [[ "$line" =~ ^[0-9]+, ]]; then
               subsite_lines+=("$line")
-
-              # Parse for ID and Path
-              IFS=, read -r blog_id domain site_path <<< "$line"
-              local clean_blog_id=$(clean_string "$blog_id")
-              local clean_site_path=$(clean_string "$site_path")
-
-              # Condition 1: Find the lowest blog ID
-              if [[ "$clean_blog_id" -lt "$temp_min_blog_id" ]]; then
-                  temp_min_blog_id="$clean_blog_id"
-              fi
-
-              # Condition 2: Find the site with path ONLY "/"
-              if [[ "$clean_site_path" == "/" ]]; then
-                  # We prefer the lowest ID with path '/' if multiple exist, though typically only one should.
-                  if [[ -z "$found_main_by_path" || "$clean_blog_id" -lt "$found_main_by_path" ]]; then
-                      found_main_by_path="$clean_blog_id"
-                  fi
-              fi
           fi
       done < "$SUBSITE_DATA"
 
-      # Assign the Main Site ID (prefer path match, then lowest ID, then fallback to 1)
-      if [[ -n "$found_main_by_path" ]]; then
-          main_site_id="$found_main_by_path"
-      elif [[ "$temp_min_blog_id" -ne 999999 ]]; then
-          main_site_id="$temp_min_blog_id"
-      else
-          main_site_id="1" # Safest default
-      fi
       printf "\n"
       # 🧩 End of Main Site ID Detection Block
 
@@ -1198,9 +1179,9 @@ import_wp_db() {
             printf "\n"
             printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$clean_blog_id" "$cleaned_domain" "$clean_site_path"
 
-            # For the main site (dynamic ID), default to the global replace_domain
+            # For the main site (detected via WordPress database), show more context
             if [[ "$clean_blog_id" == "$main_site_id" ]]; then
-                printf "→ Local URL for '%s' (Blog ID %s): (%s) " "$cleaned_domain" "$main_site_id" "$replace_domain"
+                printf "→ Local URL for '%s' (Blog ID %s, Main Site): (%s) " "$cleaned_domain" "$main_site_id" "$replace_domain"
                 read -r local_domain
                 # Use default if empty
                 local_domain="${local_domain:-$replace_domain}"
@@ -1269,6 +1250,7 @@ import_wp_db() {
           domain_paths=("${clean_domain_paths[@]}") # Use clean path array
 
           printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
+          printf "    ${CYAN}ℹ️  Main site detected:${RESET} Blog ID %s (via WordPress database)\n" "$main_site_id"
 
           # --- Summary Loop using parallel arrays ---
           local array_length=${#domain_keys[@]}
@@ -1281,12 +1263,17 @@ import_wp_db() {
             local site_path_var="${domain_paths[i]}"
 
             # Use simple and reliable trimming - just check the raw values
+            local site_marker=""
+            if [[ "$id" == "$main_site_id" ]]; then
+              site_marker=" ${BOLD}(Main Site)${RESET}"
+            fi
+
             if [[ -z "$value" ]]; then
-              printf "    ❌ [ID: %s] %s%s → (no mapping found)\n" "$id" "$key" "$site_path_var"
+              printf "    ❌ [ID: %s] %s%s → (no mapping found)%s\n" "$id" "$key" "$site_path_var" "$site_marker"
             elif [[ "$key" == "$value" ]]; then
-              printf "    ⏭️  [ID: %s] %s%s → (unchanged)\n" "$id" "$key" "$site_path_var"
+              printf "    ⏭️  [ID: %s] %s%s → (unchanged)%s\n" "$id" "$key" "$site_path_var" "$site_marker"
             else
-              printf "    🔁 [ID: %s] %s%s → ${GREEN}%s${RESET}\n" "$id" "$key" "$site_path_var" "$value"
+              printf "    🔁 [ID: %s] %s%s → ${GREEN}%s${RESET}%s\n" "$id" "$key" "$site_path_var" "$value" "$site_marker"
             fi
           done
 
@@ -1671,7 +1658,7 @@ import_wp_db() {
   # 2. Flush rewrite rules (hard flush for robust update)
   # Use execute_wp_cli for reliable command execution
   if ! execute_wp_cli rewrite flush --hard $network_flag &>/dev/null; then
-      printf "${YELLOW}  ⚠️ Failed to flush rewrite rule (Not always necessary/available).${RESET}\n"
+      printf "${YELLOW}  ⚠️  Failed to flush rewrite rule (Not always necessary/available).${RESET}\n"
   else
       printf "${GREEN}  ✅ Rewrite rule flushed.${RESET}\n"
   fi

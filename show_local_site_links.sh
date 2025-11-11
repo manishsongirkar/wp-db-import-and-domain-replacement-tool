@@ -204,7 +204,10 @@ show_local_site_links() {
       sites_data=$(execute_wp_cli site list --fields=blog_id,url --format=csv 2>/dev/null)
 
       if [[ -n "$sites_data" ]]; then
-        local main_site_id=1  # Default main site ID
+        # Detect main site using WordPress database structure
+        local main_site_info main_site_id main_site_detected_url
+        main_site_info=$(detect_main_site "yes" "$current_site_url")
+        IFS='|' read -r main_site_id main_site_detected_url <<< "$main_site_info"
 
         # Process each site
         while IFS=, read -r blog_id site_url; do
