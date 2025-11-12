@@ -56,6 +56,10 @@ show_help() {
     printf "  wp-db-import show-links         Show local site links\n"
     printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
     printf "  wp-db-import setup-proxy        Setup stage file proxy\n"
+    printf "  wp-db-import config-show        Show current configuration\n"
+    printf "  wp-db-import config-create      Create new configuration file\n"
+    printf "  wp-db-import config-validate    Validate configuration file\n"
+    printf "  wp-db-import config-edit        Open configuration in editor\n"
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
     printf "  wp-db-import --help             Show this help message\n\n"
@@ -81,6 +85,10 @@ show_help() {
     printf "${BOLD}EXAMPLES:${RESET}\n"
     printf "  cd ~/Local\\ Sites/mysite/app/public\n"
     printf "  wp-db-import                    # Start database import wizard\n"
+    printf "  wp-db-import config-show        # Show current configuration\n"
+    printf "  wp-db-import config-create      # Create new configuration file\n"
+    printf "  wp-db-import config-validate    # Validate configuration file\n"
+    printf "  wp-db-import config-edit        # Open configuration in editor\n"
     printf "  wp-db-import show-links         # Show clickable links to local sites\n"
     printf "  wp-db-import show-cleanup       # Show revision cleanup commands\n"
     printf "  wp-db-import setup-proxy        # Configure media proxy settings\n"
@@ -306,6 +314,96 @@ case "${1:-}" in
             exit 1
         fi
         setup_stage_file_proxy
+        ;;
+    config-show)
+        printf "${CYAN}📋 Showing configuration...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        # Show configuration
+        config_path=""
+        if config_path=$(get_config_file_path); then
+            show_config "$config_path"
+        else
+            printf "${RED}❌ Could not determine config file path${RESET}\n"
+            exit 1
+        fi
+        ;;
+    config-create)
+        printf "${CYAN}📝 Creating new configuration...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        # Create configuration
+        config_path=""
+        wp_root=""
+        if config_path=$(get_config_file_path) && wp_root=$(find_wp_root); then
+            prompt_and_save_config "$config_path" "$wp_root"
+        else
+            printf "${RED}❌ Could not determine config file path${RESET}\n"
+            exit 1
+        fi
+        ;;
+    config-validate)
+        printf "${CYAN}✅ Validating configuration...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        # Validate configuration
+        config_path=""
+        if config_path=$(get_config_file_path); then
+            validate_config_file "$config_path"
+        else
+            printf "${RED}❌ Could not determine config file path${RESET}\n"
+            exit 1
+        fi
+        ;;
+    config-edit)
+        printf "${CYAN}✏️ Opening configuration for editing...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        # Edit configuration
+        config_path=""
+        if config_path=$(get_config_file_path); then
+            if [[ -f "$config_path" ]]; then
+                # Try to use user's preferred editor
+                editor="${EDITOR:-nano}"
+                if command -v "$editor" >/dev/null 2>&1; then
+                    "$editor" "$config_path"
+                    printf "${GREEN}✅ Configuration file edited${RESET}\n"
+                    printf "Run 'wp-db-import config-validate' to check the configuration\n"
+                else
+                    printf "${RED}❌ Editor not found: $editor${RESET}\n"
+                    printf "Set EDITOR environment variable or use: nano, vim, code, etc.\n"
+                    exit 1
+                fi
+            else
+                printf "${YELLOW}📝 Config file not found. Creating new one...${RESET}\n"
+                wp_root=""
+                if wp_root=$(find_wp_root); then
+                    prompt_and_save_config "$config_path" "$wp_root"
+                else
+                    printf "${RED}❌ Could not find WordPress root${RESET}\n"
+                    exit 1
+                fi
+            fi
+        else
+            printf "${RED}❌ Could not determine config file path${RESET}\n"
+            exit 1
+        fi
         ;;
     "")
         # No arguments - run the main import function

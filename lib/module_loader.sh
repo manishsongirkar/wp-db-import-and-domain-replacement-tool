@@ -39,6 +39,21 @@ load_core_modules() {
     fi
 }
 
+# Load configuration modules
+load_config_modules() {
+    local config_dir="$LIB_DIR/config"
+
+    # Load configuration manager
+    if [[ -f "$config_dir/config_manager.sh" ]]; then
+        source "$config_dir/config_manager.sh" 2>/dev/null
+    fi
+
+    # Load config integration utilities
+    if [[ -f "$config_dir/integration.sh" ]]; then
+        source "$config_dir/integration.sh" 2>/dev/null
+    fi
+}
+
 # Load utilities modules
 load_utilities_modules() {
     local utilities_dir="$LIB_DIR/utilities"
@@ -64,6 +79,9 @@ load_modules() {
     # Load core modules (includes utils)
     load_core_modules
 
+    # Load configuration modules
+    load_config_modules
+
     # Load utilities modules
     load_utilities_modules
 
@@ -86,6 +104,7 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     {
         export -f load_modules
         export -f load_core_modules
+        export -f load_config_modules
         export -f load_utilities_modules
     } >/dev/null 2>&1
 fi

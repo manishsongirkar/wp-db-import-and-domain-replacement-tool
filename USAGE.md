@@ -22,6 +22,10 @@ wp-db-import
 ### Main Commands
 ```bash
 wp-db-import                    # Main import wizard
+wp-db-import config-show        # Show current configuration
+wp-db-import config-create      # Create new configuration file
+wp-db-import config-validate    # Validate configuration file
+wp-db-import config-edit        # Open configuration in editor
 wp-db-import show-links         # Show local site links
 wp-db-import setup-proxy        # Setup stage file proxy
 wp-db-import show-cleanup       # Generate revision cleanup commands
@@ -41,6 +45,112 @@ cp ~/Downloads/production-db.sql ./
 # Run the import wizard
 wp-db-import
 ```
+
+## 📋 Configuration System
+
+### First-Time Setup
+When you run `wp-db-import` for the first time in a project, it will:
+1. Prompt for SQL file, old domain, and new domain
+2. Create a `wpdb-import.conf` file in your WordPress root
+3. For multisite, prompt for individual site mappings
+4. Save all settings for future use
+
+### Subsequent Runs
+On subsequent runs, the tool will:
+1. Load settings from the config file automatically
+2. Only prompt for new sites not yet mapped
+3. Update the config file with any new mappings
+
+### Configuration Management
+```bash
+# View current configuration
+wp-db-import config-show
+
+# Create/recreate configuration file
+wp-db-import config-create
+
+# Validate configuration format
+wp-db-import config-validate
+
+# Edit configuration file
+wp-db-import config-edit
+```
+
+### Example Configuration File
+The `wpdb-import.conf` file is created in your WordPress root:
+```ini
+[general]
+sql_file=vip-db.sql
+old_domain=production-site.com
+new_domain=local-site.test
+all_tables=true
+dry_run=false
+clear_revisions=true
+setup_stage_proxy=true
+auto_proceed=false
+
+[site_mappings]
+1:production-site.com:local-site.test
+2:blog.production-site.com:local-site.test/blog
+3:shop.production-site.com:local-site.test/shop
+```
+
+### 📁 Configuration Examples
+
+The project includes example configuration files you can copy and customize:
+
+#### 🌐 Single Site Example
+**File**: `wpdb-import-example-single.conf`
+- For standard WordPress installations
+- Simple domain replacement setup
+- Includes all common settings with explanations
+
+#### 🗂️ Multisite Example
+**File**: `wpdb-import-example-multisite.conf`
+- For WordPress Multisite installations
+- Includes site mapping examples
+- Shows both subdirectory and subdomain patterns
+
+#### 🚀 Quick Setup Guide
+
+1. **Choose your example**: Copy the appropriate file for your setup
+2. **Rename**: Copy to your WordPress root as `wpdb-import.conf`
+3. **Customize**: Edit the settings for your specific project
+4. **Run**: Use `wp-db-import` - it will automatically use your config
+
+```bash
+# For single site
+cp wpdb-import-example-single.conf ~/path/to/wordpress/wpdb-import.conf
+
+# For multisite
+cp wpdb-import-example-multisite.conf ~/path/to/wordpress/wpdb-import.conf
+
+# Edit the config
+nano ~/path/to/wordpress/wpdb-import.conf
+
+# Run the import
+cd ~/path/to/wordpress && wp-db-import
+```
+
+#### ⚙️ Configuration Options Reference
+
+| Option | Description | Values |
+|--------|-------------|--------|
+| `sql_file` | Database file to import | Filename or path |
+| `old_domain` | Production domain to replace | Domain without protocol |
+| `new_domain` | Local domain to use | Domain without protocol |
+| `all_tables` | Include all database tables | `true` / `false` |
+| `dry_run` | Preview mode (no changes) | `true` / `false` |
+| `clear_revisions` | Remove post revisions first | `true` / `false` |
+| `setup_stage_proxy` | Configure media proxy | `true` / `false` |
+| `auto_proceed` | Skip confirmations | `true` / `false` |
+
+#### 💡 Configuration Tips
+
+- **Start Conservative**: Use `auto_proceed=false` until you're confident
+- **Test First**: Use `dry_run=true` for initial testing
+- **Version Control**: Add config files to your project's `.gitignore`
+- **Team Sharing**: Share config templates with your development team
 
 ## 🔄 Auto-Updates
 

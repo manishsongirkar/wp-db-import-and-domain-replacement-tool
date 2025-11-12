@@ -222,12 +222,6 @@ import_wp_db() {
   printf "\n${CYAN}${BOLD}🔧 WordPress Database Import & Domain Replace Tool${RESET}\n"
   printf "====================================================\n\n"
 
-  # 🧩 Prompt for SQL file name
-  local sql_file
-  printf "📦 Enter SQL file name (default: vip-db.sql): "
-  read -r sql_file
-  sql_file=${sql_file:-vip-db.sql}
-
   # 🔍 Locate WordPress root by searching for wp-config.php
   local wp_root
   wp_root=$(pwd)
@@ -245,7 +239,83 @@ import_wp_db() {
     printf "${RED}❌ Failed to change directory to ${wp_root}.${RESET}\n"
     return 1
   fi
-  printf "${GREEN}✅ WordPress root found:${RESET} %s\n\n" "$wp_root"
+  printf "${GREEN}✅ WordPress root found:${RESET} %s\n" "$wp_root"
+
+  # 🛠️ Configuration Management
+  local config_path
+  if config_path=$(get_config_file_path); then
+    if config_file_exists; then
+      printf "${GREEN}✅ Configuration found:${RESET} %s\n\n" "$config_path"
+
+      # Load existing config
+      if load_import_config "$config_path"; then
+        load_site_mappings "$config_path"
+        printf "${CYAN}📋  Using configuration settings...${RESET}\n\n"
+      else
+        printf "${YELLOW}⚠️  Error loading config. Will prompt for values.${RESET}\n\n"
+      fi
+    else
+      printf "${YELLOW}📝 No configuration file found.${RESET}\n"
+      # Extract directory and filename separately for styling (with fallbacks)
+      local config_dir config_file
+      if command -v dirname >/dev/null 2>&1 && command -v basename >/dev/null 2>&1; then
+        config_dir="$(dirname "$config_path")"
+        config_file="$(basename "$config_path")"
+      else
+        # Fallback using parameter expansion for restricted environments
+        config_dir="${config_path%/*}"
+        config_file="${config_path##*/}"
+        # Handle case where path has no directory separator
+        [[ "$config_dir" == "$config_path" ]] && config_dir="."
+      fi
+      printf "💡 Creating new config: %s/${BOLD}%s${RESET}\n\n" "$config_dir" "$config_file"
+
+      # Create empty config arrays (with shell compatibility)
+      if [[ -n "${BASH_VERSION:-}" ]]; then
+        # Running in bash - check version for associative array support
+        if [[ ${BASH_VERSION%%.*} -ge 4 ]]; then
+          declare -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null || {
+            # Fallback if declare -A fails in restricted bash
+            BLOG_ID_MAP=""
+            OLD_DOMAIN_MAP=""
+            NEW_DOMAIN_MAP=""
+          }
+        else
+          # Bash 3.x fallback
+          BLOG_ID_MAP=""
+          OLD_DOMAIN_MAP=""
+          NEW_DOMAIN_MAP=""
+        fi
+      elif [[ -n "${ZSH_VERSION:-}" ]]; then
+        # Running in zsh - use typeset for associative arrays
+        typeset -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null || {
+          # Fallback if typeset fails
+          BLOG_ID_MAP=""
+          OLD_DOMAIN_MAP=""
+          NEW_DOMAIN_MAP=""
+        }
+      else
+        # Unknown shell or restricted environment - use regular variables
+        BLOG_ID_MAP=""
+        OLD_DOMAIN_MAP=""
+        NEW_DOMAIN_MAP=""
+      fi
+    fi
+  else
+    printf "${RED}❌ Could not determine config file path${RESET}\n"
+    return 1
+  fi
+
+  # 🧩 Get SQL file name (from config or prompt)
+  local sql_file
+  if [[ -n "$CONFIG_SQL_FILE" ]]; then
+    sql_file="$CONFIG_SQL_FILE"
+    printf "📦 SQL file: ${GREEN}%s${RESET} (from config)\n" "$sql_file"
+  else
+    printf "📦 Enter SQL file name (default: vip-db.sql): "
+    read -r sql_file
+    sql_file=${sql_file:-vip-db.sql}
+  fi
 
   # 🧠 Verify WP-CLI availability
   if [[ -z "$WP_COMMAND" ]]; then
@@ -275,29 +345,81 @@ import_wp_db() {
   # 🌐 Get the main domain mapping (Source/Search and Destination/Replace)
   local search_domain replace_domain confirm
 
-  # Get OLD (production/source) domain - mandatory input
+  # Get OLD (production/source) domain - from config or prompt with override option
   while true; do
-    printf "🌍 Enter the OLD (production) domain to search for: "
-    read -r search_domain
+    if [[ -n "$CONFIG_OLD_DOMAIN" ]]; then
+      search_domain="$CONFIG_OLD_DOMAIN"
+      printf "🌍 OLD (production) domain: ${GREEN}%s${RESET} (from config)\n" "$search_domain"
+      printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
+      read -r domain_override
 
-    if [[ -n "$search_domain" ]]; then
+      if [[ -n "$domain_override" ]]; then
+        search_domain="$domain_override"
+        printf "   ${YELLOW}✏️  Using override domain: %s${RESET}\n" "$search_domain"
+        # Update config with the new domain for future use
+        update_config_general "$config_path" "old_domain" "$search_domain" 2>/dev/null || true
+      fi
       break
     else
-      printf "${YELLOW}⚠️  Production domain is required. Please enter a value.${RESET}\n"
+      printf "🌍 Enter the OLD (production) domain to search for: "
+      read -r search_domain
+
+      if [[ -n "$search_domain" ]]; then
+        break
+      else
+        printf "${YELLOW}⚠️  Production domain is required. Please enter a value.${RESET}\n"
+      fi
     fi
   done
 
-  # Get NEW (local/destination) domain - mandatory input
+  # Get NEW (local/destination) domain - from config or prompt with override option
   while true; do
-    printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
-    read -r replace_domain
+    if [[ -n "$CONFIG_NEW_DOMAIN" ]]; then
+      replace_domain="$CONFIG_NEW_DOMAIN"
+      printf "🏠 NEW (local) domain: ${GREEN}%s${RESET} (from config)\n" "$replace_domain"
+      printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
+      read -r domain_override
 
-    if [[ -n "$replace_domain" ]]; then
+      if [[ -n "$domain_override" ]]; then
+        replace_domain="$domain_override"
+        printf "   ${YELLOW}✏️  Using override domain: %s${RESET}\n" "$replace_domain"
+        # Update config with the new domain for future use
+        update_config_general "$config_path" "new_domain" "$replace_domain" 2>/dev/null || true
+      fi
       break
     else
-      printf "${YELLOW}⚠️  Local domain is required. Please enter a value.${RESET}\n"
+      printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
+      read -r replace_domain
+
+      if [[ -n "$replace_domain" ]]; then
+        break
+      else
+        printf "${YELLOW}⚠️  Local domain is required. Please enter a value.${RESET}\n"
+      fi
     fi
   done
+
+  # Create config file if it doesn't exist, then save user-provided values
+  if ! config_file_exists; then
+    printf "${CYAN}📝 Creating configuration file...${RESET}\n"
+    if create_config_file "$config_path" "$sql_file" "$search_domain" "$replace_domain"; then
+      # Get filename with fallback for restricted environments
+      local config_filename
+      if command -v basename >/dev/null 2>&1; then
+        config_filename="$(basename "$config_path")"
+      else
+        config_filename="${config_path##*/}"
+      fi
+      printf "${GREEN}✅ Configuration file created: %s${RESET}\n" "$config_filename"
+    else
+      printf "${YELLOW}⚠️  Could not create config file, but import will continue...${RESET}\n"
+    fi
+  fi
+
+  # Save any user-provided values to config (with error handling)
+  if ! save_import_values_to_config "$config_path" "$sql_file" "$search_domain" "$replace_domain" 2>/dev/null; then
+    printf "${YELLOW}💡 Note: Could not save some settings to config (restricted environment)${RESET}\n"
+  fi
 
   printf "\n"
 
@@ -320,21 +442,44 @@ import_wp_db() {
   printf "    🔍 Search for:   ${YELLOW}%s${RESET}\n" "$search_domain"
   printf "    🔄 Replace with: ${GREEN}%s${RESET}\n" "$replace_domain"
   printf "\n"
-  printf "Proceed with database import? (Y/n): "
-  read -r confirm
-  confirm="${confirm:-y}"
-  [[ "$confirm" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
+
+  # Auto-proceed or prompt for confirmation
+  if [[ -n "$CONFIG_AUTO_PROCEED" ]] && is_config_true "$CONFIG_AUTO_PROCEED"; then
+    printf "${GREEN}✅ Auto-proceeding with database import (from config)${RESET}\n"
+    local confirm="y"
+  else
+    printf "Proceed with database import? (Y/n): "
+    read -r confirm
+    confirm="${confirm:-y}"
+    [[ "$confirm" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
+  fi
 
   # 📥 Import the database using WP-CLI (with a spinner)
   printf "\n${CYAN}⏳ Importing database...${RESET}\n"
   local import_start_time=$(date +%s)
-  # Ensure the environment PATH is robust for the db import subshell
-  /bin/sh -c "(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; \"$WP_COMMAND\" db import \"$sql_file\") &> \"$DB_LOG\"" &
-  local spinner_pid=$!
-  show_spinner $spinner_pid "Importing"
-  wait $spinner_pid
 
-  if [[ $? -ne 0 ]]; then
+  # Try robust command execution with fallbacks for restricted environments
+  local import_success=false
+
+  # Method 1: Try with enhanced PATH in subshell (most compatible)
+  if command -v sh >/dev/null 2>&1; then
+    if /bin/sh -c "(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; \"$WP_COMMAND\" db import \"$sql_file\") &> \"$DB_LOG\"" & then
+      local spinner_pid=$!
+      show_spinner $spinner_pid "Importing"
+      wait $spinner_pid && import_success=true
+    fi
+  fi
+
+  # Method 2: Fallback for restricted environments - direct execution
+  if [[ "$import_success" = false ]]; then
+    printf "${YELLOW}Fallback: Direct WP-CLI execution...${RESET}\n"
+    if execute_wp_cli db import "$sql_file" &> "$DB_LOG"; then
+      import_success=true
+    fi
+  fi
+
+  # Check if import was successful
+  if [[ "$import_success" = false ]]; then
     printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$DB_LOG"
     display_execution_time "$start_time"
     return 1
@@ -348,8 +493,34 @@ import_wp_db() {
 
   printf "${GREEN}✅ Database import successful! ${CYAN}[Completed in %02d:%02d]${RESET}\n\n" "$import_minutes" "$import_seconds"
 
+  # 🔍 Domain validation against database (if config exists)
+  printf "${CYAN}🔍 Validating domain configuration...${RESET}\n"
+  local detected_domain
+  if detected_domain=$(detect_database_domain "$wp_root"); then
+    printf "${GREEN}✅ Detected domain in database: ${YELLOW}%s${RESET}\n" "$detected_domain"
+
+    # Validate against config if it exists
+    if config_file_exists; then
+      local validated_domain
+      if validated_domain=$(validate_config_domains "$config_path" "$detected_domain"); then
+        if [[ -n "$validated_domain" && "$validated_domain" != "$detected_domain" ]]; then
+          # User chose to use config domain instead
+          search_domain="$validated_domain"
+          printf "${CYAN}🔄 Updated search domain to: ${YELLOW}%s${RESET}\n" "$search_domain"
+        fi
+      else
+        # Validation failed, user cancelled or needs to fix config
+        printf "${RED}❌ Domain validation failed. Please resolve the issue and try again.${RESET}\n"
+        display_execution_time "$start_time"
+        return 1
+      fi
+    fi
+  else
+    printf "${YELLOW}⚠️  Could not detect domain from database. Proceeding with provided domain.${RESET}\n"
+  fi
+
   # 🧩 Enhanced multisite detection logic (Post-import database introspection using multiple methods)
-  printf "${CYAN}🔍 Checking WordPress installation type...${RESET}\n"
+  printf "\n${CYAN}🔍 Checking WordPress installation type...${RESET}\n"
 
   # Method 1: Direct database queries (most reliable after import)
   local is_multisite_db table_count blog_count site_count
@@ -407,11 +578,50 @@ import_wp_db() {
 
   printf "\n"
 
-  # 🗑️ Prompt for revision cleanup
+  # 🗑️ Prompt for revision cleanup (from config with confirmation option)
   local cleanup_revisions
-  printf "Clear ALL post revisions? (improves search-replace speed) (Y/n): "
-  read -r cleanup_revisions
-  cleanup_revisions="${cleanup_revisions:-y}"
+  if [[ -n "$CONFIG_CLEAR_REVISIONS" ]]; then
+    if is_config_true "$CONFIG_CLEAR_REVISIONS"; then
+      printf "Clear ALL post revisions: ${GREEN}enabled${RESET} (from config)\n"
+      printf "   ${CYAN}Press Enter to confirm, or 'n' to skip revision cleanup:${RESET} "
+      read -r revision_override
+
+      if [[ "$revision_override" == [Nn]* ]]; then
+        cleanup_revisions="n"
+        printf "   ${YELLOW}⚠️  Skipping revision cleanup${RESET}\n"
+        # Update config to remember this choice
+        update_config_general "$config_path" "clear_revisions" "false" 2>/dev/null || true
+      else
+        cleanup_revisions="y"
+        printf "   ${GREEN}✅ Proceeding with revision cleanup${RESET}\n"
+      fi
+    else
+      printf "Clear ALL post revisions: ${YELLOW}disabled${RESET} (from config)\n"
+      printf "   ${CYAN}Press Enter to keep disabled, or 'y' to enable revision cleanup:${RESET} "
+      read -r revision_override
+
+      if [[ "$revision_override" == [Yy]* ]]; then
+        cleanup_revisions="y"
+        printf "   ${GREEN}✅ Enabling revision cleanup${RESET}\n"
+        # Update config to remember this choice
+        update_config_general "$config_path" "clear_revisions" "true" 2>/dev/null || true
+      else
+        cleanup_revisions="n"
+        printf "   ${YELLOW}⚠️  Keeping revision cleanup disabled${RESET}\n"
+      fi
+    fi
+  else
+    printf "Clear ALL post revisions? (improves search-replace speed) (Y/n): "
+    read -r cleanup_revisions
+    cleanup_revisions="${cleanup_revisions:-y}"
+
+    # Save to config for future use
+    if [[ "$cleanup_revisions" == [Yy]* ]]; then
+      update_config_general "$config_path" "clear_revisions" "true"
+    else
+      update_config_general "$config_path" "clear_revisions" "false"
+    fi
+  fi
 
   # Track if user declined revision cleanup
   if [[ "$cleanup_revisions" != [Yy]* ]]; then
@@ -521,7 +731,7 @@ import_wp_db() {
     if [[ "$revisions_after" -eq 0 ]]; then
         return 0
     else
-        printf "${RED}⚠️ WARNING: %s revisions remain in the database after bulk attempt.${RESET}\n" "$revisions_after"
+        printf "${RED}⚠️  WARNING: %s revisions remain in the database after bulk attempt.${RESET}\n" "$revisions_after"
         return 1
     fi
   }
@@ -581,31 +791,59 @@ import_wp_db() {
     printf "${YELLOW}⏭️  Skipping revision cleanup as requested.${RESET}\n\n"
   fi
 
-  # ⚙️ Prompt to include --all-tables flag
+  # ⚙️ Configure --all-tables flag (from config or prompt)
   local include_all all_tables_flag
-  printf "Include ${BOLD}--all-tables${RESET} (recommended for full DB imports)? (Y/n): "
-  read -r include_all
-  include_all="${include_all:-y}"
-  all_tables_flag=""
-  if [[ "$include_all" =~ ^[Yy]$ ]]; then
-    all_tables_flag="--all-tables"
-    printf "${GREEN}✅ Will include all tables.${RESET}\n"
+  if [[ -n "$CONFIG_ALL_TABLES" ]]; then
+    if is_config_true "$CONFIG_ALL_TABLES"; then
+      all_tables_flag="--all-tables"
+      printf "Include ${BOLD}--all-tables${RESET}: ${GREEN}enabled${RESET} (from config)\n"
+    else
+      all_tables_flag=""
+      printf "Include ${BOLD}--all-tables${RESET}: ${YELLOW}disabled${RESET} (from config)\n"
+    fi
   else
-    printf "${YELLOW}ℹ️ Limiting to WordPress tables only.${RESET}\n"
+    printf "Include ${BOLD}--all-tables${RESET} (recommended for full DB imports)? (Y/n): "
+    read -r include_all
+    include_all="${include_all:-y}"
+    all_tables_flag=""
+    if [[ "$include_all" =~ ^[Yy]$ ]]; then
+      all_tables_flag="--all-tables"
+      printf "${GREEN}✅ Will include all tables.${RESET}\n"
+      # Save to config for future use
+      update_config_general "$config_path" "all_tables" "true"
+    else
+      printf "${YELLOW}ℹ️ Limiting to WordPress tables only.${RESET}\n"
+      # Save to config for future use
+      update_config_general "$config_path" "all_tables" "false"
+    fi
   fi
 
-  # ⚙️ Prompt for dry-run mode
+  # ⚙️ Configure dry-run mode (from config or prompt)
   local dry_run dry_run_flag
   printf "\n"
-  printf "Run in ${BOLD}dry-run mode${RESET} (no data will be changed)? (y/N): "
-  read -r dry_run
-  dry_run="${dry_run:-n}"
-  dry_run_flag=""
-  if [[ "$dry_run" =~ ^[Yy]$ ]]; then
-    dry_run_flag="--dry-run"
-    printf "${YELLOW}🧪 Running in dry-run mode (preview only).${RESET}\n\n"
+  if [[ -n "$CONFIG_DRY_RUN" ]]; then
+    if is_config_true "$CONFIG_DRY_RUN"; then
+      dry_run_flag="--dry-run"
+      printf "Run in ${BOLD}dry-run mode${RESET}: ${YELLOW}enabled${RESET} (from config)\n\n"
+    else
+      dry_run_flag=""
+      printf "Run in ${BOLD}dry-run mode${RESET}: ${GREEN}live mode${RESET} (from config)\n\n"
+    fi
   else
-    printf "${GREEN}🚀 Running in live mode (changes will be applied).${RESET}\n\n"
+    printf "Run in ${BOLD}dry-run mode${RESET} (no data will be changed)? (y/N): "
+    read -r dry_run
+    dry_run="${dry_run:-n}"
+    dry_run_flag=""
+    if [[ "$dry_run" =~ ^[Yy]$ ]]; then
+      dry_run_flag="--dry-run"
+      printf "${YELLOW}🧪 Running in dry-run mode (preview only).${RESET}\n\n"
+      # Save to config for future use
+      update_config_general "$config_path" "dry_run" "true"
+    else
+      printf "${GREEN}🚀 Running in live mode (changes will be applied).${RESET}\n\n"
+      # Save to config for future use
+      update_config_general "$config_path" "dry_run" "false"
+    fi
   fi
 
   # --- Search-Replace Execution Function (Handles Double Pass with Domain+Path Logic) ---
@@ -625,7 +863,7 @@ import_wp_db() {
       local old_domain="$1"
       local new_domain="$2"
       local log_file="$3"
-      local url_flag="$4" # --url=... or empty
+      local url_flag="$4" # --url=... or --network or empty
       local old_path="${5:-}"  # Optional path from wp_blogs table
       local new_path="${6:-}"  # Optional new path
 
@@ -635,6 +873,16 @@ import_wp_db() {
           return 1
       fi
 
+      # Parse url_flag to determine if it's --network flag or --url flag
+      local actual_url_flag=""
+      local network_flag_arg=""
+
+      if [[ "$url_flag" == "--network" ]]; then
+          network_flag_arg="--network"
+      elif [[ "$url_flag" == *"--url="* ]]; then
+          actual_url_flag="$url_flag"
+      fi
+
       # Enhanced domain+path construction with intelligent slash handling
       local search_domain_with_path="$old_domain"
       local replace_domain_with_path="$new_domain"
@@ -642,9 +890,9 @@ import_wp_db() {
       # CRITICAL LOGIC: Only apply path handling in a multisite context with non-root paths.
       # Path logic should only execute when:
       # 1. Paths are provided AND meaningful (not just "/")
-      # 2. We're in a multisite context (indicated by --url flag)
+      # 2. We're in a multisite context (indicated by --url flag or --network flag)
       local is_multisite_context=false
-      if [[ "$url_flag" == *"--url="* ]]; then
+      if [[ "$actual_url_flag" == *"--url="* ]] || [[ -n "$network_flag_arg" ]]; then
           is_multisite_context=true
       fi
 
@@ -749,8 +997,8 @@ import_wp_db() {
       # Build the command array to avoid word splitting issues
       local cmd_args=("search-replace" "$sr1_old_non_www" "$sr_new")
 
-      if [[ -n "$url_flag" ]]; then
-          cmd_args+=("$url_flag")
+      if [[ -n "$actual_url_flag" ]]; then
+          cmd_args+=("$actual_url_flag")
       fi
 
       cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
@@ -759,8 +1007,8 @@ import_wp_db() {
           cmd_args+=("$all_tables_flag")
       fi
 
-      if [[ -n "$network_flag" ]]; then
-          cmd_args+=("$network_flag")
+      if [[ -n "$network_flag_arg" ]]; then
+          cmd_args+=("$network_flag_arg")
       fi
 
       if [[ -n "$dry_run_flag" ]]; then
@@ -779,8 +1027,8 @@ import_wp_db() {
           # Rebuild command args for pass 2 (www variant)
           cmd_args=("search-replace" "$sr1_old_www" "$sr_new")
 
-          if [[ -n "$url_flag" ]]; then
-              cmd_args+=("$url_flag")
+          if [[ -n "$actual_url_flag" ]]; then
+              cmd_args+=("$actual_url_flag")
           fi
 
           cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
@@ -789,8 +1037,8 @@ import_wp_db() {
               cmd_args+=("$all_tables_flag")
           fi
 
-          if [[ -n "$network_flag" ]]; then
-              cmd_args+=("$network_flag")
+          if [[ -n "$network_flag_arg" ]]; then
+              cmd_args+=("$network_flag_arg")
           fi
 
           if [[ -n "$dry_run_flag" ]]; then
@@ -817,8 +1065,8 @@ import_wp_db() {
       # Rebuild command args for serialized non-www variant
       cmd_args=("search-replace" "$sr2_old_non_www" "$sr_new_escaped")
 
-      if [[ -n "$url_flag" ]]; then
-          cmd_args+=("$url_flag")
+      if [[ -n "$actual_url_flag" ]]; then
+          cmd_args+=("$actual_url_flag")
       fi
 
       cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
@@ -827,8 +1075,8 @@ import_wp_db() {
           cmd_args+=("$all_tables_flag")
       fi
 
-      if [[ -n "$network_flag" ]]; then
-          cmd_args+=("$network_flag")
+      if [[ -n "$network_flag_arg" ]]; then
+          cmd_args+=("$network_flag_arg")
       fi
 
       if [[ -n "$dry_run_flag" ]]; then
@@ -847,8 +1095,8 @@ import_wp_db() {
           # Rebuild command args for serialized www variant
           cmd_args=("search-replace" "$sr2_old_www" "$sr_new_escaped")
 
-          if [[ -n "$url_flag" ]]; then
-              cmd_args+=("$url_flag")
+          if [[ -n "$actual_url_flag" ]]; then
+              cmd_args+=("$actual_url_flag")
           fi
 
           cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
@@ -857,8 +1105,8 @@ import_wp_db() {
               cmd_args+=("$all_tables_flag")
           fi
 
-          if [[ -n "$network_flag" ]]; then
-              cmd_args+=("$network_flag")
+          if [[ -n "$network_flag_arg" ]]; then
+              cmd_args+=("$network_flag_arg")
           fi
 
           if [[ -n "$dry_run_flag" ]]; then
@@ -948,7 +1196,7 @@ import_wp_db() {
         # Exit if the site list command failed.
         return 1
       elif [[ -z "$site_list" ]]; then
-        printf "${YELLOW}⚠️ WP-CLI command succeeded but returned empty output${RESET}\n"
+        printf "${YELLOW}⚠️  WP-CLI command succeeded but returned empty output${RESET}\n"
       else
         printf "%s\n" "$site_list" | column -t -s $'\t'
       fi
@@ -978,12 +1226,12 @@ import_wp_db() {
           printf "\nProceed with network-wide search-replace? (Y/n): "
           read -r confirm_replace
           confirm_replace="${confirm_replace:-y}"
-          [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
+          [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
 
           printf "\n${CYAN}🔄 Starting network-wide search-replace...${RESET}\n"
 
-          # For subdirectory multisite, run search-replace using the main domain/network-flag
-          if run_search_replace "$search_domain" "$network_domain" "$SR_LOG_SINGLE" ""; then
+          # For subdirectory multisite, run search-replace using the main domain with network-flag
+          if run_search_replace "$search_domain" "$network_domain" "$SR_LOG_SINGLE" "--network"; then
               printf "\n${GREEN}✅ Network-wide search-replace completed successfully!${RESET}\n"
           else
               printf "\n${RED}❌ Network-wide search-replace failed. See %s.${RESET}\n" "$SR_LOG_SINGLE"
@@ -995,132 +1243,65 @@ import_wp_db() {
           domain_values=("$network_domain")
 
       else
-          # For subdomain multisite: Handle individual site mappings (Interactive mapping logic)
+          # For subdomain multisite: Handle individual site mappings with config integration
           printf "${CYAN}🌐 Subdomain Multisite Detected${RESET}\n"
-          printf "Each subsite has its own domain. Individual mapping input is required.\n\n"
+          printf "Using configuration-aware site mapping...\n\n"
 
-          # Use parallel arrays to store mappings (more compatible than associative arrays)
+          # Handle site mappings with config system
+          local subsite_csv=""
+          for subsite_line in "${subsite_lines[@]}"; do
+            if [[ "$subsite_line" != "blog_id,domain,path" && -n "$subsite_line" ]]; then
+              if [[ -n "$subsite_csv" ]]; then
+                subsite_csv="${subsite_csv}
+${subsite_line}"
+              else
+                subsite_csv="$subsite_line"
+              fi
+            fi
+          done
+
+          # Process missing mappings with config system
+          handle_missing_mappings "$config_path" "$subsite_csv" "$replace_domain"
+
+          # Reload site mapping arrays after saving new mappings
+          load_site_mappings "$config_path"
+
+          # Use config mappings to build domain arrays for existing logic
           local domain_keys=()
           local domain_values=()
-          local domain_blog_ids=() # Array to track blog IDs
-          local domain_paths=() # Array to track paths from wp_blogs
+          local domain_blog_ids=()
+          local domain_paths=()
 
-          printf "\n${CYAN}${BOLD}╔═══════════════════════════════════════════════════════════════╗${RESET}\n"
-          printf "${CYAN}${BOLD}║              🌐 MULTISITE DOMAIN MAPPING SETUP                ║${RESET}\n"
-          printf "${CYAN}${BOLD}╚═══════════════════════════════════════════════════════════════╝${RESET}\n\n"
-          printf "${YELLOW}📝 Instructions:${RESET}\n"
-          printf "   • Map each production domain to your local development URL\n"
-          printf "   • Example: 'sub1.example.com' → 'sub1.example.local'\n"
-          printf "   • Press Enter to use defaults where shown\n\n"
+          # Build arrays directly from saved config mappings instead of original site data
+          local saved_mappings
+          saved_mappings=$(get_site_mappings "$config_path")
 
-          local blog_id domain path local_domain mapped cleaned_domain
-          local processed_count=0
+          if [[ -n "$saved_mappings" ]]; then
+            while IFS=':' read -r blog_id old_domain new_domain; do
+              if [[ -n "$blog_id" && -n "$old_domain" && -n "$new_domain" ]]; then
+                # Find the corresponding path from original site data
+                local site_path="/"
+                for subsite_line in "${subsite_lines[@]}"; do
+                  if [[ "$subsite_line" == "blog_id,domain,path" || -z "$subsite_line" ]]; then
+                    continue
+                  fi
+                  IFS=, read -r orig_blog_id orig_domain orig_path <<< "$subsite_line"
+                  if [[ "$orig_blog_id" == "$blog_id" ]]; then
+                    site_path="$orig_path"
+                    break
+                  fi
+                done
 
-          # --- Interactive Mapping Loop ---
-          for subsite_line in "${subsite_lines[@]}"; do
-            processed_count=$((processed_count + 1))
-
-            if [[ "$subsite_line" == "blog_id,domain,path" ]]; then
-                continue
-            fi
-
-            # Skip empty lines
-            if [[ -z "$subsite_line" ]]; then
-                continue
-            fi
-
-            # Read the CSV elements from the array element
-            IFS=, read -r blog_id domain site_path <<< "$subsite_line"
-
-            cleaned_domain=$(clean_string "$domain")
-            local clean_blog_id=$(clean_string "$blog_id")
-            local clean_site_path=$(clean_string "$site_path")
-
-            # Skip if domain is empty after cleaning
-            if [[ -z "$cleaned_domain" ]]; then
-                continue
-            fi
-
-            # Debug output for domain processing
-            printf "\n"
-            printf "  ${CYAN}┌─ Processing Site ${BOLD}%2s${RESET}${CYAN} ─────────────────────────────────────────${RESET}\n" "$clean_blog_id"
-            printf "  ${CYAN}│${RESET} Domain: ${YELLOW}%s${RESET}\n" "$cleaned_domain"
-            printf "  ${CYAN}│${RESET} Path:   ${GRAY}%s${RESET}\n" "$clean_site_path"
-
-            # For the main site (detected via WordPress database), show more context
-            if [[ "$clean_blog_id" == "$main_site_id" ]]; then
-                printf "  ${CYAN}│${RESET} Enter local URL for ${BOLD}Main Site${RESET} (default: ${GREEN}%s${RESET}): " "$replace_domain"
-                read -r local_domain
-                # Use default if empty
-                local_domain="${local_domain:-$replace_domain}"
-            else
-                # For subsites, prompt the user clearly
-                printf "  ${CYAN}│${RESET} Enter local URL for ${BOLD}Blog ID %s${RESET}: " "$clean_blog_id"
-                read -r local_domain
-                # Use default if empty
-                local_domain="${local_domain:-$cleaned_domain}"
-            fi
-
-            printf "  ${CYAN}└──────────────────────────────────────────────────────────────${RESET}\n"
-
-            # 🧹 Sanitize the local domain input (remove protocols, trailing slashes, whitespace)
-            if [[ -n "$local_domain" ]]; then
-                local original_local_domain="$local_domain"
-                local_domain=$(sanitize_domain "$local_domain")
-
-                # Show what was cleaned up if changes were made
-                if [[ "$original_local_domain" != "$local_domain" ]]; then
-                    printf "     ${YELLOW}🧹 Cleaned:${RESET} ${GRAY}'%s' → '%s'${RESET}\n" "$original_local_domain" "$local_domain"
-                fi
-            fi
-
-            # Add to arrays with validation - SINGLE POINT OF ADDITION
-            if [[ -n "$cleaned_domain" && -n "$local_domain" ]]; then
-                # For multisite, multiple sites can have the same domain with different paths
-                # This is normal behavior, so we don't need to prevent "duplicates" here
-                domain_keys+=("$cleaned_domain")
-                domain_values+=("$local_domain")
-                domain_blog_ids+=("$clean_blog_id") # Store the blog ID
-                domain_paths+=("$clean_site_path") # Store the path from wp_blogs
-                printf "  ${GREEN}✅ Mapping confirmed:${RESET}\n"
-                printf "     ${GRAY}%s${RESET} ${BLUE}→${RESET} ${GREEN}%s${RESET}\n" "$cleaned_domain" "$local_domain"
-                printf "     ${GRAY}(Blog ID: %s, Path: %s)${RESET}\n" "$clean_blog_id" "$clean_site_path"
-            else
-                printf "  ${RED}❌ Skipped invalid mapping:${RESET}\n"
-                printf "     ${GRAY}Domain: '%s', Local: '%s'${RESET}\n" "$cleaned_domain" "$local_domain"
-            fi
-
-          done
-
-          # Clean up arrays - remove any empty elements using a more robust approach
-          local clean_domain_keys=()
-          local clean_domain_values=()
-          local clean_domain_blog_ids=()
-          local clean_domain_paths=()
-          local domain_display_names=()  # Store exact display names from summary
-          local original_length=${#domain_keys[@]}
-
-          for ((i=0; i<original_length; i++)); do
-            local key="${domain_keys[i]}"
-            local value="${domain_values[i]}"
-            local id="${domain_blog_ids[i]}" # Get blog ID
-            local site_path_var="${domain_paths[i]}" # Get path
-
-            if [[ -n "$key" && -n "$value" && -n "$id" ]]; then
-              clean_domain_keys+=("$key")
-              clean_domain_values+=("$value")
-              clean_domain_blog_ids+=("$id") # Store clean blog ID
-              clean_domain_paths+=("$site_path_var") # Store clean path
-              domain_display_names+=("${key}${site_path_var}") # Store exact display name
-            fi
-          done
-
-          # Replace the original arrays
-          unset domain_keys domain_values domain_blog_ids domain_paths
-          domain_keys=("${clean_domain_keys[@]}")
-          domain_values=("${clean_domain_values[@]}")
-          domain_blog_ids=("${clean_domain_blog_ids[@]}") # Use clean blog ID array
-          domain_paths=("${clean_domain_paths[@]}") # Use clean path array
+                # Add to arrays using the saved mappings
+                domain_keys+=("$old_domain")
+                domain_values+=("$new_domain")
+                domain_blog_ids+=("$blog_id")
+                domain_paths+=("$site_path")
+              fi
+            done <<< "$saved_mappings"
+          else
+            printf "${YELLOW}⚠️  No saved mappings found in config file${RESET}\n"
+          fi
 
           printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
           printf "    ${CYAN}ℹ️  Main site detected:${RESET} Blog ID %s (via WordPress database)\n" "$main_site_id"
@@ -1151,10 +1332,16 @@ import_wp_db() {
           done
 
           printf "\n"
-          printf "Proceed with search-replace for all sites? (Y/n): "
-          read -r confirm_replace
-          confirm_replace="${confirm_replace:-y}"
-          [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
+          # Auto-proceed or prompt for confirmation
+          if [[ -n "$CONFIG_AUTO_PROCEED" ]] && is_config_true "$CONFIG_AUTO_PROCEED"; then
+            printf "${GREEN}✅ Auto-proceeding with search-replace for all sites (from config)${RESET}\n"
+            local confirm_replace="y"
+          else
+            printf "Proceed with search-replace for all sites? (Y/n): "
+            read -r confirm_replace
+            confirm_replace="${confirm_replace:-y}"
+            [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
+          fi
 
           # 🔧 Update wp_blogs and wp_site tables BEFORE search-replace operations
           printf "\n${CYAN}${BOLD}🔧 Updating wp_blogs and wp_site tables (before search-replace)...${RESET}\n"
@@ -1431,7 +1618,7 @@ import_wp_db() {
             fi
 
           else
-            printf "${YELLOW}⚠️ Could not determine base domain - skipping automatic table updates${RESET}\n"
+            printf "${YELLOW}⚠️  Could not determine base domain - skipping automatic table updates${RESET}\n"
             local auto_updates_successful="no"
           fi
 
@@ -1540,10 +1727,16 @@ import_wp_db() {
   else
     # 🧩 Single site logic
     printf "${CYAN}🧩 Single site detected.${RESET}\n"
-    printf "Proceed with search-replace now? (Y/n): "
-    read -r confirm_replace
-    confirm_replace="${confirm_replace:-y}"
-    [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️ Operation cancelled.${RESET}\n"; return 0; }
+    # Auto-proceed or prompt for confirmation
+    if [[ -n "$CONFIG_AUTO_PROCEED" ]] && is_config_true "$CONFIG_AUTO_PROCEED"; then
+      printf "${GREEN}✅ Auto-proceeding with search-replace (from config)${RESET}\n"
+      local confirm_replace="y"
+    else
+      printf "Proceed with search-replace now? (Y/n): "
+      read -r confirm_replace
+      confirm_replace="${confirm_replace:-y}"
+      [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
+    fi
 
     printf "\n🔁 Running search-replace operations...\n"
 
@@ -1562,7 +1755,7 @@ import_wp_db() {
   # 1. Clear object cache (if persistent caching is used)
   # Use execute_wp_cli for reliable command execution
   if ! execute_wp_cli cache flush $network_flag &>/dev/null; then
-      printf "${YELLOW}  ⚠️ Failed to flush object cache (Not always necessary/available).${RESET}\n"
+      printf "${YELLOW}  ⚠️  Failed to flush object cache (Not always necessary/available).${RESET}\n"
   else
       printf "${GREEN}  ✅ Object cache flushed.${RESET}\n"
   fi
@@ -1578,7 +1771,7 @@ import_wp_db() {
   # 3. Delete transients
   # Use execute_wp_cli for reliable command execution
   if ! execute_wp_cli transient delete --all $network_flag &>/dev/null; then
-      printf "${YELLOW}  ⚠️ Transient deletion finished (No transients found or minor error).${RESET}\n"
+      printf "${YELLOW}  ⚠️  Transient deletion finished (No transients found or minor error).${RESET}\n"
   else
       printf "${GREEN}  ✅ All transients deleted.${RESET}\n"
   fi
@@ -1755,7 +1948,7 @@ import_wp_db() {
       rm -f "$eval_log" 2>/dev/null
 
     else
-      printf "${YELLOW}⚠️ Could not determine base domain - falling back to manual MySQL commands${RESET}\n"
+      printf "${YELLOW}⚠️  Could not determine base domain - falling back to manual MySQL commands${RESET}\n"
       local auto_updates_successful="no"
     fi
   fi
@@ -1902,7 +2095,7 @@ import_wp_db() {
 
       printf "\n${YELLOW}💡 Copy the above commands and paste them into phpMyAdmin → SQL command to execute.${RESET}\n"
     else
-      printf "${YELLOW}⚠️ Could not generate MySQL commands - no base domain found.${RESET}\n"
+      printf "${YELLOW}⚠️  Could not generate MySQL commands - no base domain found.${RESET}\n"
     fi
   elif [[ "$is_multisite" != "yes" ]]; then
     printf "${GREEN}✅ Single site domain replacement completed via WP-CLI.${RESET}\n"
@@ -1919,7 +2112,7 @@ import_wp_db() {
     sql_executed="${sql_executed:-y}"
 
     if [[ "$sql_executed" != [Yy]* ]]; then
-      printf "${YELLOW}⚠️ Please execute the MySQL commands first, to complete the setup.${RESET}\n"
+      printf "${YELLOW}⚠️  Please execute the MySQL commands first, to complete the setup.${RESET}\n"
       sql_executed="n"
     else
       printf "${GREEN}🚀 Database Migration Completed Successfully!${RESET}\n"
@@ -1933,12 +2126,31 @@ import_wp_db() {
 
   # 🔍 Stage File Proxy Plugin Setup (only if SQL commands confirmed and proceeding)
   if [[ "$sql_executed" == [Yy]* ]]; then
-    # Ask user if they want to setup stage file proxy for media management
+    # Ask user if they want to setup stage file proxy for media management (from config or prompt)
     local setup_stage_proxy
-    printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
-    printf "Do you want to setup the stage file proxy plugin for media management? (Y/n): "
-    read -r setup_stage_proxy
-    setup_stage_proxy="${setup_stage_proxy:-y}"
+    if [[ -n "$CONFIG_SETUP_STAGE_PROXY" ]]; then
+      if is_config_true "$CONFIG_SETUP_STAGE_PROXY"; then
+        setup_stage_proxy="y"
+        printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
+        printf "Setup stage file proxy: ${GREEN}enabled${RESET} (from config)\n"
+      else
+        setup_stage_proxy="n"
+        printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
+        printf "Setup stage file proxy: ${YELLOW}disabled${RESET} (from config)\n"
+      fi
+    else
+      printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
+      printf "Do you want to setup the stage file proxy plugin for media management? (Y/n): "
+      read -r setup_stage_proxy
+      setup_stage_proxy="${setup_stage_proxy:-y}"
+
+      # Save to config for future use
+      if [[ "$setup_stage_proxy" == [Yy]* ]]; then
+        update_config_general "$config_path" "setup_stage_proxy" "true"
+      else
+        update_config_general "$config_path" "setup_stage_proxy" "false"
+      fi
+    fi
 
     if [[ "$setup_stage_proxy" == [Yy]* ]]; then
       # Check if stage-file-proxy plugin is already installed
@@ -1959,7 +2171,7 @@ import_wp_db() {
           printf "${GREEN}✅ Plugin installed successfully from GitHub${RESET}\n"
           install_success=true
         else
-          printf "${YELLOW}⚠️ GitHub installation failed, trying direct download method...${RESET}\n"
+          printf "${YELLOW}⚠️  GitHub installation failed, trying direct download method...${RESET}\n"
 
           # Method 2: Try direct download and install
           printf "${CYAN}    Attempting direct download method...${RESET}\n"
@@ -2014,7 +2226,7 @@ import_wp_db() {
               printf "   %s\n" "${lines[i]}"
             done
           fi
-          printf "${YELLOW}⚠️ Skipping stage-file-proxy configuration${RESET}\n"
+          printf "${YELLOW}⚠️  Skipping stage-file-proxy configuration${RESET}\n"
           printf "${CYAN}🔧 Manual installation options:${RESET}\n"
           printf "   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip\n"
           printf "   2. Install via WP Admin: Plugins → Add New → Upload Plugin\n"
@@ -2173,7 +2385,7 @@ import_wp_db() {
       local array_length=${#domain_keys[@]}
 
       if [[ $array_length -eq 0 ]]; then
-        printf "${YELLOW}⚠️ No domain mappings found. Using fallback configuration.${RESET}\n"
+        printf "${YELLOW}⚠️  No domain mappings found. Using fallback configuration.${RESET}\n"
         configure_site_proxy "$search_domain" "$search_domain" "header"
       else
         printf "${GREEN}✅ Configuring %d sites with stage-file-proxy${RESET}\n" "$array_length"
