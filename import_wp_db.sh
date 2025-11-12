@@ -302,37 +302,7 @@ import_wp_db() {
   printf "\n"
 
   # 🧹 Sanitize domain inputs (remove protocols and trailing slashes)
-  # NOTE: This function was not in the original utils.sh list but is being used
-  # Consider moving to lib/core/utils.sh if needed for modularity
-  sanitize_domain() {
-    local domain="$1"
-
-    # Handle empty input
-    if [[ -z "$domain" ]]; then
-      echo ""
-      return 0
-    fi
-
-    # Remove http:// and https:// protocols
-    domain="${domain#http://}"
-    domain="${domain#https://}"
-
-    # Remove any leading/trailing whitespace using bash built-ins
-    # This is more reliable than sed and doesn't depend on external commands
-    while [[ "$domain" =~ ^[[:space:]] ]]; do
-      domain="${domain#[[:space:]]}"
-    done
-    while [[ "$domain" =~ [[:space:]]$ ]]; do
-      domain="${domain%[[:space:]]}"
-    done
-
-    # Remove trailing slash
-    domain="${domain%/}"
-
-    echo "$domain"
-  }
-
-  # Apply sanitization to both domains
+  # Apply sanitization to both domains using centralized function
   local original_search_domain="$search_domain"
   local original_replace_domain="$replace_domain"
   search_domain=$(sanitize_domain "$search_domain")
@@ -774,7 +744,7 @@ import_wp_db() {
       fi
 
       # --- Pass 1 Execution (Standard replacement for non-www variant - always executed) ---
-      printf "[Pass 1] Updating standard domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_non_www" "$sr_new"
+      # printf "[Pass 1] Updating standard domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_non_www" "$sr_new"
 
       # Build the command array to avoid word splitting issues
       local cmd_args=("search-replace" "$sr1_old_non_www" "$sr_new")
@@ -804,7 +774,7 @@ import_wp_db() {
 
       # --- Pass 2 Execution (Standard replacement for www variant - only if source has www) ---
       if [[ "$has_www" == true ]]; then
-          printf "[Pass 2] Updating standard domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_www" "$sr_new"
+          # printf "[Pass 2] Updating standard domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_www" "$sr_new"
 
           # Rebuild command args for pass 2 (www variant)
           cmd_args=("search-replace" "$sr1_old_www" "$sr_new")
@@ -842,7 +812,7 @@ import_wp_db() {
       fi
 
       # --- Serialized data repair for non-www variant (always executed) ---
-      printf "[Pass %s] Updating serialized domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$serialized_pass_num" "$sr2_old_non_www" "$sr_new_escaped"
+      # printf "[Pass %s] Updating serialized domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$serialized_pass_num" "$sr2_old_non_www" "$sr_new_escaped"
 
       # Rebuild command args for serialized non-www variant
       cmd_args=("search-replace" "$sr2_old_non_www" "$sr_new_escaped")
@@ -872,7 +842,7 @@ import_wp_db() {
 
       # --- Final Pass Execution (Serialized data repair for www variant - only if source has www) ---
       if [[ "$has_www" == true ]]; then
-          printf "[Pass 4] Updating serialized domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr2_old_www" "$sr_new_escaped"
+          # printf "[Pass 4] Updating serialized domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr2_old_www" "$sr_new_escaped"
 
           # Rebuild command args for serialized www variant
           cmd_args=("search-replace" "$sr2_old_www" "$sr_new_escaped")
@@ -1035,8 +1005,13 @@ import_wp_db() {
           local domain_blog_ids=() # Array to track blog IDs
           local domain_paths=() # Array to track paths from wp_blogs
 
-          printf "${BOLD}Enter the NEW URL/Domain for each site:${RESET}\n"
-          printf "(Example: Map 'sub1.example.com' to 'sub1.example.local')\n\n"
+          printf "\n${CYAN}${BOLD}╔═══════════════════════════════════════════════════════════════╗${RESET}\n"
+          printf "${CYAN}${BOLD}║              🌐 MULTISITE DOMAIN MAPPING SETUP                ║${RESET}\n"
+          printf "${CYAN}${BOLD}╚═══════════════════════════════════════════════════════════════╝${RESET}\n\n"
+          printf "${YELLOW}📝 Instructions:${RESET}\n"
+          printf "   • Map each production domain to your local development URL\n"
+          printf "   • Example: 'sub1.example.com' → 'sub1.example.local'\n"
+          printf "   • Press Enter to use defaults where shown\n\n"
 
           local blog_id domain path local_domain mapped cleaned_domain
           local processed_count=0
@@ -1068,21 +1043,25 @@ import_wp_db() {
 
             # Debug output for domain processing
             printf "\n"
-            printf "  ${CYAN}Processing:${RESET} Blog ID %s, Domain: '%s', Path: '%s'\n" "$clean_blog_id" "$cleaned_domain" "$clean_site_path"
+            printf "  ${CYAN}┌─ Processing Site ${BOLD}%2s${RESET}${CYAN} ─────────────────────────────────────────${RESET}\n" "$clean_blog_id"
+            printf "  ${CYAN}│${RESET} Domain: ${YELLOW}%s${RESET}\n" "$cleaned_domain"
+            printf "  ${CYAN}│${RESET} Path:   ${GRAY}%s${RESET}\n" "$clean_site_path"
 
             # For the main site (detected via WordPress database), show more context
             if [[ "$clean_blog_id" == "$main_site_id" ]]; then
-                printf "→ Local URL for '%s' (Blog ID %s, Main Site): (%s) " "$cleaned_domain" "$main_site_id" "$replace_domain"
+                printf "  ${CYAN}│${RESET} Enter local URL for ${BOLD}Main Site${RESET} (default: ${GREEN}%s${RESET}): " "$replace_domain"
                 read -r local_domain
                 # Use default if empty
                 local_domain="${local_domain:-$replace_domain}"
             else
                 # For subsites, prompt the user clearly
-                printf "→ Local URL for '%s' (Blog ID %s): " "$cleaned_domain" "$clean_blog_id"
+                printf "  ${CYAN}│${RESET} Enter local URL for ${BOLD}Blog ID %s${RESET}: " "$clean_blog_id"
                 read -r local_domain
                 # Use default if empty
                 local_domain="${local_domain:-$cleaned_domain}"
             fi
+
+            printf "  ${CYAN}└──────────────────────────────────────────────────────────────${RESET}\n"
 
             # 🧹 Sanitize the local domain input (remove protocols, trailing slashes, whitespace)
             if [[ -n "$local_domain" ]]; then
@@ -1091,7 +1070,7 @@ import_wp_db() {
 
                 # Show what was cleaned up if changes were made
                 if [[ "$original_local_domain" != "$local_domain" ]]; then
-                    printf "    ${YELLOW}🧹 Cleaned: '%s' → '%s'${RESET}\n" "$original_local_domain" "$local_domain"
+                    printf "     ${YELLOW}🧹 Cleaned:${RESET} ${GRAY}'%s' → '%s'${RESET}\n" "$original_local_domain" "$local_domain"
                 fi
             fi
 
@@ -1103,9 +1082,12 @@ import_wp_db() {
                 domain_values+=("$local_domain")
                 domain_blog_ids+=("$clean_blog_id") # Store the blog ID
                 domain_paths+=("$clean_site_path") # Store the path from wp_blogs
-                printf "  ${GREEN}✅ Added mapping:${RESET} '%s' → '%s' (ID: %s, Path: %s)\n" "$cleaned_domain" "$local_domain" "$clean_blog_id" "$clean_site_path"
+                printf "  ${GREEN}✅ Mapping confirmed:${RESET}\n"
+                printf "     ${GRAY}%s${RESET} ${BLUE}→${RESET} ${GREEN}%s${RESET}\n" "$cleaned_domain" "$local_domain"
+                printf "     ${GRAY}(Blog ID: %s, Path: %s)${RESET}\n" "$clean_blog_id" "$clean_site_path"
             else
-                printf "  ${RED}❌ Skipped invalid mapping:${RESET} domain='%s', local='%s'\n" "$cleaned_domain" "$local_domain"
+                printf "  ${RED}❌ Skipped invalid mapping:${RESET}\n"
+                printf "     ${GRAY}Domain: '%s', Local: '%s'${RESET}\n" "$cleaned_domain" "$local_domain"
             fi
 
           done
@@ -1118,7 +1100,7 @@ import_wp_db() {
           local domain_display_names=()  # Store exact display names from summary
           local original_length=${#domain_keys[@]}
 
-          for ((i=1; i<=original_length; i++)); do
+          for ((i=0; i<original_length; i++)); do
             local key="${domain_keys[i]}"
             local value="${domain_values[i]}"
             local id="${domain_blog_ids[i]}" # Get blog ID
@@ -1146,7 +1128,7 @@ import_wp_db() {
           # --- Summary Loop using parallel arrays ---
           local array_length=${#domain_keys[@]}
 
-          for ((i=1; i<=array_length; i++)); do
+          for ((i=0; i<array_length; i++)); do
 
             local key="${domain_keys[i]}"
             local value="${domain_values[i]}"
@@ -1214,7 +1196,7 @@ import_wp_db() {
 
             # Generate wp_blogs UPDATE commands for subsites (ID != main_site_id)
             printf "${YELLOW}📝 Preparing wp_blogs updates for subsites...${RESET}\n"
-            for ((i=1; i<=array_length; i++)); do
+            for ((i=0; i<array_length; i++)); do
               local old_domain="${domain_keys[i]}"
               local new_domain="${domain_values[i]}"
               local blog_id="${domain_blog_ids[i]}"
@@ -1343,7 +1325,7 @@ import_wp_db() {
                 fi
 
                 # Execute subsite updates
-                for ((i=1; i<=array_length; i++)); do
+                for ((i=0; i<array_length; i++)); do
                   local old_domain="${domain_keys[i]}"
                   local new_domain="${domain_values[i]}"
                   local blog_id="${domain_blog_ids[i]}"
@@ -1458,9 +1440,42 @@ import_wp_db() {
           local main_site_value=""
           local main_site_path=""
 
+          # --- Dynamic Visual System Functions ---
+          # Step-by-step processing functions
+          start_site_processing() {
+              local site_id="$1" from_domain="$2" to_domain="$3" is_main="$4"
+
+              if [[ "$is_main" == "true" ]]; then
+                  printf "\n🏠 Main Site Processing:\n"
+              else
+                  printf "\n🌍 Site %s Processing:\n" "$site_id"
+              fi
+
+              printf "   From: %s\n" "$from_domain"
+              printf "   To:   %s\n" "$to_domain"
+              printf "\n"
+          }
+
+          update_step_status() {
+              local step_num="$1" description="$2" status="$3"
+
+              if [[ "$status" == "complete" ]]; then
+                  printf "   Step %s: ✅ %s\n" "$step_num" "$description"
+              elif [[ "$status" == "processing" ]]; then
+                  printf "   Step %s: 🔄 %s\n" "$step_num" "$description"
+              elif [[ "$status" == "failed" ]]; then
+                  printf "   Step %s: ❌ %s\n" "$step_num" "$description"
+              fi
+          }
+
           # --- Execution Loop 1: Subsites (ID != main_site_id) ---
           local array_length=${#domain_keys[@]}
-          for ((i=1; i<=array_length; i++)); do
+
+          # Display header
+          printf "\n${CYAN}${BOLD}🔄 SEARCH-REPLACE OPERATIONS${RESET}\n"
+          printf "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
+
+          for ((i=0; i<array_length; i++)); do
             local cleaned_domain="${domain_keys[i]}"
             local new_domain="${domain_values[i]}"
             local blog_id="${domain_blog_ids[i]}"
@@ -1471,47 +1486,53 @@ import_wp_db() {
                 main_site_key="$cleaned_domain"
                 main_site_value="$new_domain"
                 main_site_path="$site_path_var"
-                printf "${YELLOW}  ⏸️  Skipping Main Site (ID %s) - will process last.${RESET}\n" "$main_site_id"
                 continue
             fi
 
             if [[ -z "$new_domain" || "$cleaned_domain" == "$new_domain" ]]; then
-              printf "${YELLOW}⏭️  Skipping '%s' (ID %s, no change).${RESET}\n" "$cleaned_domain" "$blog_id"
               continue
             fi
 
             SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
 
-            # Use the exact display name from summary to ensure consistency
-            local display_old="${domain_display_names[i]}"
-            printf "\n➡️  ${BOLD}Replacing for Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$blog_id" "$display_old" "$new_domain"
+            # Start site processing
+            start_site_processing "$blog_id" "$cleaned_domain" "$new_domain" "false"
 
             # Use enhanced run_search_replace with path information
             # Pass the path from wp_blogs to enable domain+path replacement
             if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain" "$site_path_var" ""; then
-              printf "${GREEN}✅ Completed for %s (ID %s).${RESET}\n" "$display_old" "$blog_id"
+              # Update steps as complete
+              update_step_status "1" "Standard URL replacement complete" "complete"
+              update_step_status "2" "Serialized data replacement complete" "complete"
             else
-              printf "${RED}❌ Failed on %s (ID %s). Check %s for details.${RESET}\n" "$display_old" "$blog_id" "$SR_LOG_MULTI"
+              # Update steps as failed
+              update_step_status "1" "Standard URL replacement failed" "failed"
+              update_step_status "2" "Serialized data replacement failed" "failed"
             fi
           done
 
           # --- Execution Loop 2: Main Site (ID = main_site_id) ---
-          printf "\n${CYAN}  MAIN SITE REPLACEMENT (ID = %s)${RESET}\n" "$main_site_id"
           if [[ -n "$main_site_key" && "$main_site_key" != "$main_site_value" ]]; then
               local main_site_log="/tmp/wp_replace_${main_site_id}_$$.log"
               local main_display_old="${main_site_key}${main_site_path}"
-              printf "\n➡️  ${BOLD}Replacing for Main Site ID %s:${RESET} ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$main_site_id" "$main_display_old" "$main_site_value"
+
+              # Start main site processing
+              start_site_processing "$main_site_id" "$main_display_old" "$main_site_value" "true"
 
               # Run main site search-replace with path information (using the main site's old domain in --url for safety)
               if run_search_replace "$main_site_key" "$main_site_value" "$main_site_log" "--url=$main_site_key" "$main_site_path" ""; then
-                printf "${GREEN}✅ Completed for Main Site (ID %s).${RESET}\n" "$main_site_id"
+                # Update steps as complete
+                update_step_status "1" "Standard URL replacement complete" "complete"
+                update_step_status "2" "Serialized data replacement complete" "complete"
               else
-                printf "${RED}❌ Failed on Main Site (ID %s). Check %s for details.${RESET}\n" "$main_site_id" "$main_site_log"
+                # Update steps as failed
+                update_step_status "1" "Standard URL replacement failed" "failed"
+                update_step_status "2" "Serialized data replacement failed" "failed"
               fi
           elif [[ -n "$main_site_key" ]]; then
-              printf "${YELLOW}⏭️  Skipping Main Site (ID %s, no change).${RESET}\n" "$main_site_id"
+              printf "\n${YELLOW}⏭️  Main Site (ID %s) - No changes needed${RESET}\n" "$main_site_id"
           else
-              printf "${RED}❌ Could not find Main Site mapping (ID %s) to process.${RESET}\n" "$main_site_id"
+              printf "\n${RED}❌ Could not find Main Site mapping (ID %s) to process.${RESET}\n" "$main_site_id"
           fi
 
       fi  # End of subdirectory vs subdomain multisite logic
@@ -1605,7 +1626,7 @@ import_wp_db() {
 
       # Generate wp_blogs UPDATE commands for subsites (ID != main_site_id)
       printf "${YELLOW}📝 Preparing wp_blogs updates for subsites...${RESET}\n"
-      for ((i=1; i<=array_length; i++)); do
+      for ((i=0; i<array_length; i++)); do
         local old_domain="${domain_keys[i]}"
         local new_domain="${domain_values[i]}"
         local blog_id="${domain_blog_ids[i]}"
@@ -1779,7 +1800,7 @@ import_wp_db() {
       local processed_blog_ids=() # Track processed blog_ids to prevent duplicates
 
       # --- Subsite Commands (ID != main_site_id) ---
-      for ((i=1; i<=array_length; i++)); do
+      for ((i=0; i<array_length; i++)); do
         local old_domain="${domain_keys[i]}"
         local new_domain="${domain_values[i]}"
         local blog_id="${domain_blog_ids[i]}"
@@ -2157,7 +2178,7 @@ import_wp_db() {
       else
         printf "${GREEN}✅ Configuring %d sites with stage-file-proxy${RESET}\n" "$array_length"
 
-        for ((i=1; i<=array_length; i++)); do
+        for ((i=0; i<array_length; i++)); do
           local old_domain="${domain_keys[i]}"
           local new_domain="${domain_values[i]}"
 

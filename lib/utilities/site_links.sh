@@ -25,17 +25,8 @@
 show_local_site_links() {
   # 🔍 Locate WordPress root by searching for wp-config.php
   local wp_root
-  wp_root=$(pwd)
-  while [[ "$wp_root" != "/" && ! -f "$wp_root/wp-config.php" ]]; do
-    # Use bash built-in parameter expansion instead of dirname command
-    wp_root="${wp_root%/*}"
-    # Handle edge case where wp_root becomes empty (would happen at filesystem root)
-    if [[ -z "$wp_root" ]]; then
-      wp_root="/"
-    fi
-  done
-
-  if [[ ! -f "$wp_root/wp-config.php" ]]; then
+  wp_root=$(find_wordpress_root)
+  if [[ $? -ne 0 ]]; then
     printf "${RED}❌ WordPress root not found (wp-config.php missing).${RESET}\n"
     printf "${YELLOW}💡 Please run this from within a WordPress directory.${RESET}\n"
     return 1
@@ -47,23 +38,12 @@ show_local_site_links() {
   fi
 
   # 🧠 Check WP-CLI availability with enhanced PATH
-  # Use global WP_COMMAND if available, otherwise detect it
-  if [[ -z "${WP_COMMAND:-}" ]]; then
-    # Use a local enhanced PATH without permanently modifying the environment
-    local enhanced_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-    WP_COMMAND=$(PATH="$enhanced_path" command -v wp)
-    if [[ -z "$WP_COMMAND" ]]; then
-      printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"
-      printf "${YELLOW}💡 Please install WP-CLI to use this function.${RESET}\n"
-      return 1
-    fi
-    # Export for use in execute_wp_cli (needed because execute_wp_cli runs in a subshell)
-    export WP_COMMAND
+  if ! check_wpcli_availability; then
+    return 1
   fi
 
   # 🧱 Verify WordPress installation integrity
-  if ! execute_wp_cli core is-installed &>/dev/null; then
-    printf "${RED}❌ No WordPress installation detected in this directory.${RESET}\n"
+  if ! validate_wordpress_installation; then
     return 1
   fi
 

@@ -27,17 +27,19 @@ show_revision_cleanup_commands() {
   printf "${CYAN}${BOLD}🧹 MYSQL COMMANDS FOR REVISION CLEANUP${RESET}\n"
   printf "================================================================\n\n"
 
-  # Check if we're in a WordPress directory
-  if [ ! -f "wp-config.php" ]; then
+  # Check if we're in a WordPress directory using centralized validation
+  local wp_root
+  wp_root=$(find_wordpress_root)
+  if [[ $? -ne 0 ]]; then
     printf "${RED}❌ Error: wp-config.php not found in current directory${RESET}\n"
     printf "${YELLOW}💡 Please navigate to your WordPress root directory and run this script${RESET}\n"
     return 1
   fi
 
-  # Get table prefix from wp-config.php
+  # Get table prefix from wp-config.php using centralized function
   local table_prefix
-  table_prefix=$(grep -E "^\\\$table_prefix\s*=" wp-config.php | cut -d"'" -f2 2>/dev/null)
-  if [ -z "$table_prefix" ]; then
+  table_prefix=$(get_wp_table_prefix)
+  if [[ $? -ne 0 ]]; then
     table_prefix="wp_"
   fi
 

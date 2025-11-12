@@ -544,5 +544,193 @@ if is_sourced; then
         export -f execute_wp_cli
         export -f get_tool_version
         export -f is_sourced
+        export -f find_wordpress_root
+        export -f get_wp_table_prefix
+        export -f sanitize_domain
+        export -f validate_file_exists
+        export -f validate_wordpress_installation
+        export -f check_wpcli_availability
+        export -f create_temp_file
     } 2>/dev/null
 fi
+
+# -----------------------------------------------
+# WordPress root directory detection
+# -----------------------------------------------
+find_wordpress_root() {
+    local wp_root
+    wp_root=$(pwd)
+    while [[ "$wp_root" != "/" && ! -f "$wp_root/wp-config.php" ]]; do
+        # Use bash built-in parameter expansion instead of dirname command
+        wp_root="${wp_root%/*}"
+        # Handle edge case where wp_root becomes empty (would happen at filesystem root)
+        if [[ -z "$wp_root" ]]; then
+            wp_root="/"
+        fi
+    done
+
+    if [[ ! -f "$wp_root/wp-config.php" ]]; then
+        return 1
+    fi
+
+    echo "$wp_root"
+    return 0
+}
+
+# -----------------------------------------------
+# Get table prefix from wp-config.php
+# -----------------------------------------------
+get_wp_table_prefix() {
+    local wp_config_path="${1:-wp-config.php}"
+
+    if [[ ! -f "$wp_config_path" ]]; then
+        echo "wp_"
+        return 1
+    fi
+
+    local table_prefix
+    table_prefix=$(grep -E "^\\\$table_prefix\s*=" "$wp_config_path" | cut -d"'" -f2 2>/dev/null)
+
+    if [[ -z "$table_prefix" ]]; then
+        table_prefix="wp_"
+    fi
+
+    echo "$table_prefix"
+}
+
+# -----------------------------------------------
+# Domain sanitization and validation
+# -----------------------------------------------
+sanitize_domain() {
+    local domain="$1"
+    local mode="${2:-basic}"  # basic (default) or strict (for stage-file-proxy)
+
+    # Handle empty input
+    if [[ -z "$domain" ]]; then
+        echo ""
+        return 0
+    fi
+
+    # Remove any leading/trailing whitespace using bash built-ins
+    while [[ "$domain" =~ ^[[:space:]] ]]; do
+        domain="${domain#[[:space:]]}"
+    done
+    while [[ "$domain" =~ [[:space:]]$ ]]; do
+        domain="${domain%[[:space:]]}"
+    done
+
+    # Remove http:// and https:// protocols (do this AFTER whitespace removal)
+    domain="${domain#http://}"
+    domain="${domain#https://}"
+
+    # Remove trailing slash(es)
+    while [[ "$domain" =~ /$ ]]; do
+        domain="${domain%/}"
+    done
+
+    # For strict mode (stage-file-proxy), do additional validation
+    if [[ "$mode" == "strict" ]]; then
+        # Check input length (reasonable URL length limit)
+        if [[ ${#domain} -gt 2048 ]]; then
+            return 1
+        fi
+
+        # Check for dangerous characters that could cause injection
+        if [[ "$domain" =~ [\;\|\&\$\`\(\)\<\>\"\'] ]]; then
+            return 1
+        fi
+
+        # Check for control characters and non-printable characters
+        if [[ "$domain" =~ [[:cntrl:]] ]]; then
+            return 1
+        fi
+
+        # Add https:// protocol (required for database storage in strict mode)
+        domain="https://$domain"
+
+        # Validate URL format more thoroughly
+        if [[ "$domain" =~ ^https://localhost([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+            # Allow localhost with optional port and path
+            :
+        elif [[ "$domain" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+            # Allow IP addresses with optional port and path
+            :
+        elif ! [[ "$domain" =~ ^https://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+([:]([0-9]{1,5}))?(/.*)?$ ]]; then
+            return 1
+        fi
+
+        # Additional security check: ensure no multiple protocols
+        local protocol_count=0
+        local temp_domain="$domain"
+        while [[ "$temp_domain" == *"://"* ]]; do
+            protocol_count=$((protocol_count + 1))
+            temp_domain="${temp_domain#*://}"
+        done
+
+        if [[ "$protocol_count" -gt 1 ]]; then
+            return 1
+        fi
+    fi
+
+    echo "$domain"
+}
+
+# -----------------------------------------------
+# Common validation functions
+# -----------------------------------------------
+
+# Validate if file exists and is readable
+validate_file_exists() {
+    local file_path="$1"
+    local error_message="${2:-File not found}"
+
+    if [[ ! -f "$file_path" ]]; then
+        printf "${RED}❌ %s: %s${RESET}\n" "$error_message" "$file_path"
+        return 1
+    fi
+
+    if [[ ! -r "$file_path" ]]; then
+        printf "${RED}❌ File not readable: %s${RESET}\n" "$file_path"
+        return 1
+    fi
+
+    return 0
+}
+
+# Validate WordPress installation using WP-CLI
+validate_wordpress_installation() {
+    if ! execute_wp_cli core is-installed &>/dev/null; then
+        printf "${RED}❌ No WordPress installation detected in this directory.${RESET}\n"
+        return 1
+    fi
+    return 0
+}
+
+# Check if WP-CLI is available with enhanced PATH
+check_wpcli_availability() {
+    # Use global WP_COMMAND if available, otherwise detect it
+    if [[ -z "${WP_COMMAND:-}" ]]; then
+        local enhanced_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+        WP_COMMAND=$(PATH="$enhanced_path" command -v wp)
+        if [[ -z "$WP_COMMAND" ]]; then
+            printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"
+            printf "${YELLOW}💡 Please install WP-CLI to use this function.${RESET}\n"
+            return 1
+        fi
+        export WP_COMMAND
+    fi
+    return 0
+}
+
+# Create temporary file with proper permissions
+create_temp_file() {
+    local prefix="${1:-wp_import}"
+    local extension="${2:-log}"
+    local temp_file="/tmp/${prefix}_$$.${extension}"
+
+    # Create file with restricted permissions
+    touch "$temp_file"
+    chmod 600 "$temp_file"
+
+    echo "$temp_file"
+}

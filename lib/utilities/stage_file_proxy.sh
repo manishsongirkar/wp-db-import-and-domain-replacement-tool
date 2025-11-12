@@ -28,77 +28,18 @@
 # Function to sanitize and validate domain input (Updated for new plugin structure)
 sanitize_stage_proxy_domain() {
     local input="$1"
+
+    # Use the centralized sanitize_domain function with strict mode
     local clean_domain
+    clean_domain=$(sanitize_domain "$input" "strict")
+    local exit_code=$?
 
-    # Check if input is empty
-    if [[ -z "$input" ]]; then
+    if [[ $exit_code -eq 0 && -n "$clean_domain" ]]; then
+        echo "$clean_domain"
+        return 0
+    else
         return 1
     fi
-
-    # Check input length (reasonable URL length limit)
-    if [[ ${#input} -gt 2048 ]]; then
-        return 1
-    fi
-
-    # Remove leading/trailing whitespace using bash built-ins
-    clean_domain="$input"
-    # Remove leading whitespace
-    while [[ "$clean_domain" =~ ^[[:space:]] ]]; do
-      clean_domain="${clean_domain#[[:space:]]}"
-    done
-    # Remove trailing whitespace
-    while [[ "$clean_domain" =~ [[:space:]]$ ]]; do
-      clean_domain="${clean_domain%[[:space:]]}"
-    done
-
-    # Check for dangerous characters that could cause injection
-    if [[ "$clean_domain" =~ [\;\|\&\$\`\(\)\<\>\"\'] ]]; then
-        return 1
-    fi
-
-    # Check for control characters and non-printable characters
-    if [[ "$clean_domain" =~ [[:cntrl:]] ]]; then
-        return 1
-    fi
-
-    # Remove trailing slashes
-    clean_domain=${clean_domain%/}
-
-    # UPDATED: Ensure https:// protocol for database storage (new plugin expects full URL)
-    # Remove any existing protocol first
-    clean_domain="${clean_domain#http://}"
-    clean_domain="${clean_domain#https://}"
-
-    # Add https:// protocol (required for database storage)
-    clean_domain="https://$clean_domain"
-
-    # Validate URL format more thoroughly (with required https protocol)
-    # Domain must have at least one dot (.) for a valid TLD, except for localhost and IP addresses
-    if [[ "$clean_domain" =~ ^https://localhost([:]([0-9]{1,5}))?(/.*)?$ ]]; then
-        # Allow localhost with optional port and path
-        :
-    elif [[ "$clean_domain" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}([:]([0-9]{1,5}))?(/.*)?$ ]]; then
-        # Allow IP addresses with optional port and path
-        :
-    elif ! [[ "$clean_domain" =~ ^https://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+([:]([0-9]{1,5}))?(/.*)?$ ]]; then
-        return 1
-    fi
-
-    # Additional security check: ensure no multiple protocols using bash built-ins
-    local protocol_count=0
-    local temp_domain="$clean_domain"
-    while [[ "$temp_domain" == *"://"* ]]; do
-        protocol_count=$((protocol_count + 1))
-        temp_domain="${temp_domain#*://}"
-    done
-
-    if [[ "$protocol_count" -gt 1 ]]; then
-        return 1
-    fi
-
-    # Return the sanitized domain with https:// protocol
-    echo "$clean_domain"
-    return 0
 }
 
 # Function to get and validate domain input interactively

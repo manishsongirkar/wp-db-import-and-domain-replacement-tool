@@ -11,13 +11,21 @@
 #
 # ===============================================
 
-# Color definitions
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-RESET='\033[0m'
+# Load utilities for colors and common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UTILS_FILE="$SCRIPT_DIR/lib/core/utils.sh"
+if [[ -f "$UTILS_FILE" ]]; then
+    source "$UTILS_FILE"
+    init_colors
+else
+    # Fallback colors if utils not available
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    RESET='\033[0m'
+fi
 
 printf "${CYAN}${BOLD}WordPress Database Import Tool - Uninstaller${RESET}\n"
 printf "======================================================\n\n"

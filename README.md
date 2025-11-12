@@ -262,20 +262,10 @@ Proceed with database import? (Y/n): y
 
 🔍 Checking WordPress installation type...
 ✅ Single site installation detected
-✅ Multisite status: no
 
 Clear ALL post revisions? (improves search-replace speed) (Y/n): y
-🗑️ Clearing ALL Post Revisions (improves search-replace speed)...
-🗑️ REVISION CLEANUP - STEP BY STEP
-=====================================================
-
-🧩 SINGLE SITE DETECTED - Processing main site only...
-  Step A: Processing revisions for the main site
-
-  🌍 Processing Main Site
-     Revisions found: 4394
-  ✅ Revisions deleted (WP-CLI reported success)
-
+🗑️ Clearing ALL Post Revisions...
+✅ Revisions deleted successfully
 
 Include --all-tables (recommended for full DB imports)? (Y/n): y
 ✅ Will include all tables.
@@ -283,34 +273,23 @@ Include --all-tables (recommended for full DB imports)? (Y/n): y
 Run in dry-run mode (no data will be changed)? (y/N): n
 🚀 Running in live mode (changes will be applied).
 
-🧩 Single site detected.
-Proceed with search-replace now? (Y/n): y
+🔄 SEARCH-REPLACE OPERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔁 Running search-replace operations...
-[Pass 1] Updating standard domain URLs: //example.com → //example.test
-[Pass 3] Updating standard domain URLs (www): //www.example.com → //example.test
-[Pass 2] Updating serialized domain URLs: \\//example.com → \\//example.test
-[Pass 4] Updating serialized domain URLs (www): \\//www.example.com → \\//example.test
+🌍 Single Site Processing:
+   From: www.example.com
+   To:   example.test
 
-✅ Search-replace completed successfully!
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
-  ✅ Rewrite rule flushed.
-  ✅ All transients deleted.
-
-🎉 All done! Database import and replacements completed successfully.
-
-✅ Single site domain replacement completed via WP-CLI.
 
 📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-� stage-file-proxy plugin found! Configuring...
-📦 Activating stage-file-proxy plugin...
+Do you want to setup the stage file proxy plugin? (Y/n): y
 ✅ Plugin activated successfully
-🧩 Configuring single site stage-file-proxy...
-  ✅ Configured successfully: example.test (URL: https://www.example.com, Mode: header)
-🎉 stage-file-proxy configuration complete!
+✅ Configured: example.test → https://www.example.com
 
 ================================================================
 🌐 LOCAL SITE ACCESS LINKS
@@ -341,73 +320,31 @@ $ wp-db-import
 🌍 Enter the OLD (production) domain to search for: https://admin.example.com/
 🏠 Enter the NEW (local) domain/base URL to replace with: https://example.test/
 
-� Cleaned search domain: 'https://admin.example.com/' → 'admin.example.com'
+🧹 Cleaned search domain: 'https://admin.example.com/' → 'admin.example.com'
 🧹 Cleaned replace domain: 'https://example.test/' → 'example.test'
-�🧾 Summary:
+🧾 Summary:
     🔍 Search for:   admin.example.com
     🔄 Replace with: example.test
 
 Proceed with database import? (Y/n): y
 
 ⏳ Importing database...
-[2] 4185
-  Importing \ (00:16)[2]  + 4185 done       /bin/sh -c
-✅ Database import successful! [Completed in 00:16]
+✅ Database import successful!
 
 🔍 Checking WordPress installation type...
 ✅ Multisite detected via wp-config.php constants
 
+Clear ALL post revisions? (Y/n): y
+🗑️ Clearing ALL Post Revisions...
+✅ All revisions deleted across 6 sites
 
-Clear ALL post revisions? (improves search-replace speed) (Y/n): y
-🗑️ Clearing ALL Post Revisions (improves search-replace speed)...
-🗑️ REVISION CLEANUP - STEP BY STEP
-=====================================================
-
-🌐 MULTISITE DETECTED - Processing all subsites...
-  Step A: Getting list of all sites in the network
-  Found 6 sites to process:
-    1. https://admin.example.com/
-    2. https://shop.example.com/
-    3. https://blog.example.com/
-    4. https://news.example.com/
-    5. https://support.example.com/
-    6. https://docs.example.com/
-
-  Step B: Processing revisions for each site individually
-
-  🌍 Site 1/6: https://admin.example.com/
-     Revisions found: 9
-  ✅ Revisions deleted (WP-CLI reported success)
-
-  🌍 Site 2/6: https://shop.example.com/
-     Revisions found: 709
-  ✅ Revisions deleted (WP-CLI reported success)
-
-  🌍 Site 3/6: https://blog.example.com/
-     Revisions found: 23
-  ✅ Revisions deleted (WP-CLI reported success)
-
-  🌍 Site 4/6: https://news.example.com/
-     Revisions found: 2
-  ✅ Revisions deleted (WP-CLI reported success)
-
-  🌍 Site 5/6: https://support.example.com/
-     Revisions found: 12
-  ✅ Revisions deleted (WP-CLI reported success)
-
-  🌍 Site 6/6: https://docs.example.com/
-     Revisions found: 349
-  ✅ Revisions deleted (WP-CLI reported success)
-
-
-Include --all-tables (recommended for full DB imports)? (Y/n): y
+Include --all-tables? (Y/n): y
 ✅ Will include all tables.
 
-Run in dry-run mode (no data will be changed)? (y/N): n
-🚀 Running in live mode (changes will be applied).
+Run in dry-run mode? (y/N): n
+🚀 Running in live mode.
 
 🌐 Multisite (subdomain) detected — gathering subsites for mapping...
-
 
 ✅ Found 6 subsites:
 blog_id  domain                         path
@@ -418,36 +355,34 @@ blog_id  domain                         path
 6        support.example.com            /
 7        docs.example.com               /
 
-🌐 Subdomain Multisite Detected
-Each subsite has its own domain. Individual mapping input is required.
+🌐 Individual domain mapping required for subdomain multisite:
 
-Enter the NEW URL/Domain for each site:
-(Example: Map 'sub1.example.com' to 'sub1.example.local')
+  ┌─ Processing Site  1 ─────────────────────────────────────────
+  │ Domain: admin.example.com
+  │ Path:   /
+  │ Enter local URL for Main Site (default: example.test): example.test
+  └──────────────────────────────────────────────────────────────
+  ✅ Mapping confirmed:
+     admin.example.com → example.test
+     (Blog ID: 1, Path: /)
 
+  ┌─ Processing Site  2 ─────────────────────────────────────────
+  │ Domain: shop.example.com
+  │ Path:   /
+  │ Enter local URL for Blog ID 2: example.test/shop
+  └──────────────────────────────────────────────────────────────
+  ✅ Mapping confirmed:
+     shop.example.com → example.test/shop
+     (Blog ID: 2, Path: /)
 
-  Processing: Blog ID 1, Domain: 'admin.example.com', Path: '/'
-→ Local URL for 'admin.example.com' (Blog ID 1): (example.test) example.test
-  ✅ Added mapping: 'admin.example.com' → 'example.test' (ID: 1, Path: /)
-
-  Processing: Blog ID 2, Domain: 'shop.example.com', Path: '/'
-→ Local URL for 'shop.example.com' (Blog ID 2): example.test/shop
-  ✅ Added mapping: 'shop.example.com' → 'example.test/shop' (ID: 2, Path: /)
-
-  Processing: Blog ID 3, Domain: 'blog.example.com', Path: '/'
-→ Local URL for 'blog.example.com' (Blog ID 3): example.test/blog
-  ✅ Added mapping: 'blog.example.com' → 'example.test/blog' (ID: 3, Path: /)
-
-  Processing: Blog ID 4, Domain: 'news.example.com', Path: '/'
-→ Local URL for 'news.example.com' (Blog ID 4): example.test/news
-  ✅ Added mapping: 'news.example.com' → 'example.test/news' (ID: 4, Path: /)
-
-  Processing: Blog ID 6, Domain: 'support.example.com', Path: '/'
-→ Local URL for 'support.example.com' (Blog ID 6): example.test/support
-  ✅ Added mapping: 'support.example.com' → 'example.test/support' (ID: 6, Path: /)
-
-  Processing: Blog ID 7, Domain: 'docs.example.com', Path: '/'
-→ Local URL for 'docs.example.com' (Blog ID 7): example.test/docs
-  ✅ Added mapping: 'docs.example.com' → 'example.test/docs' (ID: 7, Path: /)
+  ┌─ Processing Site  3 ─────────────────────────────────────────
+  │ Domain: blog.example.com
+  │ Path:   /
+  │ Enter local URL for Blog ID 3: example.test/blog
+  └──────────────────────────────────────────────────────────────
+  ✅ Mapping confirmed:
+     blog.example.com → example.test/blog
+     (Blog ID: 3, Path: /)
 
 🧾 Domain mapping summary:
     🔁 [ID: 1] admin.example.com/ → example.test
@@ -457,87 +392,67 @@ Enter the NEW URL/Domain for each site:
     🔁 [ID: 6] support.example.com/ → example.test/support
     🔁 [ID: 7] docs.example.com/ → example.test/docs
 
-Proceed with search-replace for all sites? (Y/n): y
-
-🔧 Updating wp_blogs and wp_site tables (before search-replace)...
-================================================================
-
-🔄 Executing wp_blogs and wp_site table updates via wp eval...
-
-📝 Preparing wp_blogs updates for subsites...
-  → Blog ID 2: shop.example.com → example.test/shop/
-  → Blog ID 3: blog.example.com → example.test/blog/
-  → Blog ID 4: news.example.com → example.test/news/
-  → Blog ID 6: support.example.com → example.test/support/
-  → Blog ID 7: docs.example.com → example.test/docs/
-
-📝 Preparing wp_blogs update for main site (ID: 1)...
-  → Blog ID 1: admin.example.com → example.test/
-
-📝 Preparing wp_site update for network (ID: 1)...
-  → Site ID 1: Network domain → example.test
-
 ⚡ Updating wp_blogs and wp_site tables...
 ✅ Database tables wp_blogs & wp_site updated successfully!
-new_domain=example.test/docs
-  ⏸️  Skipping Main Site (ID 1) - will process last.
 
-➡️  Replacing for Site ID 2: shop.example.com/ → example.test/shop
-[Pass 1] Updating standard domain URLs: //shop.example.com → //example.test/shop
-[Pass 2] Updating serialized domain URLs: \\//shop.example.com → \\//example.test/shop
-✅ Completed for shop.example.com/ (ID 2).
+� SEARCH-REPLACE OPERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-➡️  Replacing for Site ID 3: blog.example.com/ → example.test/blog
-[Pass 1] Updating standard domain URLs: //blog.example.com → //example.test/blog
-[Pass 2] Updating serialized domain URLs: \\//blog.example.com → \\//example.test/blog
-✅ Completed for blog.example.com/ (ID 3).
+🌍 Site 2 Processing:
+   From: shop.example.com
+   To:   example.test/shop
 
-➡️  Replacing for Site ID 4: news.example.com/ → example.test/news
-[Pass 1] Updating standard domain URLs: //news.example.com → //example.test/news
-[Pass 2] Updating serialized domain URLs: \\//news.example.com → \\//example.test/news
-✅ Completed for news.example.com/ (ID 4).
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
 
-➡️  Replacing for Site ID 6: support.example.com/ → example.test/support
-[Pass 1] Updating standard domain URLs: //support.example.com → //example.test/support
-[Pass 2] Updating serialized domain URLs: \\//support.example.com → \\//example.test/support
-✅ Completed for support.example.com/ (ID 6).
+🌍 Site 3 Processing:
+   From: blog.example.com
+   To:   example.test/blog
 
-➡️  Replacing for Site ID 7: docs.example.com/ → example.test/docs
-[Pass 1] Updating standard domain URLs: //docs.example.com → //example.test/docs
-[Pass 2] Updating serialized domain URLs: \\//docs.example.com → \\//example.test/docs
-✅ Completed for docs.example.com/ (ID 7).
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
 
-  MAIN SITE REPLACEMENT (ID = 1)
+🌍 Site 4 Processing:
+   From: news.example.com
+   To:   example.test/news
 
-➡️  Replacing for Main Site ID 1: admin.example.com/ → example.test
-[Pass 1] Updating standard domain URLs: //admin.example.com → //example.test
-[Pass 2] Updating serialized domain URLs: \\//admin.example.com → \\//example.test
-✅ Completed for Main Site (ID 1).
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🌍 Site 6 Processing:
+   From: support.example.com
+   To:   example.test/support
+
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🌍 Site 7 Processing:
+   From: docs.example.com
+   To:   example.test/docs
+
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🏠 Main Site Processing:
+   From: admin.example.com
+   To:   example.test
+
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
-  ⚠️ Failed to flush rewrite rule (Not always necessary/available).
-  ✅ All transients deleted.
-
-🎉 All done! Database import and replacements completed successfully.
-
-
-🚀 Database Migration Completed Successfully! (Tables updated automatically)
 
 📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin for media management? (Y/n): y
-🔍 stage-file-proxy plugin found! Configuring...
-📦 Activating stage-file-proxy plugin...
+Do you want to setup the stage file proxy plugin? (Y/n): y
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
-✅ Configuring 6 sites with stage-file-proxy
-  ✅ Configured successfully: example.test (URL: https://admin.example.com, Mode: header)
-  ✅ Configured successfully: example.test/shop (URL: https://shop.example.com, Mode: header)
-  ✅ Configured successfully: example.test/blog (URL: https://blog.example.com, Mode: header)
-  ✅ Configured successfully: example.test/news (URL: https://news.example.com, Mode: header)
-  ✅ Configured successfully: example.test/support (URL: https://support.example.com, Mode: header)
-  ✅ Configured successfully: example.test/docs (URL: https://docs.example.com, Mode: header)
-🎉 stage-file-proxy configuration complete!
+  ✅ Configured: example.test → https://admin.example.com
+  ✅ Configured: example.test/shop → https://shop.example.com
+  ✅ Configured: example.test/blog → https://blog.example.com
+  ✅ Configured: example.test/news → https://news.example.com
+  ✅ Configured: example.test/support → https://support.example.com
+  ✅ Configured: example.test/docs → https://docs.example.com
 
 ================================================================
 🌐 LOCAL SITE ACCESS LINKS
