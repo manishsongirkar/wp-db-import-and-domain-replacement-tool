@@ -4,8 +4,10 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 
 ## ✨ Features
 
-- � **Global Command Access** - Available anywhere after installation with `wp-db-import`
-- �🔄 **Automatic WordPress installation detection** (single-site or multisite)
+- 🌍 **Global Command Access** - Available anywhere after installation with `wp-db-import`
+- 📋 **Project-Specific Configuration System** - Auto-saves settings in `wpdb-import.conf` file
+- 🔄 **Automatic WordPress installation detection** (single-site or multisite)
+- 🗺️ **Smart Multisite Mapping** - Remembers site mappings and prompts only for new sites
 - ⚡ **High-Speed Bulk Post Revision Cleanup** (via WP-CLI)
 - 🧹 **Smart MySQL Commands for Manual Revision Cleanup** (when automatic cleanup is skipped)
   - ✅ **Auto-detects multisite** using WP-CLI site functions
@@ -122,6 +124,12 @@ wp-db-import update  # Automatic git pull
 # Main database import wizard
 wp-db-import
 
+# Configuration management
+wp-db-import config-show          # Show current configuration
+wp-db-import config-create        # Create new configuration file
+wp-db-import config-validate      # Validate configuration file
+wp-db-import config-edit          # Open configuration in editor
+
 # Show local site links
 wp-db-import show-links
 
@@ -141,7 +149,102 @@ wp-db-import version
 wp-db-import --help
 ```
 
-## 🚀 Usage
+## � Configuration System
+
+The tool now features a **project-specific configuration system** that remembers your settings and site mappings, making subsequent imports much faster and more convenient.
+
+### 📁 Configuration File Location
+
+The configuration file `wpdb-import.conf` is automatically created in your **WordPress root directory** (same location as `wp-config.php`), making it project-specific.
+
+### ⚙️ Configuration Format
+
+```ini
+# ===============================================
+# WordPress Database Import Configuration
+# ===============================================
+
+[general]
+sql_file=production-database.sql
+old_domain=admin.example.com
+new_domain=example.test
+all_tables=true
+dry_run=false
+clear_revisions=true
+setup_stage_proxy=true
+auto_proceed=false
+
+[site_mappings]
+# Format: blog_id:old_domain:new_domain
+1:admin.example.com:example.test
+2:blog.example.com:example.test/blog
+3:shop.example.com:example.test/shop
+4:news.example.com:example.test/news
+5:support.example.com:example.test/support
+6:docs.example.com:example.test/docs
+```
+
+### 🤖 How It Works
+
+1. **First Run**: The tool prompts for all settings and creates the config file
+2. **Subsequent Runs**: Settings are loaded automatically from the config file
+3. **Missing Mappings**: If new sites are detected, you're only prompted for those
+4. **Auto-Update**: The config file is updated with any new mappings you provide
+
+### 📋 Configuration Commands
+
+```bash
+# Show current configuration
+wp-db-import config-show
+
+# Create new configuration file interactively
+wp-db-import config-create
+
+# Validate configuration file format
+wp-db-import config-validate
+
+# Open configuration in your default editor
+wp-db-import config-edit
+```
+
+### 🔧 Manual Configuration
+
+You can manually edit the `wpdb-import.conf` file in your WordPress root directory:
+
+```bash
+# Edit with nano
+nano wpdb-import.conf
+
+# Edit with VSCode
+code wpdb-import.conf
+```
+
+### 💡 Configuration Benefits
+
+- **⚡ Faster Imports**: No need to re-enter the same information
+- **🗺️ Site Mapping Memory**: Multisite mappings are remembered
+- **🔄 Incremental Setup**: Only prompts for new/missing sites
+- **📋 Project-Specific**: Each WordPress project has its own config
+- **🧪 Testing-Friendly**: Easily switch between dry-run and live mode
+
+### 📁 Configuration Examples
+
+Ready-to-use configuration examples are available in the project root:
+
+- **`wpdb-import-example-single.conf`** - For standard WordPress sites
+- **`wpdb-import-example-multisite.conf`** - For WordPress Multisite networks
+- **`USAGE.md`** - Complete usage guide with setup instructions and examples
+
+Quick setup:
+```bash
+# Copy example to your WordPress root
+cp wpdb-import-example-single.conf ~/path/to/wordpress/wpdb-import.conf
+
+# Edit the configuration
+nano ~/path/to/wordpress/wpdb-import.conf
+```
+
+## �🚀 Usage
 
 ### Basic Usage
 
@@ -168,110 +271,157 @@ cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
 
 ## ⚡ Configuration Options
 
+### Configuration File Settings
+
+All options can be pre-configured in your `wpdb-import.conf` file, eliminating the need for manual input on subsequent runs:
+
+| Configuration Key | Description | Default Value | Config Example |
+| ----------------- | ----------- | ------------- | -------------- |
+| **sql_file** | Database dump file to import | `vip-db.sql` | `sql_file=production-database.sql` |
+| **old_domain** | Production domain to search for | Required input | `old_domain=example.com` |
+| **new_domain** | Local/staging domain to replace with | Required input | `new_domain=example.test` |
+| **all_tables** | Include non-WordPress prefixed tables | `true` | `all_tables=true` |
+| **dry_run** | Preview changes without applying them | `false` | `dry_run=false` |
+| **clear_revisions** | Delete all post revisions before search-replace | `true` | `clear_revisions=true` |
+| **setup_stage_proxy** | Automatically configure stage file proxy | `true` | `setup_stage_proxy=true` |
+| **auto_proceed** | Skip confirmation prompts | `false` | `auto_proceed=false` |
+
+### Interactive Options (Runtime Behavior)
+
 | Option | Description | Default | Advanced Notes |
 | -------- | ----------- | ------- | -------------- |
-| **SQL filename** | Database dump file to import | `vip-db.sql` | Supports absolute and relative paths |
-| **Old Domain** | Production domain to search for | Required input | Auto-sanitized (protocols/slashes removed) |
-| **New Domain** | Local/staging domain to replace with | Required input | Security validation applied |
-| **Revision cleanup** | Delete all post revisions before search-replace | Optional (Y/n) | High-speed bulk operation using xargs; MySQL commands shown when skipped |
-| **All tables** | Include non-WordPress prefixed tables | Recommended (Y/n) | Essential for full migrations |
-| **Dry-run mode** | Preview changes without applying them | Optional (y/N) | Shows exact operations to be executed |
+| **SQL filename** | Database dump file to import | From config or `vip-db.sql` | Supports absolute and relative paths; auto-detected from config |
+| **Old Domain** | Production domain to search for | From config or prompt | Auto-sanitized (protocols/slashes removed); config override available |
+| **New Domain** | Local/staging domain to replace with | From config or prompt | Security validation applied; config override available |
+| **Revision cleanup** | Delete all post revisions before search-replace | From config or Optional (Y/n) | High-speed bulk operation using xargs; MySQL commands shown when skipped |
+| **All tables** | Include non-WordPress prefixed tables | From config or Recommended (Y/n) | Essential for full migrations; remembers choice in config |
+| **Dry-run mode** | Preview changes without applying them | From config or Optional (y/N) | Shows exact operations to be executed; easily toggled in config |
 | **Enhanced www/non-www handling** | Automatic detection and conditional processing of www variants | Automatic | Smart 2-4 pass system based on source domain |
-| **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Interactive prompts | Supports both subdomain and subdirectory |
+| **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Smart prompts with config memory | Remembers mappings, only prompts for new sites |
 | **Automatic DB Updates** | wp_blogs and wp_site table updates via wp eval | Automatic for multisite | Executed before search-replace operations |
-| **Stage File Proxy Setup** | Interactive setup prompt for media management | Default Yes (Y/n) | Includes automatic plugin installation |
+| **Stage File Proxy Setup** | Interactive setup prompt for media management | From config or Default Yes (Y/n) | Includes automatic plugin installation |
 | **Cache clearing** | Flush object cache, rewrites, and transients | Automatic | Network-wide for multisite |
 
 ### Complete Process Flow:
 
-1. **🔍 Environment Detection**
+1. **� Configuration Discovery & Setup**
+   - **Config file detection**: Searches for `wpdb-import.conf` in WordPress root directory
+   - **First-time setup**: Interactive prompts with automatic config file creation
+   - **Subsequent runs**: Auto-loads settings from config file with override options
+   - **Smart defaults**: Pre-fills values from config while allowing runtime overrides
+
+2. **�🔍 Environment Detection**
    - WordPress root directory discovery (works from any subdirectory)
    - Installation type detection via multiple methods (database analysis, wp-config.php, WP-CLI)
    - Multisite configuration analysis (subdomain vs subdirectory)
 
-2. **📦 Database Import Setup**
-   - SQL file selection (default: `vip-db.sql`)
-   - Domain mapping configuration (production → local)
+3. **📦 Database Import Setup**
+   - SQL file selection (config-aware with fallback to `vip-db.sql`)
+   - Domain mapping configuration (production → local) with config memory
    - Import confirmation with summary display
    - Progress tracking with elapsed time
 
-3. **🗂️ Pre-Processing Operations**
-   - High-speed bulk revision cleanup using xargs (optional, site-by-site for multisite)
+4. **🗂️ Pre-Processing Operations**
+   - High-speed bulk revision cleanup using xargs (config-controlled, site-by-site for multisite)
    - MySQL commands for manual revision cleanup (shown when automatic cleanup is skipped)
-   - Table scope selection (`--all-tables` option)
-   - Dry-run mode selection for safe testing
+   - Table scope selection (`--all-tables` option, remembers config preference)
+   - Dry-run mode selection for safe testing (config-configurable)
 
-4. **🔄 Enhanced Domain Replacement Process**
+5. **🔄 Enhanced Domain Replacement Process**
    - **www/non-www Detection**: Automatic detection of source domain type using regex pattern `^www\.`
    - **Smart Pass System**: Conditional execution based on source domain:
      - **Non-www source**: 2 passes (standard + serialized URL replacement)
      - **www source**: 4 passes (non-www standard + www standard + non-www serialized + www serialized)
    - **Single-site**: Enhanced search-replace with conditional www handling
    - **Multisite (subdirectory)**: Network-wide replacement with shared domain
-   - **Multisite (subdomain)**: Individual site mapping with custom domains and automatic database updates
+   - **Multisite (subdomain)**: Configuration-aware site mapping with smart prompts
    - **Clean Output**: Dynamic pass numbering with descriptive messages (no confusing skip notifications)
 
-5. **� Database Structure Updates** (Multisite)
+6. **🗺️ Intelligent Multisite Mapping** (Configuration-Enhanced)
+   - **Config-aware mapping**: Loads existing site mappings from configuration
+   - **Incremental prompts**: Only asks for mappings for new/unmapped sites
+   - **Smart defaults**: Suggests intelligent subdirectory mappings based on existing config
+   - **Auto-update config**: Saves new mappings back to configuration file
+   - **Mapping validation**: Ensures consistency and prevents conflicts
+
+7. **📊 Database Structure Updates** (Multisite)
    - **Automatic Updates**: wp_blogs and wp_site tables updated via wp eval before search-replace
    - **Fallback Commands**: Manual MySQL commands generated only if automatic updates fail
    - **Verification**: Success/failure reporting for each operation
 
-6. **🧹 Post-Processing Cleanup**
+8. **🧹 Post-Processing Cleanup**
    - Object cache flushing
    - Rewrite rules regeneration
    - Transient data cleanup
 
-7. **📁 Stage File Proxy Integration**
-   - **Interactive setup prompt** with default "Yes" option
+9. **📸 Stage File Proxy Integration** (Configuration-Aware)
+   - **Config-driven setup**: Uses configuration setting to determine if setup is needed
+   - **Smart activation**: Detects existing plugin and skips redundant setup
    - **Automatic plugin installation** from GitHub release if not present (multiple fallback methods)
-   - **Smart plugin activation** (network-wide for multisite, site-wide for single-site)
-   - **Source domain configuration** using existing mappings from import process
-   - **HTTPS protocol enforcement** for security compliance
+   - **Context-aware activation**: Network-wide for multisite, site-wide for single-site
+   - **Mapping-aware configuration**: Uses established domain mappings from import process
+   - **HTTPS protocol enforcement**: Security compliance with proper protocol handling
+
+10. **💾 Configuration Updates & Memory**
+    - **Auto-save new mappings**: Any new site mappings are saved to config file
+    - **Setting persistence**: User choices are remembered for future runs
+    - **Config validation**: Ensures configuration integrity after updates
 
 ## 📖 Usage Examples
 
-### Single Site Example
+### Single Site Example (First-Time Run)
 
 **Terminal Input/Output:**
 ```
 $ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
----------------------------------------------------
+====================================================
+
+✅ WordPress root found: /Users/john/Sites/example-site/app/public
+📝 No configuration file found.
+💡 Creating new config: /Users/john/Sites/example-site/app/public/wpdb-import.conf
 
 📦 Enter SQL file name (default: vip-db.sql): production-database.sql
-✅ WordPress root found: /Users/john/Sites/example-site/app/public
-
 ✅ Found SQL file: production-database.sql
+📊 File size: 45.2 MB
 
 🌍 Enter the OLD (production) domain to search for: https://www.example.com/
 🏠 Enter the NEW (local) domain/base URL to replace with: https://example.test/
 
+📝 Creating configuration file...
+✅ Configuration file created: wpdb-import.conf
+
 🧹 Cleaned search domain: 'https://www.example.com/' → 'www.example.com'
 🧹 Cleaned replace domain: 'https://example.test/' → 'example.test'
 🧾 Summary:
+    📦 SQL file:     production-database.sql
     🔍 Search for:   www.example.com
     🔄 Replace with: example.test
 
 Proceed with database import? (Y/n): y
 
 ⏳ Importing database...
-[2] 456
-  Importing / (00:14)[2]  + 456 done       /bin/sh -c
 ✅ Database import successful! [Completed in 00:14]
+
+🔍 Validating domain configuration...
+✅ Detected domain in database: www.example.com
 
 🔍 Checking WordPress installation type...
 ✅ Single site installation detected
 
-Clear ALL post revisions? (improves search-replace speed) (Y/n): y
+Clear ALL post revisions: enabled (from config)
+   Press Enter to confirm, or 'n' to skip revision cleanup:
+   ✅ Proceeding with revision cleanup
 🗑️ Clearing ALL Post Revisions...
 ✅ Revisions deleted successfully
 
-Include --all-tables (recommended for full DB imports)? (Y/n): y
+Include --all-tables: enabled (from config)
 ✅ Will include all tables.
 
-Run in dry-run mode (no data will be changed)? (y/N): n
-🚀 Running in live mode (changes will be applied).
+Run in dry-run mode: live mode (from config)
+
+� Running search-replace operations...
 
 🔄 SEARCH-REPLACE OPERATIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -285,9 +435,11 @@ Run in dry-run mode (no data will be changed)? (y/N): n
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
+  ✅ Rewrite rules flushed.
+  ✅ All transients deleted.
 
 📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin? (Y/n): y
+Setup stage file proxy: enabled (from config)
 ✅ Plugin activated successfully
 ✅ Configured: example.test → https://www.example.com
 
@@ -301,90 +453,199 @@ Do you want to setup the stage file proxy plugin? (Y/n): y
   ⚙️  Admin:    http://example.test/wp-admin
 
 ================================================================
+
+⏱️ Execution Time: 00:18 (mm:ss)
 ```
 
-### Multisite Example
+### Single Site Example (Subsequent Run with Config)
 
 **Terminal Input/Output:**
 ```
 $ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
----------------------------------------------------
+====================================================
+
+✅ WordPress root found: /Users/john/Sites/example-site/app/public
+✅ Configuration found: /Users/john/Sites/example-site/app/public/wpdb-import.conf
+
+📋 Using configuration settings...
+
+📦 SQL file: production-database.sql (from config)
+✅ Found SQL file: production-database.sql
+📊 File size: 45.2 MB
+
+🌍 OLD (production) domain: www.example.com (from config)
+   Press Enter to use this domain, or type a new domain to override:
+🏠 NEW (local) domain: example.test (from config)
+   Press Enter to use this domain, or type a new domain to override:
+
+🧾 Summary:
+    📦 SQL file:     production-database.sql
+    🔍 Search for:   www.example.com
+    🔄 Replace with: example.test
+
+✅ Auto-proceeding with database import (from config)
+
+⏳ Importing database...
+✅ Database import successful! [Completed in 00:12]
+
+🔍 Validating domain configuration...
+✅ Detected domain in database: www.example.com
+
+🔍 Checking WordPress installation type...
+✅ Single site installation detected
+
+Clear ALL post revisions: enabled (from config)
+   ✅ Proceeding with revision cleanup
+🗑️ Clearing ALL Post Revisions...
+✅ Revisions deleted successfully
+
+Include --all-tables: enabled (from config)
+Run in dry-run mode: live mode (from config)
+
+🔁 Running search-replace operations...
+✅ Single site search-replace completed successfully!
+
+🧹 Flushing WordPress and WP-CLI caches & transients...
+  ✅ Object cache flushed.
+  ✅ Rewrite rules flushed.
+  ✅ All transients deleted.
+
+📸 Stage File Proxy Setup
+Setup stage file proxy: enabled (from config)
+✅ Plugin already activated
+✅ Configured: example.test → https://www.example.com
+
+================================================================
+🌐 LOCAL SITE ACCESS LINKS
+================================================================
+
+✅ Your WordPress Single Site is ready:
+
+  🏠 Frontend: http://example.test
+  ⚙️  Admin:    http://example.test/wp-admin
+
+================================================================
+
+⏱️ Execution Time: 00:15 (mm:ss)
+```
+
+### Multisite Example (First-Time Setup)
+
+**Terminal Input/Output:**
+```
+$ wp-db-import
+
+🔧 WordPress Database Import & Domain Replace Tool
+====================================================
+
+✅ WordPress root found: /Users/john/Sites/example-multisite/app/public
+📝 No configuration file found.
+💡 Creating new config: /Users/john/Sites/example-multisite/app/public/wpdb-import.conf
 
 📦 Enter SQL file name (default: vip-db.sql): multisite-production.sql
-✅ WordPress root found: /Users/john/Sites/example-multisite/app/public
-
 ✅ Found SQL file: multisite-production.sql
+📊 File size: 128.5 MB
 
 🌍 Enter the OLD (production) domain to search for: https://admin.example.com/
 🏠 Enter the NEW (local) domain/base URL to replace with: https://example.test/
 
+📝 Creating configuration file...
+✅ Configuration file created: wpdb-import.conf
+
 🧹 Cleaned search domain: 'https://admin.example.com/' → 'admin.example.com'
 🧹 Cleaned replace domain: 'https://example.test/' → 'example.test'
 🧾 Summary:
-    🔍 Search for:   admin.example.com
+    � SQL file:     multisite-production.sql
+    �🔍 Search for:   admin.example.com
     🔄 Replace with: example.test
 
 Proceed with database import? (Y/n): y
 
 ⏳ Importing database...
-✅ Database import successful!
+✅ Database import successful! [Completed in 00:28]
+
+🔍 Validating domain configuration...
+✅ Detected domain in database: admin.example.com
 
 🔍 Checking WordPress installation type...
-✅ Multisite detected via wp-config.php constants
+✅ Multisite detected via database analysis
 
-Clear ALL post revisions? (Y/n): y
+Clear ALL post revisions: enabled (from config)
+   ✅ Proceeding with revision cleanup
 🗑️ Clearing ALL Post Revisions...
 ✅ All revisions deleted across 6 sites
 
-Include --all-tables? (Y/n): y
-✅ Will include all tables.
+Include --all-tables: enabled (from config)
+Run in dry-run mode: live mode (from config)
 
-Run in dry-run mode? (y/N): n
-🚀 Running in live mode.
+🌐 Subdomain Multisite Detected
+Using configuration-aware site mapping...
 
-🌐 Multisite (subdomain) detected — gathering subsites for mapping...
+🗺️ Site Mapping Configuration
+===============================
 
-✅ Found 6 subsites:
-blog_id  domain                         path
-1        admin.example.com              /
-2        shop.example.com               /
-3        blog.example.com               /
-4        news.example.com               /
-6        support.example.com            /
-7        docs.example.com               /
+⚠️ Missing mappings for 6 sites:
 
-🌐 Individual domain mapping required for subdomain multisite:
-
-  ┌─ Processing Site  1 ─────────────────────────────────────────
+  ┌─ Processing Site 1 ──────────────────────────────────────
   │ Domain: admin.example.com
   │ Path:   /
   │ Enter local URL for Main Site (default: example.test): example.test
-  └──────────────────────────────────────────────────────────────
+  └──────────────────────────────────────────────────────────
   ✅ Mapping confirmed:
      admin.example.com → example.test
      (Blog ID: 1, Path: /)
 
-  ┌─ Processing Site  2 ─────────────────────────────────────────
+  ┌─ Processing Site 2 ──────────────────────────────────────
   │ Domain: shop.example.com
   │ Path:   /
-  │ Enter local URL for Blog ID 2: example.test/shop
-  └──────────────────────────────────────────────────────────────
+  │ Enter local URL for Blog ID 2 (default: example.test/shop):
+  └──────────────────────────────────────────────────────────
   ✅ Mapping confirmed:
      shop.example.com → example.test/shop
      (Blog ID: 2, Path: /)
 
-  ┌─ Processing Site  3 ─────────────────────────────────────────
+  ┌─ Processing Site 3 ──────────────────────────────────────
   │ Domain: blog.example.com
   │ Path:   /
-  │ Enter local URL for Blog ID 3: example.test/blog
-  └──────────────────────────────────────────────────────────────
+  │ Enter local URL for Blog ID 3 (default: example.test/blog):
+  └──────────────────────────────────────────────────────────
   ✅ Mapping confirmed:
      blog.example.com → example.test/blog
      (Blog ID: 3, Path: /)
 
+  ┌─ Processing Site 4 ──────────────────────────────────────
+  │ Domain: news.example.com
+  │ Path:   /
+  │ Enter local URL for Blog ID 4 (default: example.test/news):
+  └──────────────────────────────────────────────────────────
+  ✅ Mapping confirmed:
+     news.example.com → example.test/news
+     (Blog ID: 4, Path: /)
+
+  ┌─ Processing Site 6 ──────────────────────────────────────
+  │ Domain: support.example.com
+  │ Path:   /
+  │ Enter local URL for Blog ID 6 (default: example.test/support):
+  └──────────────────────────────────────────────────────────
+  ✅ Mapping confirmed:
+     support.example.com → example.test/support
+     (Blog ID: 6, Path: /)
+
+  ┌─ Processing Site 7 ──────────────────────────────────────
+  │ Domain: docs.example.com
+  │ Path:   /
+  │ Enter local URL for Blog ID 7 (default: example.test/docs):
+  └──────────────────────────────────────────────────────────
+  ✅ Mapping confirmed:
+     docs.example.com → example.test/docs
+     (Blog ID: 7, Path: /)
+
+✅ Configuration updated with new site mappings
+
 🧾 Domain mapping summary:
+    ℹ️  Main site detected: Blog ID 1 (via WordPress database)
     🔁 [ID: 1] admin.example.com/ → example.test
     🔁 [ID: 2] shop.example.com/ → example.test/shop
     🔁 [ID: 3] blog.example.com/ → example.test/blog
@@ -392,59 +653,201 @@ blog_id  domain                         path
     🔁 [ID: 6] support.example.com/ → example.test/support
     🔁 [ID: 7] docs.example.com/ → example.test/docs
 
-⚡ Updating wp_blogs and wp_site tables...
+Proceed with search-replace for all sites? (Y/n): y
+
+🔧 Updating wp_blogs and wp_site tables (before search-replace)...
 ✅ Database tables wp_blogs & wp_site updated successfully!
 
-� SEARCH-REPLACE OPERATIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 Starting search-replace operations...
 
-🌍 Site 2 Processing:
-   From: shop.example.com
-   To:   example.test/shop
-
+🌍 Site 1 (Main): admin.example.com → example.test
    Step 1: ✅ Standard URL replacement complete
    Step 2: ✅ Serialized data replacement complete
 
-🌍 Site 3 Processing:
-   From: blog.example.com
-   To:   example.test/blog
-
+🌍 Site 2: shop.example.com → example.test/shop
    Step 1: ✅ Standard URL replacement complete
    Step 2: ✅ Serialized data replacement complete
 
-🌍 Site 4 Processing:
-   From: news.example.com
-   To:   example.test/news
-
+🌍 Site 3: blog.example.com → example.test/blog
    Step 1: ✅ Standard URL replacement complete
    Step 2: ✅ Serialized data replacement complete
 
-🌍 Site 6 Processing:
-   From: support.example.com
-   To:   example.test/support
-
+🌍 Site 4: news.example.com → example.test/news
    Step 1: ✅ Standard URL replacement complete
    Step 2: ✅ Serialized data replacement complete
 
-🌍 Site 7 Processing:
-   From: docs.example.com
-   To:   example.test/docs
-
+🌍 Site 6: support.example.com → example.test/support
    Step 1: ✅ Standard URL replacement complete
    Step 2: ✅ Serialized data replacement complete
 
-🏠 Main Site Processing:
-   From: admin.example.com
-   To:   example.test
-
+🌍 Site 7: docs.example.com → example.test/docs
    Step 1: ✅ Standard URL replacement complete
    Step 2: ✅ Serialized data replacement complete
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
+  ✅ Rewrite rules flushed.
+  ✅ All transients deleted.
 
 📸 Stage File Proxy Setup
-Do you want to setup the stage file proxy plugin? (Y/n): y
+Setup stage file proxy: enabled (from config)
+✅ Plugin activated network-wide successfully
+✅ Configuring 6 sites with stage-file-proxy
+  ✅ Site 1 (example.test): Configured → https://admin.example.com
+  ✅ Site 2 (example.test/shop): Configured → https://shop.example.com
+  ✅ Site 3 (example.test/blog): Configured → https://blog.example.com
+  ✅ Site 4 (example.test/news): Configured → https://news.example.com
+  ✅ Site 6 (example.test/support): Configured → https://support.example.com
+  ✅ Site 7 (example.test/docs): Configured → https://docs.example.com
+
+================================================================
+🌐 LOCAL SITE ACCESS LINKS
+================================================================
+
+✅ Your WordPress Multisite is ready:
+
+  🏠 Main Site (ID: 1): http://example.test
+  🌍 Subsite   (ID: 2): http://example.test/shop
+  🌍 Subsite   (ID: 3): http://example.test/blog
+  🌍 Subsite   (ID: 4): http://example.test/news
+  🌍 Subsite   (ID: 6): http://example.test/support
+  🌍 Subsite   (ID: 7): http://example.test/docs
+
+💡 Network Admin: Add /wp-admin/network/ to any of the above URLs
+
+================================================================
+
+⏱️ Execution Time: 00:45 (mm:ss)
+```
+
+### Multisite Example (Subsequent Run with Existing Config)
+
+**Terminal Input/Output:**
+```
+$ wp-db-import
+
+🔧 WordPress Database Import & Domain Replace Tool
+====================================================
+
+✅ WordPress root found: /Users/john/Sites/example-multisite/app/public
+✅ Configuration found: /Users/john/Sites/example-multisite/app/public/wpdb-import.conf
+
+📋 Using configuration settings...
+
+📦 SQL file: multisite-production.sql (from config)
+✅ Found SQL file: multisite-production.sql
+📊 File size: 128.5 MB
+
+🌍 OLD (production) domain: admin.example.com (from config)
+   Press Enter to use this domain, or type a new domain to override:
+🏠 NEW (local) domain: example.test (from config)
+   Press Enter to use this domain, or type a new domain to override:
+
+🧾 Summary:
+    📦 SQL file:     multisite-production.sql
+    🔍 Search for:   admin.example.com
+    🔄 Replace with: example.test
+
+✅ Auto-proceeding with database import (from config)
+
+⏳ Importing database...
+✅ Database import successful! [Completed in 00:25]
+
+🔍 Validating domain configuration...
+✅ Detected domain in database: admin.example.com
+
+🔍 Checking WordPress installation type...
+✅ Multisite detected via database analysis
+
+Clear ALL post revisions: enabled (from config)
+🗑️ Clearing ALL Post Revisions...
+✅ All revisions deleted across 6 sites
+
+� Subdomain Multisite Detected
+Using configuration-aware site mapping...
+
+🗺️ Site Mapping Configuration
+===============================
+
+✅ Found existing mappings for 6/6 sites:
+
+  Blog ID  Production Domain                → Local Domain
+  -------  -----------------                  ------------
+  1        admin.example.com                → example.test
+  2        shop.example.com                 → example.test/shop
+  3        blog.example.com                 → example.test/blog
+  4        news.example.com                 → example.test/news
+  6        support.example.com              → example.test/support
+  7        docs.example.com                 → example.test/docs
+
+🎉 All sites are already mapped! Proceeding with existing configuration.
+
+✅ Auto-proceeding with search-replace for all sites (from config)
+
+🔧 Updating wp_blogs and wp_site tables (before search-replace)...
+✅ Database tables wp_blogs & wp_site updated successfully!
+
+🔄 Starting search-replace operations...
+
+🌍 Site 1 (Main): admin.example.com → example.test
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+� Site 2: shop.example.com → example.test/shop
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🌍 Site 3: blog.example.com → example.test/blog
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🌍 Site 4: news.example.com → example.test/news
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🌍 Site 6: support.example.com → example.test/support
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🌍 Site 7: docs.example.com → example.test/docs
+   Step 1: ✅ Standard URL replacement complete
+   Step 2: ✅ Serialized data replacement complete
+
+🧹 Flushing WordPress and WP-CLI caches & transients...
+  ✅ Object cache flushed.
+  ✅ Rewrite rules flushed.
+  ✅ All transients deleted.
+
+📸 Stage File Proxy Setup
+Setup stage file proxy: enabled (from config)
+✅ Plugin already activated network-wide
+✅ Configuring 6 sites with stage-file-proxy
+  ✅ Site 1 (example.test): Already configured
+  ✅ Site 2 (example.test/shop): Already configured
+  ✅ Site 3 (example.test/blog): Already configured
+  ✅ Site 4 (example.test/news): Already configured
+  ✅ Site 6 (example.test/support): Already configured
+  ✅ Site 7 (example.test/docs): Already configured
+
+================================================================
+🌐 LOCAL SITE ACCESS LINKS
+================================================================
+
+✅ Your WordPress Multisite is ready:
+
+  🏠 Main Site (ID: 1): http://example.test
+  🌍 Subsite   (ID: 2): http://example.test/shop
+  🌍 Subsite   (ID: 3): http://example.test/blog
+  🌍 Subsite   (ID: 4): http://example.test/news
+  🌍 Subsite   (ID: 6): http://example.test/support
+  🌍 Subsite   (ID: 7): http://example.test/docs
+
+💡 Network Admin: Add /wp-admin/network/ to any of the above URLs
+
+================================================================
+
+⏱️ Execution Time: 00:32 (mm:ss)
+```
 ✅ Plugin activated successfully
 🌐 Configuring multisite stage-file-proxy...
   ✅ Configured: example.test → https://admin.example.com
@@ -518,6 +921,7 @@ UPDATE wp_blogs SET domain = "docs.example.test", path = "/" WHERE blog_id = 7;
 ```
 
 ### Multisite Commands (Subdirectory Network):
+
 ```sql
 -- Update the main network domain
 UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
@@ -533,25 +937,56 @@ UPDATE wp_blogs SET domain = "example.test", path = "/docs/" WHERE blog_id = 7;
 
 ## 🔧 Additional Functions
 
-### Manual Setup Stage File Proxy
-Setup the Stage File Proxy plugin, follow the interactive prompts for domain mapping.
+### Configuration Management Commands
 
+The tool provides comprehensive configuration management for project-specific settings:
+
+#### Show Current Configuration
+Display your current configuration settings in a user-friendly format:
+```bash
+wp-db-import config-show
+```
+Shows all general settings, site mappings, and configuration file location.
+
+#### Create New Configuration
+Interactively create a new configuration file with guided prompts:
+```bash
+wp-db-import config-create
+```
+Walks through all settings and creates a properly formatted config file.
+
+#### Validate Configuration
+Check your configuration file for proper format and required settings:
+```bash
+wp-db-import config-validate
+```
+Validates INI format, required sections, and setting completeness.
+
+#### Edit Configuration
+Open your configuration file in your preferred editor:
+```bash
+wp-db-import config-edit
+```
+Uses your `$EDITOR` environment variable or defaults to nano.
+
+### Utility Functions
+
+#### Manual Setup Stage File Proxy
+Setup the Stage File Proxy plugin with interactive domain mapping:
 ```bash
 wp-db-import setup-proxy
 ```
+Configures media proxy settings for both single-site and multisite installations.
 
-### Show Local Site Links
+#### Show Local Site Links
 Display clickable links to local WordPress sites:
-
 ```bash
 wp-db-import show-links
 ```
-
 **Requirements:** Must be run from within a WordPress directory with WP-CLI installed
 
-### Show Revision Cleanup Commands
+#### Show Revision Cleanup Commands
 Generate MySQL commands for manual revision cleanup with enhanced auto-detection:
-
 ```bash
 # Auto-detect WordPress installation and generate commands
 wp-db-import show-cleanup
@@ -559,10 +994,12 @@ wp-db-import show-cleanup
 # Use from any directory with WordPress path
 wp-db-import show-cleanup /path/to/wordpress
 ```
+Provides safe DELETE commands for manual revision cleanup when automatic cleanup is unavailable.
 
-### Version Management
+### System Management
+
+#### Version Management
 Check current version and update information:
-
 ```bash
 # Show version and git information
 wp-db-import version
@@ -570,6 +1007,13 @@ wp-db-import version
 # Update to latest version (git installations only)
 wp-db-import update
 ```
+
+#### Help System
+Get comprehensive help and usage information:
+```bash
+wp-db-import --help
+```
+Shows all available commands, setup instructions, and usage examples.
 
 ## 🛡️ Security Features
 
@@ -582,34 +1026,54 @@ wp-db-import update
 ## 📁 Project Structure
 
 ### Core Files
-- `wp-db-import` - Global command executable with subcommands
-- `import_wp_db.sh` - Main database import and domain replacement script
-- `install.sh` - User-local installation script
-- `uninstall.sh` - Clean removal script
-- `VERSION` - Centralized version management file
+- **`wp-db-import`** - Global command executable with comprehensive subcommand support
+- **`import_wp_db.sh`** - Main database import and domain replacement script with config integration
+- **`install.sh`** - User-local installation script with symlink management
+- **`uninstall.sh`** - Clean removal script with complete cleanup
+- **`VERSION`** - Centralized version management file with semantic versioning
 
-### Library Structure
+### Configuration System
+- **`wpdb-import-example-single.conf`** - Single-site configuration template with comprehensive settings
+- **`wpdb-import-example-multisite.conf`** - Multisite configuration template with site mapping examples
+- **`USAGE.md`** - Complete configuration setup guide with practical examples and workflows
+
+### Modular Library Architecture
 ```
 lib/
-├── version.sh              # Version management utilities
-├── module_loader.sh        # Automatic module loading system
+├── version.sh              # Version management utilities and git integration
+├── module_loader.sh        # Automatic module discovery and loading system
 ├── core/                   # Core functionality modules
-│   ├── utils.sh           # Utility functions
-│   ├── environment.sh     # Environment detection
-│   ├── error_handler.sh   # Error handling
-│   ├── logger.sh          # Logging utilities
-│   └── orchestrator.sh    # Main orchestration
+│   └── utils.sh           # Utility functions, domain sanitization, file operations
+├── config/                # Configuration management system (NEW)
+│   ├── config_manager.sh  # Config file operations, parsing, validation, creation
+│   └── integration.sh     # Config integration with import flow, smart prompting
 └── utilities/             # Standalone utility modules
-    ├── site_links.sh      # Show local site links
-    ├── stage_file_proxy.sh # Media proxy setup
-    └── revision_cleanup.sh # Revision cleanup commands
+    ├── site_links.sh      # Show local site links with clickable URLs
+    ├── stage_file_proxy.sh # Media proxy setup with automatic plugin management
+    └── revision_cleanup.sh # Revision cleanup commands with multisite detection
 ```
 
+### Configuration Features
+- **📋 INI-style Configuration**: Standard format with `[general]` and `[site_mappings]` sections
+- **🔄 Auto-Discovery**: Searches WordPress root directory for project-specific configs
+- **💾 Auto-Save**: Remembers user choices and site mappings for subsequent runs
+- **🧠 Smart Prompts**: Only asks for missing information, shows existing values
+- **✅ Validation**: Comprehensive config file format and content validation
+- **🔧 Management Commands**: Create, show, edit, and validate configuration files
+
 ### Runtime Behavior
-- Creates temporary log files in `/tmp/` for debugging (uses PID to prevent collision)
-- Automatically cleans up temporary files on exit
-- Logs all WP-CLI operations for troubleshooting
-- Symlink-based installation for instant updates
+- **📝 Temporary Files**: Creates process-specific log files in `/tmp/` (PID-based collision prevention)
+- **🧹 Auto-Cleanup**: Automatically removes temporary files on exit
+- **📊 Operation Logging**: Comprehensive logging of all WP-CLI operations for troubleshooting
+- **🔗 Symlink Installation**: Enables instant updates without reinstallation
+- **⚡ Configuration Caching**: Loads and caches config settings for improved performance
+
+### Development Structure
+- **🛠️ Modular Design**: Clean separation of concerns with dedicated modules
+- **📦 Auto-Loading**: Dynamic module loading based on functionality needs
+- **🔌 Plugin Architecture**: Easy extension with new utility modules
+- **📋 Configuration API**: Consistent interface for config operations across modules
+- **🧪 Error Handling**: Comprehensive error handling and graceful degradation
 
 ## Log Analysis:
 

@@ -68,7 +68,7 @@ get_validated_domain() {
 
         # Check if input is empty (allow skipping)
         if [[ -z "$domain" ]]; then
-            printf "${YELLOW}⚠️ Skipping configuration for this site (empty input)${RESET}\n"
+            printf "${YELLOW}⚠️  Skipping configuration for this site (empty input)${RESET}\n"
             VALIDATED_DOMAIN=""
             return 1  # Return 1 to indicate skip
         fi
@@ -108,7 +108,7 @@ get_validated_domain() {
         if [[ $? -eq 0 ]]; then
             # Check for localhost patterns
             if [[ "$clean_domain" =~ (localhost|127\.0\.0\.1|0\.0\.0\.0) ]]; then
-                printf "${YELLOW}⚠️ Warning: Localhost pattern detected. Continue? (y/n): ${RESET}"
+                printf "${YELLOW}⚠️  Warning: Localhost pattern detected. Continue? (y/n): ${RESET}"
                 read -r continue_localhost < /dev/tty
                 if [[ ! "$continue_localhost" =~ ^[Yy] ]]; then
                     continue
@@ -183,7 +183,7 @@ setup_stage_file_proxy() {
             printf "${GREEN}✅ Plugin installed successfully from GitHub${RESET}\n"
             install_success=true
         else
-            printf "${YELLOW}⚠️ GitHub installation failed, trying direct download method...${RESET}\n"
+            printf "${YELLOW}⚠️  GitHub installation failed, trying direct download method...${RESET}\n"
 
             # Method 2: Try direct download and install
             printf "${YELLOW}    Attempting direct download method...${RESET}\n"

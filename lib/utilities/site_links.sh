@@ -180,7 +180,7 @@ show_local_site_links() {
 
       printf "\n${CYAN}💡 Network Admin:${RESET} Add ${YELLOW}/wp-admin/network/${RESET} to any of the above URLs\n"
     else
-      printf "${YELLOW}⚠️ Could not detect site URLs. Please check your WordPress configuration.${RESET}\n"
+      printf "${YELLOW}⚠️  Could not detect site URLs. Please check your WordPress configuration.${RESET}\n"
     fi
 
     if [[ "$shell_options" == *x* ]]; then set -x; fi
@@ -211,7 +211,7 @@ show_local_site_links() {
       printf "  ⚙️  ${BOLD}Admin:${RESET}    \033]8;;%s\033\\%s\033]8;;\033\\" "$admin_url" "$admin_url"
       printf "\n"
     else
-      printf "${YELLOW}⚠️ Could not detect site URL. Please check your WordPress configuration.${RESET}\n"
+      printf "${YELLOW}⚠️  Could not detect site URL. Please check your WordPress configuration.${RESET}\n"
     fi
   fi
 

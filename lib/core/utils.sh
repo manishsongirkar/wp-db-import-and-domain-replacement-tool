@@ -154,7 +154,7 @@ display_execution_time() {
     local start_time_value="${start_time_param:-${start_time:-}}"
 
     if [[ -z "$start_time_value" ]]; then
-        printf "${YELLOW}⚠️ No start time available for execution time calculation${RESET}\n"
+        printf "${YELLOW}⚠️  No start time available for execution time calculation${RESET}\n"
         return 1
     fi
 
@@ -203,7 +203,7 @@ show_file_size() {
         fi
         printf "${CYAN}📊 File size:${RESET} %s\n" "$file_size_human"
     else
-        printf "${YELLOW}⚠️ Could not determine file size${RESET}\n"
+        printf "${YELLOW}⚠️  Could not determine file size${RESET}\n"
     fi
 }
 
@@ -230,7 +230,7 @@ detect_main_site() {
 
     # Quick check if WP-CLI is working at all
     if ! execute_with_timeout 5 execute_wp_cli core version --url="$fallback_domain" >/dev/null 2>&1; then
-        printf "${YELLOW}⚠️ WP-CLI not responding or no WordPress installation, using defaults${RESET}\n" >&2
+        printf "${YELLOW}⚠️  WP-CLI not responding or no WordPress installation, using defaults${RESET}\n" >&2
         echo "1|$fallback_domain"
         return 0
     fi
@@ -239,7 +239,7 @@ detect_main_site() {
     local is_multisite_check
     is_multisite_check=$(execute_with_timeout 5 execute_wp_cli eval 'echo is_multisite() ? "yes" : "no";' --url="$fallback_domain" 2>/dev/null || echo "no")
     if [[ "$is_multisite_check" != "yes" ]]; then
-        printf "${YELLOW}⚠️ Not actually a multisite installation, treating as single site${RESET}\n" >&2
+        printf "${YELLOW}⚠️  Not actually a multisite installation, treating as single site${RESET}\n" >&2
         local site_url
         site_url=$(execute_with_timeout 10 execute_wp_cli option get siteurl --url="$fallback_domain" 2>/dev/null || echo "$fallback_domain")
         echo "1|$site_url"
@@ -289,7 +289,7 @@ detect_main_site() {
 
     # === METHOD 3: Network admin URL detection (Flywheel-friendly) ===
     if [[ -z "$main_site_blog_id" ]]; then
-        printf "${YELLOW}⚠️ Site list failed, trying network admin detection...${RESET}\n" >&2
+        printf "${YELLOW}⚠️  Site list failed, trying network admin detection...${RESET}\n" >&2
 
         # Try to get network admin URL which typically points to main site
         local network_admin_url
@@ -329,7 +329,7 @@ detect_main_site() {
 
     # === METHOD 4: WordPress constants/eval (Universal fallback) ===
     if [[ -z "$main_site_blog_id" ]]; then
-        printf "${YELLOW}⚠️ Advanced detection failed, using WordPress constants...${RESET}\n" >&2
+        printf "${YELLOW}⚠️  Advanced detection failed, using WordPress constants...${RESET}\n" >&2
 
         # Try to get main site ID using WordPress constants/functions
         main_site_blog_id=$(execute_with_timeout 10 execute_wp_cli eval "echo get_main_site_id();" --url="$fallback_domain" 2>/dev/null || echo "")
@@ -349,7 +349,7 @@ detect_main_site() {
 
     # === METHOD 5: Smart fallback (lowest numbered site with reasonable path) ===
     if [[ -z "$main_site_blog_id" ]]; then
-        printf "${YELLOW}⚠️ All advanced methods failed, using intelligent fallback...${RESET}\n" >&2
+        printf "${YELLOW}⚠️  All advanced methods failed, using intelligent fallback...${RESET}\n" >&2
 
         local site_data
         site_data=$(execute_with_timeout 10 execute_wp_cli site list --fields=blog_id,path --format=csv --url="$fallback_domain" 2>/dev/null || echo "")
@@ -380,7 +380,7 @@ detect_main_site() {
             if [[ -z "$main_site_blog_id" && -n "$fallback_id" ]]; then
                 main_site_blog_id="$fallback_id"
                 detection_method="fallback-lowest-id"
-                printf "${YELLOW}⚠️ Using lowest blog ID as fallback${RESET}\n" >&2
+                printf "${YELLOW}⚠️  Using lowest blog ID as fallback${RESET}\n" >&2
             fi
         fi
     fi
@@ -389,7 +389,7 @@ detect_main_site() {
     if [[ -z "$main_site_blog_id" ]]; then
         main_site_blog_id="1"
         detection_method="hardcoded-fallback"
-        printf "${YELLOW}⚠️ Using hardcoded blog ID 1 as final fallback${RESET}\n" >&2
+        printf "${YELLOW}⚠️  Using hardcoded blog ID 1 as final fallback${RESET}\n" >&2
     fi
 
     # === Get main site URL ===
@@ -448,7 +448,7 @@ detect_main_site() {
     # Final fallback for URL
     if [[ -z "$main_site_url" ]]; then
         main_site_url="$fallback_domain"
-        printf "${YELLOW}⚠️ Using fallback domain for main site URL${RESET}\n" >&2
+        printf "${YELLOW}⚠️  Using fallback domain for main site URL${RESET}\n" >&2
     fi
 
     printf "${GREEN}✅ Main site detection complete:${RESET} Blog ID $main_site_blog_id via $detection_method\n" >&2
