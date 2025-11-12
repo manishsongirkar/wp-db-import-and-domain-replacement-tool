@@ -4,21 +4,27 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 
 ## ✨ Features
 
-- 🔄 **Automatic WordPress installation detection** (single-site or multisite)
+- � **Global Command Access** - Available anywhere after installation with `wp-db-import`
+- �🔄 **Automatic WordPress installation detection** (single-site or multisite)
 - ⚡ **High-Speed Bulk Post Revision Cleanup** (via WP-CLI)
 - 🧹 **Smart MySQL Commands for Manual Revision Cleanup** (when automatic cleanup is skipped)
   - ✅ **Auto-detects multisite** using WP-CLI site functions
   - ✅ **Generates clean commands** without problematic OPTIMIZE TABLE statements
   - ✅ **Works from any directory** with WordPress path detection
+- 🔄 **Auto-Update System** - Git-based installations update with `wp-db-import update`
+- 🛠️ **Modular Architecture** - Clean separation of utilities and core functions
+- 🔗 **Clickable Site Links** - Terminal links to quickly access local sites
 - 🧹 **Intelligent domain sanitization** (removes protocols, trailing slashes)
 - 🌐 **Robust Multi-Domain/Per-Site Mapping** for Multisite
-- 🔁 **Two-pass search-replace** (standard + serialized data)
+- 🔁 **Enhanced search-replace** (2-4 passes based on source domain type)
 - 🗑️ **Cache and transient clearing** via WP-CLI
 - 🧪 **Dry-run mode** for testing replacements
 - 📦 **MySQL command generation** for network domain tables
 - 🛡️ **Comprehensive error handling** and logging
 - 🎨 **Colored terminal output** with clear progress indicators
 - 📸 **Stage File Proxy Plugin** automatic installation and configuration
+- 📦 **User-Local Installation** - Installs to ~/.local/bin
+- 📋 **Centralized Version Management** - Single VERSION file with automated tracking
 
 ## 🧰 Requirements
 
@@ -31,60 +37,108 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 | **PHP** | PHP runtime for WP-CLI operations | 7.4+ recommended |
 | **File System** | Read/write access to WordPress directory | Sufficient disk space for import |
 
-## 📦 Installation & Setup:
+## 📦 Installation & Setup
 
+### 🚀 Quick Install (Recommended)
+
+**Option 1: Git Clone (Auto-updates enabled)**
 ```bash
-# 1. Clone repository into your main user directory, where your `.bashrc` or `.zshrc` file is located:
-cd ~
-git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git ~/wp-db-import-and-domain-replacement-tool
+# 1. Clone the repository
+git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
+cd wp-db-import-and-domain-replacement-tool
 
-# 2. Add to your shell configuration (~/.bashrc or ~/.zshrc)
-# For zsh:
-echo '# WordPress Database Import Tool' >> ~/.zshrc
-echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then' >> ~/.zshrc
-echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.zshrc
-echo 'fi' >> ~/.zshrc
+# 2. Install globally
+./install.sh
 
-# For bash:
-echo '# WordPress Database Import Tool' >> ~/.bashrc
-echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh" ]; then' >> ~/.bashrc
-echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/import_wp_db.sh"' >> ~/.bashrc
-echo 'fi' >> ~/.bashrc
+# 3. Use from anywhere!
+cd ~/Local\ Sites/mysite/app/public
+wp-db-import
+```
 
-# 3. Add Stage File Proxy manual setup tool
-# For zsh:
-echo '# Manual Stage File Proxy plugin setup' >> ~/.zshrc
-echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.zshrc
-echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.zshrc
-echo 'fi' >> ~/.zshrc
+**Option 2: ZIP Download (Manual updates)**
+```bash
+# 1. Download and extract ZIP from GitHub releases
+# 2. Navigate to extracted folder
+cd wp-db-import-and-domain-replacement-tool
 
-# For bash:
-echo '# Manual Stage File Proxy plugin setup' >> ~/.zshrc
-echo 'if [ -f "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh" ]; then' >> ~/.bashrc
-echo '    source "$HOME/wp-db-import-and-domain-replacement-tool/setup-stage-file-proxy.sh"' >> ~/.bashrc
-echo 'fi' >> ~/.bashrc
+# 3. Install globally
+./install.sh
 
-# 4. Reload your shell configuration
-source ~/.zshrc
+# 4. Use from anywhere!
+cd ~/Local\ Sites/mysite/app/public
+wp-db-import
+```
 
-# or
-# source ~/.bashrc
+### ✅ Verification
+```bash
+# Test installation
+wp-db-import --help
 
-# 5. Verify installation
-type import_wp_db && echo "✅ Installation successful" || echo "❌ Installation failed"
+# Check version and installation info
+wp-db-import version
+```
 
-# 6. Navigate to your WordPress project and run
-cd /path/to/your/wordpress/site
-import_wp_db
+### 🔧 Troubleshooting
 
-# 7. Optional: Manual stage-file-proxy setup
-setup_stage_file_proxy
+**Command not found:**
+```bash
+# Check if ~/.local/bin is in PATH
+echo $PATH | grep -q "$HOME/.local/bin" && echo "✅ In PATH" || echo "❌ Not in PATH"
 
-# 8. Optional: Show MySQL commands for revision cleanup
-show_revision_cleanup_commands
+# Add to PATH manually (for current session)
+export PATH="$HOME/.local/bin:$PATH"
 
-# 9. Optional: To view Single or Multisite links (Local site)
-show_local_site_links
+# Add to shell profile (permanent)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
+source ~/.zshrc  # or ~/.bashrc
+```
+
+**Permission issues:**
+```bash
+# Check symlink and permissions
+ls -la ~/.local/bin/wp-db-import
+ls -la "$(readlink ~/.local/bin/wp-db-import)"
+
+# Recreate symlink if needed
+rm ~/.local/bin/wp-db-import
+./install.sh
+```
+
+### 🔄 Updates
+
+**Auto-updates (Git installations):**
+```bash
+wp-db-import update  # Automatic git pull
+```
+
+**Manual updates (ZIP installations):**
+```bash
+# Download latest version and replace files
+# Then re-run: ./install.sh
+```
+
+### 📋 Available Commands
+```bash
+# Main database import wizard
+wp-db-import
+
+# Show local site links
+wp-db-import show-links
+
+# Setup stage file proxy
+wp-db-import setup-proxy
+
+# Show revision cleanup commands
+wp-db-import show-cleanup
+
+# Update to latest version (git only)
+wp-db-import update
+
+# Show version info
+wp-db-import version
+
+# Get help
+wp-db-import --help
 ```
 
 ## 🚀 Usage
@@ -92,12 +146,12 @@ show_local_site_links
 ### Basic Usage
 
 1. Navigate to your WordPress root directory (where `wp-config.php` file present)
-1. Place your SQL (`.sql`) file in the same directory
-2. Run the function:
+2. Place your SQL (`.sql`) file in the same directory
+3. Run the global command:
    ```bash
-   import_wp_db
+   wp-db-import
    ```
-3. Follow the interactive prompts
+4. Follow the interactive prompts
 
 ## Pre-Operation Safety Checklist:
 
@@ -180,7 +234,7 @@ cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
 
 **Terminal Input/Output:**
 ```
-$ import_wp_db
+$ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
 ---------------------------------------------------
@@ -274,7 +328,7 @@ Do you want to setup the stage file proxy plugin for media management? (Y/n): y
 
 **Terminal Input/Output:**
 ```
-$ import_wp_db
+$ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
 ---------------------------------------------------
@@ -528,7 +582,7 @@ The tool includes a sophisticated revision cleanup system that automatically gen
 ✅ **Flexible Usage:**
 - Can be run from any directory with WordPress path parameter
 - Integrates seamlessly with main import script
-- Available as standalone function: `show_revision_cleanup_commands`
+- Available as standalone command: `wp-db-import show-cleanup`
 - Conditional display when automatic cleanup is skipped
 
 ## Manual MySQL Commands (Fallback Only)
@@ -568,14 +622,14 @@ UPDATE wp_blogs SET domain = "example.test", path = "/docs/" WHERE blog_id = 7;
 Setup the Stage File Proxy plugin, follow the interactive prompts for domain mapping.
 
 ```bash
-setup_stage_file_proxy
+wp-db-import setup-proxy
 ```
 
 ### Show Local Site Links
 Display clickable links to local WordPress sites:
 
 ```bash
-show_local_site_links
+wp-db-import show-links
 ```
 
 **Requirements:** Must be run from within a WordPress directory with WP-CLI installed
@@ -585,13 +639,21 @@ Generate MySQL commands for manual revision cleanup with enhanced auto-detection
 
 ```bash
 # Auto-detect WordPress installation and generate commands
-show_revision_cleanup_commands
-
-# Check for revisions and show commands conditionally
-show_revision_cleanup_if_needed
+wp-db-import show-cleanup
 
 # Use from any directory with WordPress path
-show_revision_cleanup_if_needed /path/to/wordpress
+wp-db-import show-cleanup /path/to/wordpress
+```
+
+### Version Management
+Check current version and update information:
+
+```bash
+# Show version and git information
+wp-db-import version
+
+# Update to latest version (git installations only)
+wp-db-import update
 ```
 
 ## 🛡️ Security Features
@@ -602,11 +664,37 @@ show_revision_cleanup_if_needed /path/to/wordpress
 - Uses temporary files with process-specific names
 - Prevents SQL injection in generated commands
 
-## 📁 File Structure
+## 📁 Project Structure
 
+### Core Files
+- `wp-db-import` - Global command executable with subcommands
+- `import_wp_db.sh` - Main database import and domain replacement script
+- `install.sh` - User-local installation script
+- `uninstall.sh` - Clean removal script
+- `VERSION` - Centralized version management file
+
+### Library Structure
+```
+lib/
+├── version.sh              # Version management utilities
+├── module_loader.sh        # Automatic module loading system
+├── core/                   # Core functionality modules
+│   ├── utils.sh           # Utility functions
+│   ├── environment.sh     # Environment detection
+│   ├── error_handler.sh   # Error handling
+│   ├── logger.sh          # Logging utilities
+│   └── orchestrator.sh    # Main orchestration
+└── utilities/             # Standalone utility modules
+    ├── site_links.sh      # Show local site links
+    ├── stage_file_proxy.sh # Media proxy setup
+    └── revision_cleanup.sh # Revision cleanup commands
+```
+
+### Runtime Behavior
 - Creates temporary log files in `/tmp/` for debugging (uses PID to prevent collision)
 - Automatically cleans up temporary files on exit
 - Logs all WP-CLI operations for troubleshooting
+- Symlink-based installation for instant updates
 
 ## Log Analysis:
 
@@ -634,6 +722,14 @@ find /tmp -name "wp_*_*.csv" -mtime +1 -delete
 # Clean up WP-CLI cache files
 find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
 ```
+
+## 📚 Documentation
+
+For additional documentation, see the `docs/` directory:
+
+- **[Installation Methods](docs/INSTALLATION_METHODS.md)** - Detailed installation options and troubleshooting
+- **[Version Management](docs/VERSION_MANAGEMENT.md)** - Version control and update procedures
+- **[Usage Guide](USAGE.md)** - Comprehensive usage examples and workflows
 
 ## 🤝 Contributing
 

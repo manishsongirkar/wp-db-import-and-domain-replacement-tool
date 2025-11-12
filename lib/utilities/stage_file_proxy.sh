@@ -1,10 +1,13 @@
 #!/bin/bash
 
-# Stage File Proxy Setup Function
-# This function activates and configures the Stage File Proxy plugin for WordPress
-# Supports both single site and multisite installations
+# ================================================================
+# Stage File Proxy Utilities Module
+# ================================================================
 #
-# UPDATED: Compatible with new Stage File Proxy plugin structure (v101+)
+# This module provides functions for setting up and configuring
+# the Stage File Proxy plugin for WordPress installations.
+#
+# Compatible with Stage File Proxy plugin v101+
 # - Uses separate 'sfp_url' and 'sfp_mode' options instead of JSON format
 # - 'source_domain' → 'sfp_url'
 # - 'method' → 'sfp_mode' with default value 'header'
@@ -12,50 +15,18 @@
 # - Improved user input validation and sanitization
 # - Better user feedback about what gets stored in the database
 # - Automatic protocol conversion (http:// → https://, missing protocol → https://)
-
-# Get the directory where the script is located
-# Handle both direct execution and sourcing scenarios
-if [[ -n "${BASH_SOURCE[0]}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    # Fallback for edge cases
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-fi
-
-# ================================================================
-# Load Module System (if not already loaded)
-# ================================================================
-# Check if modules are already loaded by parent script
-if [[ -z "${WP_IMPORT_MODULES_LOADED:-}" ]]; then
-    MODULE_LOADER="$SCRIPT_DIR/lib/module_loader.sh"
-    if [[ ! -f "$MODULE_LOADER" ]]; then
-        echo "❌ Error: Module loader not found at:"
-        echo "   $MODULE_LOADER"
-        echo "💡 Please ensure 'lib/module_loader.sh' exists and is readable."
-        exit 1
-    fi
-
-    # Load module loader safely and silently
-    if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
-        echo "❌ Failed to load module system."
-        echo "Check: $MODULE_LOADER"
-        echo "Error log saved to /tmp/wp_import_errors.log"
-        exit 1
-    fi
-
-    # Load all modules silently
-    if ! load_modules >/dev/null 2>&1; then
-        echo "❌ Error: Failed to load core modules."
-        exit 1
-    fi
-else
-    # Modules already loaded by parent script, just ensure colors are available
-    # Colors are automatically initialized by utils module
-    :  # No-op command
-fi
+#
+# Functions provided:
+# - setup_stage_file_proxy          Main setup function (interactive)
+# - show_stage_file_proxy_config    Display current configuration
+# - bulk_configure_multisite        Set same domain for all sites (multisite only)
+# - configure_stage_file_proxy      Internal configuration function
+# - sanitize_domain                 Domain validation and sanitization
+# - get_validated_domain            Interactive domain input with validation
+#
 
 # Function to sanitize and validate domain input (Updated for new plugin structure)
-sanitize_domain() {
+sanitize_stage_proxy_domain() {
     local input="$1"
     local clean_domain
 
@@ -132,9 +103,6 @@ sanitize_domain() {
 
 # Function to get and validate domain input interactively
 get_validated_domain() {
-    # Load scoped colors
-    # Colors already available from utils
-
     local prompt="$1"
     local domain
     local clean_domain
@@ -195,7 +163,7 @@ get_validated_domain() {
         fi
 
         # Use sanitize function for final validation
-        clean_domain=$(sanitize_domain "$domain")
+        clean_domain=$(sanitize_stage_proxy_domain "$domain")
         if [[ $? -eq 0 ]]; then
             # Check for localhost patterns
             if [[ "$clean_domain" =~ (localhost|127\.0\.0\.1|0\.0\.0\.0) ]]; then
@@ -217,10 +185,7 @@ get_validated_domain() {
 }
 
 # Function to configure Stage File Proxy plugin settings
-configure_sfp() {
-    # Load scoped colors
-    # Colors already available from utils
-
+configure_stage_file_proxy() {
     local domain="$1"
     local mode="${2:-header}"  # Default mode is 'header' as per new plugin
     local site_url="$3"  # Optional site URL for multisite
@@ -245,10 +210,8 @@ configure_sfp() {
     printf "${GREEN}✅ Configuration successful (URL: $domain, Mode: $mode)${RESET}\n"
 }
 
+# Main setup function for Stage File Proxy
 setup_stage_file_proxy() {
-    # Load scoped colors
-    # Colors already available from utils
-
     printf "${CYAN}${BOLD}=== Stage File Proxy Setup ===${RESET}\n"
     echo ""
 
@@ -362,17 +325,15 @@ setup_stage_file_proxy() {
         else
             printf "${GREEN}✓ Multisite detected (subdirectory configuration)${RESET}\n"
         fi
-        setup_multisite
+        setup_multisite_stage_file_proxy
     else
         printf "${GREEN}✓ Single site detected${RESET}\n"
-        setup_single_site
+        setup_single_site_stage_file_proxy
     fi
 }
 
-setup_single_site() {
-    # Load scoped colors
-    # Colors already available from utils
-
+# Single site setup function
+setup_single_site_stage_file_proxy() {
     echo ""
     printf "${CYAN}${BOLD}=== Setting up for Single Site ===${RESET}\n"
 
@@ -396,190 +357,160 @@ setup_single_site() {
 
         # Configure the plugin with new structure
         printf "\n"
-        printf "${BLUE}Configuring Stage File Proxy...$NC\n"
+        printf "${BLUE}Configuring Stage File Proxy...${RESET}\n"
         if configure_stage_file_proxy "$source_domain" "header"; then
-            printf "${GREEN}✅ Plugin configured successfully$NC\n"
+            printf "${GREEN}✅ Plugin configured successfully${RESET}\n"
         else
-            printf "${RED}❌ Failed to configure plugin$NC\n"
+            printf "${RED}❌ Failed to configure plugin${RESET}\n"
             return 1
         fi
     else
-        printf "${YELLOW}⚠️  Skipping Stage File Proxy configuration for this site$NC\n"
+        printf "${YELLOW}⚠️  Skipping Stage File Proxy configuration for this site${RESET}\n"
     fi
 
     printf "\n"
-    printf "${GREEN}=== Setup Complete ===$NC\n"
-    printf "${GREEN}Stage File Proxy is now active and configured!$NC\n"
+    printf "${GREEN}=== Setup Complete ===${RESET}\n"
+    printf "${GREEN}Stage File Proxy is now active and configured!${RESET}\n"
 }
 
-setup_multisite() {
-    # Colors already available from utils
+# Multisite setup function
+setup_multisite_stage_file_proxy() {
     printf "\n"
-    printf "${CYAN}=== Setting up for Multisite ===$NC\n"
+    printf "${CYAN}=== Setting up for Multisite ===${RESET}\n"
 
     # Activate the plugin network-wide
-    printf "${BLUE}Activating Stage File Proxy plugin network-wide...$NC\n"
+    printf "${BLUE}Activating Stage File Proxy plugin network-wide...${RESET}\n"
     if wp plugin activate stage-file-proxy --network --quiet; then
-        printf "${GREEN}✓ Plugin activated network-wide successfully$NC\n"
+        printf "${GREEN}✓ Plugin activated network-wide successfully${RESET}\n"
     else
-        printf "${RED}✗ Failed to activate plugin network-wide$NC\n"
+        printf "${RED}✗ Failed to activate plugin network-wide${RESET}\n"
         return 1
     fi
 
     # Get list of all sites
     printf "\n"
-    printf "${BLUE}Getting list of all sites in the network...$NC\n"
+    printf "${BLUE}Getting list of all sites in the network...${RESET}\n"
     local sites
     sites=$(wp site list --field=url --quiet)
 
     if [[ -z "$sites" ]]; then
-        printf "${RED}✗ No sites found in the network$NC\n"
+        printf "${RED}✗ No sites found in the network${RESET}\n"
         return 1
     fi
 
-    printf "${YELLOW}Sites found:$NC\n"
+    printf "${YELLOW}Sites found:${RESET}\n"
     echo "$sites" | nl -w2 -s'. '
 
     printf "\n"
-    printf "${BLUE}Now configuring each site...$NC\n"
+    printf "${BLUE}Now configuring each site...${RESET}\n"
     printf "\n"
 
     # Configure each site
     local site_count=0
     while IFS= read -r site_url; do
         site_count=$((site_count + 1))
-        printf "${CYAN}--- Configuring Site $site_count: $site_url ---$NC\n"
+        printf "${CYAN}--- Configuring Site $site_count: $site_url ---${RESET}\n"
 
         if get_validated_domain "Enter production domain for $site_url (press Enter to skip): "; then
             local source_domain="$VALIDATED_DOMAIN"
 
             if configure_stage_file_proxy "$source_domain" "header" "$site_url"; then
-                printf "${GREEN}✅ $site_url configured$NC\n"
+                printf "${GREEN}✅ $site_url configured${RESET}\n"
             else
-                printf "${RED}❌ Failed to configure site: $site_url$NC\n"
+                printf "${RED}❌ Failed to configure site: $site_url${RESET}\n"
             fi
         else
-            printf "${YELLOW}⚠️  Skipping $site_url$NC\n"
+            printf "${YELLOW}⚠️  Skipping $site_url${RESET}\n"
         fi
     done <<< "$sites"
 
-    printf "${GREEN}=== Multisite Setup Complete ===$NC\n"
-    printf "${GREEN}Stage File Proxy is now active and configured for all sites!$NC\n"
+    printf "${GREEN}=== Multisite Setup Complete ===${RESET}\n"
+    printf "${GREEN}Stage File Proxy is now active and configured for all sites!${RESET}\n"
 }
 
 # Function to display current configuration
 show_stage_file_proxy_config() {
-    # Colors already available from utils
-    printf "${CYAN}=== Current Stage File Proxy Configuration ===$NC\n"
+    printf "${CYAN}=== Current Stage File Proxy Configuration ===${RESET}\n"
 
     local is_multisite
     is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
 
     if [[ "$is_multisite" == "1" || "$is_multisite" == "true" ]]; then
-        printf "${YELLOW}Multisite Configuration:$NC\n"
+        printf "${YELLOW}Multisite Configuration:${RESET}\n"
         local sites
         sites=$(wp site list --field=url --quiet)
         while IFS= read -r site_url; do
             printf "\n"
-            printf "${BLUE}Site: $site_url$NC\n"
+            printf "${BLUE}Site: $site_url${RESET}\n"
 
             # Get sfp_url and sfp_mode separately (new plugin structure)
             local sfp_url sfp_mode
             sfp_url=$(wp --url="$site_url" option get sfp_url --quiet 2>/dev/null || echo "Not set")
             sfp_mode=$(wp --url="$site_url" option get sfp_mode --quiet 2>/dev/null || echo "Not set")
 
-            printf "  ${GREEN}sfp_url:$NC $sfp_url\n"
-            printf "  ${GREEN}sfp_mode:$NC $sfp_mode\n"
+            printf "  ${GREEN}sfp_url:${RESET} $sfp_url\n"
+            printf "  ${GREEN}sfp_mode:${RESET} $sfp_mode\n"
         done <<< "$sites"
     else
-        printf "${YELLOW}Single Site Configuration:$NC\n"
+        printf "${YELLOW}Single Site Configuration:${RESET}\n"
 
         # Get sfp_url and sfp_mode separately (new plugin structure)
         local sfp_url sfp_mode
         sfp_url=$(wp option get sfp_url --quiet 2>/dev/null || echo "Not set")
         sfp_mode=$(wp option get sfp_mode --quiet 2>/dev/null || echo "Not set")
 
-        printf "${GREEN}sfp_url:$NC $sfp_url\n"
-        printf "${GREEN}sfp_mode:$NC $sfp_mode\n"
+        printf "${GREEN}sfp_url:${RESET} $sfp_url\n"
+        printf "${GREEN}sfp_mode:${RESET} $sfp_mode\n"
     fi
 }
 
 # Function to quickly set all sites to the same domain (for multisite)
 bulk_configure_multisite() {
-    # Colors already available from utils
     local is_multisite
     is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
 
     if [[ "$is_multisite" != "1" && "$is_multisite" != "true" ]]; then
-        printf "${RED}This function is only for multisite installations$NC\n"
+        printf "${RED}This function is only for multisite installations${RESET}\n"
         return 1
     fi
 
-    printf "${CYAN}=== Bulk Configure All Sites ===$NC\n"
+    printf "${CYAN}=== Bulk Configure All Sites ===${RESET}\n"
     if get_validated_domain "Enter the production domain to use for ALL sites (e.g., example.com): "; then
         local source_domain="$VALIDATED_DOMAIN"
 
         printf "\n"
-        printf "${BLUE}Applying configuration to all sites...$NC\n"
+        printf "${BLUE}Applying configuration to all sites...${RESET}\n"
         printf "\n"
 
         local sites
         sites=$(wp site list --field=url --quiet)
 
         while IFS= read -r site_url; do
-            printf "${CYAN}Configuring: $site_url$NC\n"
+            printf "${CYAN}Configuring: $site_url${RESET}\n"
             if configure_stage_file_proxy "$source_domain" "header" "$site_url"; then
-                printf "${GREEN}✅ $site_url configured$NC\n"
+                printf "${GREEN}✅ $site_url configured${RESET}\n"
             else
-                printf "${RED}❌ Failed to configure $site_url$NC\n"
+                printf "${RED}❌ Failed to configure $site_url${RESET}\n"
             fi
         done <<< "$sites"
 
         printf "\n"
-        printf "${GREEN}✅ Bulk configuration complete!$NC\n"
+        printf "${GREEN}✅ Bulk configuration complete!${RESET}\n"
     else
-        printf "${YELLOW}⚠️  Configuration cancelled.$NC\n"
+        printf "${YELLOW}⚠️  Configuration cancelled.${RESET}\n"
     fi
 }
 
-# Help function
-show_help() {
-    # Colors already available from utils
-    printf "${CYAN}Stage File Proxy Setup Functions (Compatible with new plugin v101+):$NC\n"
-    printf "\n"
-    printf "${GREEN}setup_stage_file_proxy$NC        - Main setup function (interactive)\n"
-    printf "${GREEN}show_stage_file_proxy_config$NC  - Display current configuration\n"
-    printf "${GREEN}bulk_configure_multisite$NC      - Set same domain for all sites (multisite only)\n"
-    printf "\n"
-    printf "${YELLOW}Plugin Structure Changes:$NC\n"
-    printf "• OLD: JSON format with 'stage-file-proxy-settings' option\n"
-    printf "• NEW: Separate 'sfp_url' and 'sfp_mode' options\n"
-    printf "• 'source_domain' → 'sfp_url'\n"
-    printf "• 'method' → 'sfp_mode' (default: 'header')\n"
-    printf "\n"
-    printf "${YELLOW}Available Proxy Modes:$NC\n"
-    printf "• header     - HTTP redirect to remote files (fastest, default)\n"
-    printf "• download   - Download and save files locally\n"
-    printf "• photon     - Use Photon/Jetpack for image processing\n"
-    printf "• local      - Use local fallback images if remote fails\n"
-    printf "• lorempixel - Use placeholder service for missing images\n"
-    printf "\n"
-    printf "${WHITE}Usage Examples:$NC\n"
-    printf "  ${GREEN}setup_stage_file_proxy$NC\n"
-    printf "  ${GREEN}show_stage_file_proxy_config$NC\n"
-    printf "  ${GREEN}bulk_configure_multisite$NC\n"
-}
-
-# If script is run directly (not sourced), show help
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Import colors for direct execution
-    # Colors already available from utils
-
-    printf "${CYAN}This script contains functions for setting up Stage File Proxy.$NC\n"
-    printf "Source this script to use the functions:\n"
-    printf "\n"
-    printf "  ${YELLOW}source setup-stage-file-proxy.sh$NC\n"
-    printf "  ${GREEN}setup_stage_file_proxy$NC\n"
-    printf "\n"
-    show_help
+# Export functions for external use
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    {
+        export -f setup_stage_file_proxy
+        export -f show_stage_file_proxy_config
+        export -f bulk_configure_multisite
+        export -f configure_stage_file_proxy
+        export -f sanitize_stage_proxy_domain
+        export -f get_validated_domain
+        export -f setup_single_site_stage_file_proxy
+        export -f setup_multisite_stage_file_proxy
+    } >/dev/null 2>&1
 fi

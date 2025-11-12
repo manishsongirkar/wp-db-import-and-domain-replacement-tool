@@ -4,6 +4,8 @@
 # WordPress Database Import & Domain Replacement Tool
 # ===============================================
 #
+# Version: See VERSION file
+#
 # Description:
 #   A robust bash utility for performing WordPress database imports and domain/URL
 #   replacements, commonly needed for migrating environments (e.g., production to local/staging).
@@ -36,17 +38,21 @@
 #   4. Run the function: import_wp_db
 #   5. Follow the interactive prompts.
 #
-# Additional Functions:
-#   show_local_site_links - Display clickable links to local WordPress sites (sourced from show_local_site_links.sh)
+# Additional Functions (loaded via lib/utilities/ modules):
+#   show_local_site_links - Display clickable links to local WordPress sites
 #     Usage: show_local_site_links
 #     Requirements: Must be run from within a WordPress directory with WP-CLI installed
-#     Note: Function is loaded from show_local_site_links.sh in the same directory
+#     Note: Function is now loaded from lib/utilities/site_links.sh via module loader
 #
 #   show_revision_cleanup_commands - Generate MySQL commands for manual revision cleanup
 #     Usage: show_revision_cleanup_commands [single|multisite|test|test-multisite|test-subdirectory]
 #     Requirements: Must be run from within a WordPress directory with WP-CLI installed
-#     Note: Function is loaded from show_revision_cleanup_commands.sh in the same directory
-#     Available globally after sourcing this script
+#     Note: Function is now loaded from lib/utilities/revision_cleanup.sh via module loader
+#
+#   setup_stage_file_proxy - Interactive setup for Stage File Proxy plugin
+#     Usage: setup_stage_file_proxy
+#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
+#     Note: Function is now loaded from lib/utilities/stage_file_proxy.sh via module loader
 #
 #   show_revision_cleanup_if_needed - Helper function that conditionally shows revision cleanup commands
 #     Usage: show_revision_cleanup_if_needed (called automatically during import)
@@ -111,116 +117,19 @@ if ! load_modules >/dev/null 2>&1; then
 fi
 
 # ===============================================
-# Source external function files
+# Functions now loaded via module system
 # ===============================================
-
-# Define a lazy loading function for show_local_site_links
-# This approach only loads the function when needed and handles missing files gracefully
-show_local_site_links() {
-    # Get the directory of the current script for relative path resolution
-    # Use bash built-in parameter expansion instead of dirname command for better compatibility
-    local SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-    if [[ "$SCRIPT_DIR" == "${BASH_SOURCE[0]}" ]]; then
-        SCRIPT_DIR="."
-    fi
-    SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
-    local LINKS_SCRIPT="$SCRIPT_DIR/show_local_site_links.sh"
-
-    # Try multiple possible locations for the show_local_site_links.sh file
-    local possible_locations=(
-        "$SCRIPT_DIR/show_local_site_links.sh"
-        "$HOME/wp-db-import-and-domain-replacement-tool/show_local_site_links.sh"
-        "${BASH_SOURCE[0]%/*}/show_local_site_links.sh"
-    )
-
-    local found_script=""
-    for location in "${possible_locations[@]}"; do
-        if [[ -f "$location" ]]; then
-            found_script="$location"
-            break
-        fi
-    done
-
-    if [[ -n "$found_script" ]]; then
-        # Source the actual function and replace this placeholder
-        if source "$found_script" 2>/dev/null; then
-            # Call the real function now that it's loaded
-            show_local_site_links "$@"
-        else
-            # Fallback if sourcing fails
-            printf "${YELLOW}⚠️ Could not load show_local_site_links.sh properly.${RESET}\n"
-            printf "${YELLOW}💡 You can manually access your WordPress sites using the configured domains.${RESET}\n"
-        fi
-    else
-        printf "${RED}❌ Error: show_local_site_links.sh not found.${RESET}\n"
-        printf "${YELLOW}💡 Tried locations:${RESET}\n"
-        for location in "${possible_locations[@]}"; do
-            printf "    - %s\n" "$location"
-        done
-        printf "${YELLOW}💡 Please ensure show_local_site_links.sh is available in one of these locations.${RESET}\n"
-        return 1
-    fi
-}
-
-# Define a lazy loading function for show_revision_cleanup_commands
-# This approach only loads the function when needed and handles missing files gracefully
-show_revision_cleanup_commands() {
-    # Get the directory of the current script for relative path resolution
-    # Use bash built-in parameter expansion instead of dirname command for better compatibility
-    local SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-    if [[ "$SCRIPT_DIR" == "${BASH_SOURCE[0]}" ]]; then
-        SCRIPT_DIR="."
-    fi
-    SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
-
-    # Try multiple possible locations for the show_revision_cleanup_commands.sh file
-    local possible_locations=(
-        "$SCRIPT_DIR/show_revision_cleanup_commands.sh"
-        "$HOME/wp-db-import-and-domain-replacement-tool/show_revision_cleanup_commands.sh"
-        "${BASH_SOURCE[0]%/*}/show_revision_cleanup_commands.sh"
-    )
-
-    local found_script=""
-    for location in "${possible_locations[@]}"; do
-        if [[ -f "$location" ]]; then
-            found_script="$location"
-            break
-        fi
-    done
-
-    if [[ -n "$found_script" ]]; then
-        # Source the actual function and replace this placeholder
-        if source "$found_script" 2>/dev/null; then
-            # Call the real function now that it's loaded
-            show_revision_cleanup_commands "$@"
-        else
-            # Fallback if sourcing fails
-            printf "${YELLOW}⚠️ Could not load show_revision_cleanup_commands.sh properly.${RESET}\n"
-            printf "${YELLOW}💡 Manual revision cleanup: Use WP-CLI or phpMyAdmin to remove revisions.${RESET}\n"
-        fi
-    else
-        printf "${RED}❌ Error: show_revision_cleanup_commands.sh not found.${RESET}\n"
-        printf "${YELLOW}💡 Tried locations:${RESET}\n"
-        for location in "${possible_locations[@]}"; do
-            printf "    - %s\n" "$location"
-        done
-        printf "${YELLOW}💡 Please ensure show_revision_cleanup_commands.sh is available in one of these locations.${RESET}\n"
-        return 1
-    fi
-}
+# All utility functions (show_local_site_links, show_revision_cleanup_commands,
+# and stage file proxy functions) are now loaded automatically through
+# the module loader system in lib/
 
 # Define helper function for conditional revision cleanup during import
 # This function calls show_revision_cleanup_commands when automatic cleanup is skipped
 show_revision_cleanup_if_needed() {
     # Check if cleanup_revisions variable exists and is not Y/y
     if [[ "${cleanup_revisions:-}" != [Yy]* ]]; then
-        # Call the external revision cleanup function directly from WordPress directory
-        # This ensures proper detection using WP-CLI from the correct working directory
-        if command -v show_revision_cleanup_commands >/dev/null 2>&1; then
-            show_revision_cleanup_commands
-        else
-            printf "${YELLOW}⚠️ Revision cleanup commands not available. Manual cleanup may be needed.${RESET}\n"
-        fi
+        # Call the revision cleanup function (now loaded via module system)
+        show_revision_cleanup_commands
         printf "\n"
     fi
 }
@@ -245,26 +154,8 @@ show_revision_cleanup_at_end() {
     fi
 
     if [[ "$should_show_commands" == true ]]; then
-        # Call the external revision cleanup function directly from WordPress directory
-        # This ensures proper detection using WP-CLI from the correct working directory
-        if command -v show_revision_cleanup_commands >/dev/null 2>&1; then
-            # Ensure proper PATH and environment, and preserve current working directory
-            (
-                # Export a robust PATH to ensure system commands are available
-                export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-                # Export multisite information for the function to use if needed
-                export WP_MULTISITE_DETECTED="$is_multisite"
-                # Ensure we're in the WordPress root directory
-                cd "$wp_root" 2>/dev/null || cd "$(pwd)"
-                # Call the function from the WordPress directory
-                show_revision_cleanup_commands
-            )
-        else
-            printf "${YELLOW}⚠️ Revision cleanup commands not available. Manual cleanup may be needed.${RESET}\n"
-            printf "${CYAN}💡 You can manually remove revisions using:${RESET}\n"
-            printf "   - WP-CLI: ${YELLOW}wp post delete \$(wp post list --post_type=revision --format=ids) --force${RESET}\n"
-            printf "   - phpMyAdmin: ${YELLOW}DELETE FROM wp_posts WHERE post_type = 'revision';${RESET}\n"
-        fi
+        # Call the revision cleanup function (now loaded via module system)
+        show_revision_cleanup_commands
         printf "\n"
     fi
 }
@@ -329,7 +220,7 @@ import_wp_db() {
   trap cleanup EXIT
 
   printf "\n${CYAN}${BOLD}🔧 WordPress Database Import & Domain Replace Tool${RESET}\n"
-  printf "---------------------------------------------------\n\n"
+  printf "====================================================\n\n"
 
   # 🧩 Prompt for SQL file name
   local sql_file

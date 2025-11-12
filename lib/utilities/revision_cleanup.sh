@@ -1,45 +1,26 @@
 #!/bin/bash
 
-# WordPress Database Revision Cleanup Commands Generator
-# This script generates MySQL commands to remove post revisions
-
-# Get the directory where the script is located
-# Handle both direct execution and sourcing scenarios
-if [[ -n "${BASH_SOURCE[0]}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    # Fallback for edge cases
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-fi
-
 # ================================================================
-# Load Module System (if not already loaded)
+# WordPress Revision Cleanup Utilities Module
 # ================================================================
-# Check if modules are already loaded by parent script
-if [[ -z "${WP_IMPORT_MODULES_LOADED:-}" ]]; then
-    MODULE_LOADER="$SCRIPT_DIR/lib/module_loader.sh"
-    if [[ ! -f "$MODULE_LOADER" ]]; then
-        echo "❌ Error: Module loader not found at:"
-        echo "   $MODULE_LOADER"
-        echo "💡 Please ensure 'lib/module_loader.sh' exists and is readable."
-        exit 1
-    fi
+#
+# This module provides functions for generating MySQL commands to clean up
+# WordPress post revisions from both single-site and multisite installations.
+#
+# Features:
+#   - Automatic detection of single-site vs multisite installations
+#   - Table prefix detection from wp-config.php
+#   - WP-CLI integration for site discovery
+#   - Supports subdomain and subdirectory multisite configurations
+#   - Safe command generation with proper escaping
+#   - Colored terminal output for clarity
+#
+# Functions provided:
+# - show_revision_cleanup_commands        Generate MySQL cleanup commands
+# - show_revision_cleanup_if_needed       Conditional cleanup command display
+#
 
-    # Load module loader safely and silently
-    if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
-        echo "❌ Failed to load module system."
-        echo "Check: $MODULE_LOADER"
-        echo "Error log saved to /tmp/wp_import_errors.log"
-        exit 1
-    fi
-
-    # Load all modules silently
-    if ! load_modules >/dev/null 2>&1; then
-        echo "❌ Error: Failed to load core modules."
-        exit 1
-    fi
-fi
-
+# Function to display MySQL commands for revision cleanup
 show_revision_cleanup_commands() {
   printf "\n"
   printf "================================================================\n"
@@ -149,7 +130,7 @@ show_revision_cleanup_commands() {
 }
 
 # Function to check if revisions need cleanup and show commands conditionally
-show_revision_cleanup_if_needed() {
+show_utilities_revision_cleanup_if_needed() {
   local wp_path="${1:-.}"
 
   if [ "$wp_path" != "." ]; then
@@ -176,7 +157,10 @@ show_revision_cleanup_if_needed() {
   fi
 }
 
-# If script is run directly, show commands
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  show_revision_cleanup_commands
+# Export functions for external use
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    {
+        export -f show_revision_cleanup_commands
+        export -f show_utilities_revision_cleanup_if_needed
+    } >/dev/null 2>&1
 fi

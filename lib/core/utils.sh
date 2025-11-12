@@ -452,6 +452,7 @@ detect_main_site() {
     fi
 
     printf "${GREEN}✅ Main site detection complete:${RESET} Blog ID $main_site_blog_id via $detection_method\n" >&2
+    printf "\n" >&2
     echo "${main_site_blog_id}|${main_site_url}"
     echo
 }
@@ -502,6 +503,24 @@ execute_wp_cli() {
 }
 
 # -----------------------------------------------
+# Get version from VERSION file
+# -----------------------------------------------
+get_tool_version() {
+    local script_dir="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+    local version="unknown"
+
+    if [[ -f "$script_dir/VERSION" ]]; then
+        version=$(cat "$script_dir/VERSION" 2>/dev/null | tr -d '\n\r' | head -1)
+        # Fallback if VERSION file is empty or unreadable
+        if [[ -z "$version" ]]; then
+            version="unknown"
+        fi
+    fi
+
+    echo "$version"
+}
+
+# -----------------------------------------------
 # Check if script is sourced
 # -----------------------------------------------
 is_sourced() {
@@ -523,6 +542,7 @@ if is_sourced; then
         export -f detect_main_site
         export -f detect_protocol
         export -f execute_wp_cli
+        export -f get_tool_version
         export -f is_sourced
     } 2>/dev/null
 fi

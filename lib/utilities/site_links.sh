@@ -1,13 +1,11 @@
 #!/bin/bash
 
-# ===============================================
-# WordPress Local Site Links Display Function
-# ===============================================
+# ================================================================
+# WordPress Site Links Utilities Module
+# ================================================================
 #
-# Description:
-#   A standalone function to display clickable terminal links for WordPress sites.
-#   Automatically detects single site vs multisite installations and shows appropriate links.
-#   This function can be used independently or sourced by other scripts.
+# This module provides functions for displaying clickable terminal links
+# for WordPress sites, supporting both single-site and multisite installations.
 #
 # Features:
 #   - Automatic WordPress installation detection (single-site or multisite)
@@ -17,80 +15,9 @@
 #   - Support for subdomain and subdirectory multisite configurations
 #   - Network admin link generation for multisite installations
 #
-# Requirements:
-#   - WP-CLI installed and accessible in PATH
-#   - WordPress installation (wp-config.php present)
-#   - Bash shell (minimum 4.0 recommended)
-#   - Must be run from within a WordPress directory or subdirectory
+# Functions provided:
+# - show_local_site_links    Display clickable terminal links for WordPress sites
 #
-# Usage:
-#   1. As a standalone script:
-#      bash show_local_site_links.sh
-#
-#   2. Source and call from another script:
-#      source show_local_site_links.sh
-#      show_local_site_links
-#
-#   3. Direct function call after sourcing:
-#      show_local_site_links
-
-# Get the directory where the script is located
-# Handle both direct execution and sourcing scenarios
-if [[ -n "${BASH_SOURCE[0]}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    # Fallback for edge cases
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-fi
-
-# ================================================================
-# Load Module System (if not already loaded)
-# ================================================================
-# Check if modules are already loaded by parent script
-if [[ -z "${WP_IMPORT_MODULES_LOADED:-}" ]]; then
-    MODULE_LOADER="$SCRIPT_DIR/lib/module_loader.sh"
-    if [[ ! -f "$MODULE_LOADER" ]]; then
-        echo "❌ Error: Module loader not found at:"
-        echo "   $MODULE_LOADER"
-        echo "💡 Please ensure 'lib/module_loader.sh' exists and is readable."
-        exit 1
-    fi
-
-    # Load module loader safely and silently
-    if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
-        echo "❌ Failed to load module system."
-        echo "Check: $MODULE_LOADER"
-        echo "Error log saved to /tmp/wp_import_errors.log"
-        exit 1
-    fi
-
-    # Load all modules silently
-    if ! load_modules >/dev/null 2>&1; then
-        echo "❌ Error: Failed to load core modules."
-        exit 1
-    fi
-else
-    # Modules already loaded by parent script, just ensure colors are available
-    # Colors are automatically initialized by utils module
-    :  # No-op command
-fi
-
-#
-# Supported WordPress Types:
-#   - Single-site installations
-#   - Multisite subdomain networks
-#   - Multisite subdirectory networks
-#
-# Output:
-#   Displays formatted terminal output with clickable links to:
-#   - WordPress frontend URLs
-#   - WordPress admin areas
-#   - Network admin (for multisite)
-#
-# Author: Manish Songirkar (@manishsongirkar)
-# Repository: https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool
-#
-# ===============================================
 
 # 🌐 Function to display local site access links
 # This function displays clickable terminal links for WordPress sites
@@ -122,9 +49,9 @@ show_local_site_links() {
   # 🧠 Check WP-CLI availability with enhanced PATH
   # Use global WP_COMMAND if available, otherwise detect it
   if [[ -z "${WP_COMMAND:-}" ]]; then
-    # Ensure we have a robust PATH that includes common WP-CLI installation locations
-    export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-    WP_COMMAND=$(command -v wp)
+    # Use a local enhanced PATH without permanently modifying the environment
+    local enhanced_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+    WP_COMMAND=$(PATH="$enhanced_path" command -v wp)
     if [[ -z "$WP_COMMAND" ]]; then
       printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"
       printf "${YELLOW}💡 Please install WP-CLI to use this function.${RESET}\n"
@@ -145,8 +72,32 @@ show_local_site_links() {
   local blog_count site_count
 
   # Check if wp_blogs table exists and has multiple entries
-  blog_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs;" --skip-column-names --silent 2>/dev/null || echo "0")
-  site_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_site;" --skip-column-names --silent 2>/dev/null || echo "0")
+  # Use fallback methods for Flywheel compatibility (avoid wp db query)
+  if command -v wp >/dev/null 2>&1; then
+    # Method 1: Try to get site list (most reliable and Flywheel-compatible)
+    local site_list_output
+    site_list_output=$(execute_wp_cli site list --format=count 2>/dev/null || echo "")
+
+    if [[ -n "$site_list_output" && "$site_list_output" =~ ^[0-9]+$ ]]; then
+      site_count="$site_list_output"
+      blog_count="$site_count"
+    else
+      # Fallback: Try to get blog IDs and count them
+      local blog_ids
+      blog_ids=$(execute_wp_cli site list --field=blog_id 2>/dev/null || echo "")
+      if [[ -n "$blog_ids" ]]; then
+        blog_count=$(echo "$blog_ids" | wc -l | tr -d ' ')
+        site_count="$blog_count"
+      else
+        # Final fallback: try database queries (may not work in Flywheel)
+        blog_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs;" --skip-column-names --silent 2>/dev/null || echo "0")
+        site_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_site;" --skip-column-names --silent 2>/dev/null || echo "0")
+      fi
+    fi
+  else
+    blog_count="0"
+    site_count="0"
+  fi
 
   # Check wp-config.php constants as fallback
   local multisite_config=""
@@ -287,7 +238,9 @@ show_local_site_links() {
   printf "\n================================================================\n"
 }
 
-# Allow the script to be called directly
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    show_local_site_links "$@"
+# Export functions for external use
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    {
+        export -f show_local_site_links
+    } >/dev/null 2>&1
 fi

@@ -1,0 +1,326 @@
+#!/bin/bash
+
+# ===============================================
+# WordPress Database Import & Domain Replacement Tool
+# Global Command Wrapper
+# ===============================================
+#
+# This script allows the tool to be used as a global command
+# without requiring manual sourcing each time.
+#
+# Version: See VERSION file
+#
+# Usage:
+#   wp-db-import                    # Run the main import function
+#   wp-db-import show-links         # Show local site links
+#   wp-db-import show-cleanup       # Show revision cleanup commands
+#   wp-db-import setup-proxy        # Setup stage file proxy
+#   wp-db-import update             # Update to latest version (git pull)
+#   wp-db-import version            # Show current version and git info
+#   wp-db-import --help             # Show help
+#
+# Installation:
+#   Run: ./install.sh
+#   This creates a symlink to make 'wp-db-import' available globally
+#
+# Auto-Updates:
+#   Since installation uses symlinks, running 'git pull' in the repo
+#   directory automatically makes updates available globally.
+#
+# ===============================================
+
+# Get the directory where this script is located
+# Handle both direct execution and symlinked installation
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+# If it's a symlink, resolve to the actual file
+if [[ -L "$SCRIPT_PATH" ]]; then
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+MAIN_SCRIPT="$SCRIPT_DIR/import_wp_db.sh"
+
+# Color definitions for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# Function to show help
+show_help() {
+    printf "${CYAN}${BOLD}WordPress Database Import & Domain Replacement Tool${RESET}\n"
+    printf "================================================================\n\n"
+    printf "${BOLD}USAGE:${RESET}\n"
+    printf "  wp-db-import                    Run the main import function\n"
+    printf "  wp-db-import show-links         Show local site links\n"
+    printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
+    printf "  wp-db-import setup-proxy        Setup stage file proxy\n"
+    printf "  wp-db-import update             Update to latest version\n"
+    printf "  wp-db-import version            Show version and git info\n"
+    printf "  wp-db-import --help             Show this help message\n\n"
+
+    printf "${BOLD}SETUP:${RESET}\n"
+    printf "${CYAN}Option 1 - Git Clone (Recommended for auto-updates):${RESET}\n"
+    printf "  1. git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git\n"
+    printf "  2. cd wp-db-import-and-domain-replacement-tool\n"
+    printf "  3. ./install.sh (makes 'wp-db-import' globally available)\n"
+    printf "  4. Navigate to any WordPress directory and run: wp-db-import\n\n"
+    printf "${CYAN}Option 2 - ZIP Download (Manual updates):${RESET}\n"
+    printf "  1. Download and extract the ZIP archive from GitHub\n"
+    printf "  2. cd wp-db-import-and-domain-replacement-tool\n"
+    printf "  3. ./install.sh (makes 'wp-db-import' globally available)\n"
+    printf "  4. Navigate to any WordPress directory and run: wp-db-import\n\n"
+
+    printf "${BOLD}REQUIREMENTS:${RESET}\n"
+    printf "  - WP-CLI installed and in PATH\n"
+    printf "  - WordPress installation (run from WP root or subdirectory)\n"
+    printf "  - MySQL/MariaDB database access\n"
+    printf "  - Bash shell (macOS/Linux)\n\n"
+
+    printf "${BOLD}EXAMPLES:${RESET}\n"
+    printf "  cd ~/Local\\ Sites/mysite/app/public\n"
+    printf "  wp-db-import                    # Start database import wizard\n"
+    printf "  wp-db-import show-links         # Show clickable links to local sites\n"
+    printf "  wp-db-import show-cleanup       # Show revision cleanup commands\n"
+    printf "  wp-db-import setup-proxy        # Configure media proxy settings\n"
+    printf "  wp-db-import update             # Update to latest version\n"
+    printf "  wp-db-import version            # Show version and git info\n"
+    printf "  wp-db-import --help             # Show this help message\n\n"
+
+    printf "${BOLD}UPDATES:${RESET}\n"
+    printf "  Since installation uses symlinks, running 'git pull' in the\n"
+    printf "  repository directory automatically updates the global command.\n"
+    printf "  Or use: wp-db-import update (does git pull automatically)\n\n"
+
+    printf "${YELLOW}💡 TIP:${RESET} Place your SQL file in the WordPress root directory before running.\n"
+}
+
+# Function to check if we're in a WordPress directory
+check_wordpress_directory() {
+    local current_dir="$(pwd)"
+    local wp_root="$current_dir"
+
+    # Search for wp-config.php up the directory tree
+    while [[ "$wp_root" != "/" && ! -f "$wp_root/wp-config.php" ]]; do
+        wp_root=$(dirname "$wp_root")
+    done
+
+    if [[ ! -f "$wp_root/wp-config.php" ]]; then
+        printf "${RED}❌ Error: Not in a WordPress directory${RESET}\n"
+        printf "${YELLOW}💡 Please navigate to a WordPress installation directory first${RESET}\n"
+        printf "   Example: cd ~/Local\\ Sites/mysite/app/public\n"
+        return 1
+    fi
+
+    printf "${GREEN}✅ WordPress installation found: ${wp_root}${RESET}\n"
+    return 0
+}
+
+# Function to load the main script and modules
+load_main_script() {
+    if [[ ! -f "$MAIN_SCRIPT" ]]; then
+        printf "${RED}❌ Error: Main script not found at: $MAIN_SCRIPT${RESET}\n"
+        printf "${YELLOW}💡 Please ensure you're running from the correct directory${RESET}\n"
+        return 1
+    fi
+
+    # Source the main script (this loads all modules automatically)
+    if ! source "$MAIN_SCRIPT" >/dev/null 2>&1; then
+        printf "${RED}❌ Error: Failed to load main script${RESET}\n"
+        printf "   Check: $MAIN_SCRIPT\n"
+        return 1
+    fi
+
+    return 0
+}
+
+# Function to get the current version
+get_version() {
+    local version="unknown"
+    if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
+        version=$(cat "$SCRIPT_DIR/VERSION" 2>/dev/null | tr -d '\n\r' | head -1)
+        # Fallback if VERSION file is empty or unreadable
+        if [[ -z "$version" ]]; then
+            version="unknown"
+        fi
+    fi
+    echo "$version"
+}
+
+# Function to show version information
+show_version() {
+    local version=$(get_version)
+
+    printf "${CYAN}${BOLD}WordPress Database Import Tool${RESET}\n"
+    printf "Version: ${GREEN}${version}${RESET}\n\n"
+
+    # Show git information if we're in a git repository
+    if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        printf "${BOLD}Git Information:${RESET}\n"
+        local current_commit=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        local current_branch=$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null || echo "unknown")
+        local repo_url=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null || echo "unknown")
+
+        printf "  Branch: ${YELLOW}${current_branch}${RESET}\n"
+        printf "  Commit: ${YELLOW}${current_commit}${RESET}\n"
+        printf "  Repository: ${CYAN}${repo_url}${RESET}\n\n"
+
+        # Check if there are uncommitted changes
+        if ! git -C "$SCRIPT_DIR" diff-index --quiet HEAD -- >/dev/null 2>&1; then
+            printf "${YELLOW}⚠️  Note: You have uncommitted changes in the repository${RESET}\n"
+        fi
+
+        # Check if local is behind remote
+        if git -C "$SCRIPT_DIR" fetch >/dev/null 2>&1; then
+            local behind_count=$(git -C "$SCRIPT_DIR" rev-list HEAD..origin/"${current_branch}" --count 2>/dev/null || echo "0")
+            if [[ "$behind_count" -gt 0 ]]; then
+                printf "${YELLOW}� ${behind_count} update(s) available. Run: wp-db-import update${RESET}\n"
+            fi
+        fi
+    else
+        printf "${YELLOW}💡 Not a git installation (downloaded as archive?)${RESET}\n"
+    fi
+
+    printf "\n${BOLD}Installation:${RESET}\n"
+    if [[ -L "${BASH_SOURCE[0]}" ]]; then
+        local link_target=$(readlink "${BASH_SOURCE[0]}")
+        printf "  Installed as symlink: ${GREEN}✅${RESET}\n"
+        printf "  Symlink: ${BASH_SOURCE[0]}\n"
+        printf "  Target: ${link_target}\n"
+
+        # Check if it's a git repository for auto-updates
+        if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+            printf "  Auto-updates: ${GREEN}Available (git repository)${RESET}\n"
+        else
+            printf "  Auto-updates: ${YELLOW}Limited (not a git repository)${RESET}\n"
+        fi
+    else
+        printf "  Running directly from: ${BASH_SOURCE[0]}\n"
+        if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+            printf "  Auto-updates: ${GREEN}Available (git repository)${RESET}\n"
+            printf "  ${CYAN}💡 Tip: Run ./install.sh to make this command globally available${RESET}\n"
+        else
+            printf "  Auto-updates: ${YELLOW}Not available (downloaded as archive)${RESET}\n"
+            printf "  ${CYAN}💡 Tip: Clone from git repository for auto-updates${RESET}\n"
+        fi
+    fi
+}
+
+# Function to update the tool to latest version
+update_tool() {
+    printf "${CYAN}🔄 Updating WordPress Database Import Tool...${RESET}\n\n"
+
+    # Check if we're in a git repository
+    if ! git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        printf "${RED}❌ Error: Not in a git repository${RESET}\n"
+        printf "\n${YELLOW}This tool was likely downloaded as a ZIP archive.${RESET}\n"
+        printf "${CYAN}To enable auto-updates, please:${RESET}\n"
+        printf "  1. Clone the repository instead:\n"
+        printf "     ${BOLD}git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git${RESET}\n"
+        printf "  2. Run the installer from the cloned repository:\n"
+        printf "     ${BOLD}cd wp-db-import-and-domain-replacement-tool && ./install.sh${RESET}\n"
+        printf "\n${YELLOW}For manual updates:${RESET}\n"
+        printf "  1. Download the latest release from GitHub\n"
+        printf "  2. Extract and replace your current installation\n"
+        printf "  3. Run ./install.sh again if needed\n"
+        return 1
+    fi
+
+    # Show current status
+    local current_commit=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
+    local current_branch=$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null)
+    printf "Current: ${YELLOW}${current_branch}@${current_commit}${RESET}\n"
+
+    # Check for uncommitted changes
+    if ! git -C "$SCRIPT_DIR" diff-index --quiet HEAD -- >/dev/null 2>&1; then
+        printf "${YELLOW}⚠️  Warning: You have uncommitted changes${RESET}\n"
+        printf "Do you want to continue? This may overwrite local changes (y/N): "
+        read -r confirm_update
+        if [[ "$confirm_update" != [Yy]* ]]; then
+            printf "${YELLOW}Update cancelled${RESET}\n"
+            return 0
+        fi
+    fi
+
+    # Perform git pull
+    printf "\n${CYAN}📥 Fetching latest changes...${RESET}\n"
+    if git -C "$SCRIPT_DIR" pull origin "${current_branch:-main}" 2>&1; then
+        local new_commit=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
+        if [[ "$current_commit" != "$new_commit" ]]; then
+            printf "\n${GREEN}✅ Successfully updated!${RESET}\n"
+            printf "Updated: ${YELLOW}${current_branch}@${current_commit}${RESET} → ${GREEN}${current_branch}@${new_commit}${RESET}\n"
+            printf "\n${CYAN}💡 Changes are immediately available since you're using a symlinked installation${RESET}\n"
+        else
+            printf "\n${GREEN}✅ Already up to date${RESET}\n"
+        fi
+    else
+        printf "\n${RED}❌ Update failed${RESET}\n"
+        printf "${YELLOW}💡 Try running: cd $SCRIPT_DIR && git pull${RESET}\n"
+        return 1
+    fi
+}
+
+# Parse command line arguments
+case "${1:-}" in
+    --help|-h|help)
+        show_help
+        exit 0
+        ;;
+    version|-v|--version)
+        show_version
+        exit 0
+        ;;
+    update|--update)
+        update_tool
+        exit $?
+        ;;
+    show-links)
+        printf "${CYAN}🔗 Displaying local site links...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        show_local_site_links
+        ;;
+    show-cleanup)
+        printf "${CYAN}🗑️ Generating revision cleanup commands...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        # Pass any additional arguments (like 'multisite', 'test', etc.)
+        shift # Remove 'show-cleanup' from arguments
+        show_revision_cleanup_commands "$@"
+        ;;
+    setup-proxy)
+        printf "${CYAN}📸 Setting up stage file proxy...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        setup_stage_file_proxy
+        ;;
+    "")
+        # No arguments - run the main import function
+        printf "${CYAN}🚀 Starting WordPress database import...${RESET}\n\n"
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        import_wp_db
+        ;;
+    *)
+        printf "${RED}❌ Unknown command: ${1}${RESET}\n\n"
+        show_help
+        exit 1
+        ;;
+esac

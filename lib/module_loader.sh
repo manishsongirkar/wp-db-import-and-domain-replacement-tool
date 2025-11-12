@@ -39,10 +39,33 @@ load_core_modules() {
     fi
 }
 
+# Load utilities modules
+load_utilities_modules() {
+    local utilities_dir="$LIB_DIR/utilities"
+
+    # Load stage file proxy utilities
+    if [[ -f "$utilities_dir/stage_file_proxy.sh" ]]; then
+        source "$utilities_dir/stage_file_proxy.sh" 2>/dev/null
+    fi
+
+    # Load site links utilities
+    if [[ -f "$utilities_dir/site_links.sh" ]]; then
+        source "$utilities_dir/site_links.sh" 2>/dev/null
+    fi
+
+    # Load revision cleanup utilities
+    if [[ -f "$utilities_dir/revision_cleanup.sh" ]]; then
+        source "$utilities_dir/revision_cleanup.sh" 2>/dev/null
+    fi
+}
+
 # Main function to load all modules
 load_modules() {
     # Load core modules (includes utils)
     load_core_modules
+
+    # Load utilities modules
+    load_utilities_modules
 
     return 0
 }
@@ -63,5 +86,6 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     {
         export -f load_modules
         export -f load_core_modules
+        export -f load_utilities_modules
     } >/dev/null 2>&1
 fi
