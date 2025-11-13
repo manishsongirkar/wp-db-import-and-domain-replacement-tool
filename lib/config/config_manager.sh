@@ -96,10 +96,10 @@ auto_proceed=false
 
 [site_mappings]
 # Format:
-blog_id:old_domain:new_domain
+# blog_id:old_domain:new_domain
 
 # Example:
-1:production-site.com:local-site.test
+# 1:production-site.com:local-site.test
 
 # Add your multisite mappings below:
 
