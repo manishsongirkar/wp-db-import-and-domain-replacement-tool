@@ -198,12 +198,21 @@ handle_missing_mappings() {
             printf "  │ Enter local URL for Main Site (default: %s): " "$base_domain"
             default_url="$base_domain"
         else
-            # Suggest subdirectory format for subsites
-            local subdomain=$(echo "$domain" | cut -d'.' -f1)
             # Remove protocol if present from base domain
             base_domain="${base_domain#http://}"
             base_domain="${base_domain#https://}"
-            default_url="${base_domain}/${subdomain}"
+
+            # Prioritize existing path over subdomain extraction when path is not just "/"
+            if [[ -n "$path" && "$path" != "/" ]]; then
+                # Use the existing path (remove leading/trailing slashes for clean concatenation)
+                local clean_path="${path#/}"
+                clean_path="${clean_path%/}"
+                default_url="${base_domain}/${clean_path}"
+            else
+                # Fallback to subdomain extraction for default suggestion
+                local subdomain=$(echo "$domain" | cut -d'.' -f1)
+                default_url="${base_domain}/${subdomain}"
+            fi
             printf "  │ Enter local URL for Blog ID %s (default: %s): " "$blog_id" "$default_url"
         fi
 
@@ -224,8 +233,16 @@ handle_missing_mappings() {
         printf "     ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$domain" "$new_domain_input"
         printf "     (Blog ID: %s, Path: %s)\n\n" "$blog_id" "$path"
 
+        # Construct old domain with path for config storage when path is meaningful
+        local config_old_domain="$domain"
+        if [[ -n "$path" && "$path" != "/" ]]; then
+            # Remove trailing slash from path for clean concatenation
+            local clean_path="${path%/}"
+            config_old_domain="${domain}${clean_path}"
+        fi
+
         # Save mapping to config
-        if update_site_mapping "$config_path" "$blog_id" "$domain" "$new_domain_input"; then
+        if update_site_mapping "$config_path" "$blog_id" "$config_old_domain" "$new_domain_input"; then
             # Update CONFIG_NEW_DOMAIN for main site to use for subsequent defaults
             if [[ "$blog_id" == "1" ]]; then
                 CONFIG_NEW_DOMAIN="$new_domain_input"
