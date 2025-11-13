@@ -372,7 +372,7 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
 ### Single Site Example (First-Time Run)
 
 **Terminal Input/Output:**
-```
+```bash
 $ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
@@ -460,7 +460,7 @@ Setup stage file proxy: enabled (from config)
 ### Single Site Example (Subsequent Run with Config)
 
 **Terminal Input/Output:**
-```
+```bash
 $ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
@@ -534,7 +534,7 @@ Setup stage file proxy: enabled (from config)
 ### Multisite Example (First-Time Setup)
 
 **Terminal Input/Output:**
-```
+```bash
 $ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
@@ -723,7 +723,7 @@ Setup stage file proxy: enabled (from config)
 ### Multisite Example (Subsequent Run with Existing Config)
 
 **Terminal Input/Output:**
-```
+```bash
 $ wp-db-import
 
 🔧 WordPress Database Import & Domain Replace Tool
@@ -848,32 +848,6 @@ Setup stage file proxy: enabled (from config)
 
 ⏱️ Execution Time: 00:32 (mm:ss)
 ```
-✅ Plugin activated successfully
-🌐 Configuring multisite stage-file-proxy...
-  ✅ Configured: example.test → https://admin.example.com
-  ✅ Configured: example.test/shop → https://shop.example.com
-  ✅ Configured: example.test/blog → https://blog.example.com
-  ✅ Configured: example.test/news → https://news.example.com
-  ✅ Configured: example.test/support → https://support.example.com
-  ✅ Configured: example.test/docs → https://docs.example.com
-
-================================================================
-🌐 LOCAL SITE ACCESS LINKS
-================================================================
-
-✅ Your WordPress Multisite is ready:
-
-  🏠 Main Site (ID: 1): https://example.test
-  🌍 Subsite   (ID: 2): https://example.test/shop
-  🌍 Subsite   (ID: 3): https://example.test/blog
-  🌍 Subsite   (ID: 4): https://example.test/news
-  🌍 Subsite   (ID: 6): https://example.test/support
-  🌍 Subsite   (ID: 7): https://example.test/docs
-
-💡 Network Admin: Add /wp-admin/network/ to any of the above URLs
-
-================================================================
-```
 
 ## 🌟 Supported WordPress Types
 
@@ -908,6 +882,7 @@ The tool includes a sophisticated revision cleanup system that automatically gen
 Manual commands are only shown if automatic updates fail:
 
 ### Multisite Commands (Subdomain Network):
+
 ```sql
 -- Update the main network domain
 UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
@@ -1038,7 +1013,7 @@ Shows all available commands, setup instructions, and usage examples.
 - **`USAGE.md`** - Complete configuration setup guide with practical examples and workflows
 
 ### Modular Library Architecture
-```
+```bash
 lib/
 ├── version.sh              # Version management utilities and git integration
 ├── module_loader.sh        # Automatic module discovery and loading system

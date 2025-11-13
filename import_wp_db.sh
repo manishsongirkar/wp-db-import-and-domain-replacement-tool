@@ -1316,18 +1316,30 @@ ${subsite_line}"
             local id="${domain_blog_ids[i]}"
             local site_path_var="${domain_paths[i]}"
 
-            # Use simple and reliable trimming - just check the raw values
+            # Check if key already contains path (from config storage fix)
+            local display_key="$key"
+            if [[ "$site_path_var" != "/" ]]; then
+                # Clean the path for comparison (remove trailing slash)
+                local clean_path="${site_path_var%/}"
+                # Check if key already ends with the exact clean path
+                if [[ -n "$clean_path" && "$key" != *"$clean_path" ]]; then
+                    # Key doesn't contain this exact path yet, add it for display
+                    display_key="${key}${clean_path}"
+                fi
+            fi
+            # If key already contains path, use as-is
+
             local site_marker=""
             if [[ "$id" == "$main_site_id" ]]; then
               site_marker=" ${BOLD}(Main Site)${RESET}"
             fi
 
             if [[ -z "$value" ]]; then
-              printf "    ❌ [ID: %s] %s%s → (no mapping found)%s\n" "$id" "$key" "$site_path_var" "$site_marker"
+              printf "    ❌ [ID: %s] %s → (no mapping found)%s\n" "$id" "$display_key" "$site_marker"
             elif [[ "$key" == "$value" ]]; then
-              printf "    ⏭️  [ID: %s] %s%s → (unchanged)%s\n" "$id" "$key" "$site_path_var" "$site_marker"
+              printf "    ⏭️  [ID: %s] %s → (unchanged)%s\n" "$id" "$display_key" "$site_marker"
             else
-              printf "    🔁 [ID: %s] %s%s → ${GREEN}%s${RESET}%s\n" "$id" "$key" "$site_path_var" "$value" "$site_marker"
+              printf "    🔁 [ID: %s] %s → ${GREEN}%s${RESET}%s\n" "$id" "$display_key" "$value" "$site_marker"
             fi
           done
 
@@ -1682,12 +1694,28 @@ ${subsite_line}"
 
             SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
 
-            # Start site processing
-            start_site_processing "$blog_id" "$cleaned_domain" "$new_domain" "false"
+            # Parse whether cleaned_domain already contains path (from config)
+            local actual_domain="$cleaned_domain"
+            local actual_path="$site_path_var"
+            local display_from_domain="$cleaned_domain"
 
-            # Use enhanced run_search_replace with path information
-            # Pass the path from wp_blogs to enable domain+path replacement
-            if run_search_replace "$cleaned_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$cleaned_domain" "$site_path_var" ""; then
+            # Check if cleaned_domain already contains a path component
+            if [[ "$cleaned_domain" == *"/"* && "$site_path_var" != "/" ]]; then
+                # Domain already has path - extract base domain for search-replace
+                actual_domain="${cleaned_domain%%/*}"
+                # Keep the path as-is since domain already contains it
+                display_from_domain="$cleaned_domain"
+            elif [[ -n "$site_path_var" && "$site_path_var" != "/" ]]; then
+                # Domain is clean, add path for display
+                local clean_display_path="${site_path_var%/}"
+                display_from_domain="${cleaned_domain}${clean_display_path}"
+            fi
+
+            # Start site processing
+            start_site_processing "$blog_id" "$display_from_domain" "$new_domain" "false"
+
+            # Use enhanced run_search_replace with correct domain and path
+            if run_search_replace "$actual_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$actual_domain" "$actual_path" ""; then
               # Update steps as complete
               update_step_status "1" "Standard URL replacement complete" "complete"
               update_step_status "2" "Serialized data replacement complete" "complete"
@@ -1701,7 +1729,14 @@ ${subsite_line}"
           # --- Execution Loop 2: Main Site (ID = main_site_id) ---
           if [[ -n "$main_site_key" && "$main_site_key" != "$main_site_value" ]]; then
               local main_site_log="/tmp/wp_replace_${main_site_id}_$$.log"
-              local main_display_old="${main_site_key}${main_site_path}"
+
+              # Construct display domain including path when meaningful
+              local main_display_old="$main_site_key"
+              if [[ -n "$main_site_path" && "$main_site_path" != "/" ]]; then
+                  # Clean the path for display (remove trailing slash for consistency)
+                  local clean_main_path="${main_site_path%/}"
+                  main_display_old="${main_site_key}${clean_main_path}"
+              fi
 
               # Start main site processing
               start_site_processing "$main_site_id" "$main_display_old" "$main_site_value" "true"
