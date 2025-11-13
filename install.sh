@@ -98,20 +98,27 @@ if ln -sf "$MAIN_EXECUTABLE" "$CHOSEN_INSTALL_PATH/wp-db-import"; then
 
         # Determine shell and add to appropriate config file
         if [[ "$SHELL" == *"zsh"* ]]; then
-            echo "export PATH=\"$CHOSEN_INSTALL_PATH:\$PATH\"" >> "$HOME/.zshrc"
-            printf "${GREEN}✅ Added to ~/.zshrc${RESET}\n"
-            printf "${YELLOW}🔄 Run: source ~/.zshrc (or restart terminal) to update PATH${RESET}\n"
+            # Check for multiple zsh config files in order of preference
+            ZSH_CONFIG_FILES=("$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.zshenv")
+            for config_file in "${ZSH_CONFIG_FILES[@]}"; do
+                if [[ -f "$config_file" ]]; then
+                    echo "export PATH=\"$CHOSEN_INSTALL_PATH:\$PATH\"" >> "$config_file"
+                    printf "${GREEN}✅ Added to $(basename "$config_file")${RESET}\n"
+                    printf "${YELLOW}🔄 Run: source $(basename "$config_file") (or restart terminal) to update PATH${RESET}\n"
+                    break
+                fi
+            done
         elif [[ "$SHELL" == *"bash"* ]]; then
-            # Check for .bash_profile or .bashrc
-            if [[ -f "$HOME/.bash_profile" ]]; then
-                echo "export PATH=\"$CHOSEN_INSTALL_PATH:\$PATH\"" >> "$HOME/.bash_profile"
-                printf "${GREEN}✅ Added to ~/.bash_profile${RESET}\n"
-                printf "${YELLOW}🔄 Run: source ~/.bash_profile (or restart terminal) to update PATH${RESET}\n"
-            else
-                echo "export PATH=\"$CHOSEN_INSTALL_PATH:\$PATH\"" >> "$HOME/.bashrc"
-                printf "${GREEN}✅ Added to ~/.bashrc${RESET}\n"
-                printf "${YELLOW}🔄 Run: source ~/.bashrc (or restart terminal) to update PATH${RESET}\n"
-            fi
+            # Check for multiple bash config files in order of preference (Linux vs macOS)
+            BASH_CONFIG_FILES=("$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile")
+            for config_file in "${BASH_CONFIG_FILES[@]}"; do
+                if [[ -f "$config_file" ]]; then
+                    echo "export PATH=\"$CHOSEN_INSTALL_PATH:\$PATH\"" >> "$config_file"
+                    printf "${GREEN}✅ Added to $(basename "$config_file")${RESET}\n"
+                    printf "${YELLOW}🔄 Run: source $(basename "$config_file") (or restart terminal) to update PATH${RESET}\n"
+                    break
+                fi
+            done
         else
             printf "${YELLOW}💡 Manually add this to your shell config:${RESET}\n"
             printf "   export PATH=\"$CHOSEN_INSTALL_PATH:\$PATH\"\n"
@@ -122,6 +129,85 @@ if ln -sf "$MAIN_EXECUTABLE" "$CHOSEN_INSTALL_PATH/wp-db-import"; then
 else
     printf "${RED}❌ Failed to install to $CHOSEN_INSTALL_PATH${RESET}\n"
     INSTALL_METHOD="failed"
+fi
+
+# Install bash/zsh completion
+printf "\n${CYAN}🔧 Setting up shell completion...${RESET}\n"
+
+# Detect shell and install appropriate completion
+if [[ "$SHELL" == */zsh ]] || [[ -n "$ZSH_VERSION" ]]; then
+    # Zsh completion setup
+    ZSH_COMPLETION_FILE="$SCRIPT_DIR/lib/completion/_wp-db-import"
+    ZSH_COMPLETION_DIR="$HOME/.local/share/zsh/site-functions"
+    ZSH_COMPLETION_SYMLINK="$ZSH_COMPLETION_DIR/_wp-db-import"
+
+    if [[ -f "$ZSH_COMPLETION_FILE" ]]; then
+        mkdir -p "$ZSH_COMPLETION_DIR"
+
+        if ln -sf "$ZSH_COMPLETION_FILE" "$ZSH_COMPLETION_SYMLINK" 2>/dev/null; then
+            printf "${GREEN}✅ Zsh completion installed${RESET}\n"
+            printf "   Location: $ZSH_COMPLETION_SYMLINK\n"
+
+            # Add to fpath if not already there - try multiple config files
+            ZSH_CONFIG_FILES=("$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.zshenv")
+            ZSH_CONFIG_FOUND=false
+
+            for config_file in "${ZSH_CONFIG_FILES[@]}"; do
+                if [[ -f "$config_file" ]] && ! grep -q "$ZSH_COMPLETION_DIR" "$config_file" 2>/dev/null; then
+                    printf "\n# wp-db-import completion" >> "$config_file"
+                    printf "\nfpath=($ZSH_COMPLETION_DIR \$fpath)" >> "$config_file"
+                    printf "\nautoload -U compinit && compinit" >> "$config_file"
+                    printf "${GREEN}✅ Added completion to $(basename "$config_file")${RESET}\n"
+                    ZSH_CONFIG_FOUND=true
+                    break
+                elif [[ -f "$config_file" ]] && grep -q "$ZSH_COMPLETION_DIR" "$config_file" 2>/dev/null; then
+                    printf "${GREEN}✅ Completion already configured in $(basename "$config_file")${RESET}\n"
+                    ZSH_CONFIG_FOUND=true
+                    break
+                fi
+            done
+
+            if [[ "$ZSH_CONFIG_FOUND" == "true" ]]; then
+                printf "${YELLOW}   Note: Restart terminal or run 'source ~/.zshrc' for tab completion${RESET}\n"
+            else
+                printf "${YELLOW}   Note: No zsh config file found. You may need to manually add:${RESET}\n"
+                printf "${YELLOW}   fpath=($ZSH_COMPLETION_DIR \$fpath) && autoload -U compinit && compinit${RESET}\n"
+            fi
+        else
+            printf "${YELLOW}⚠️  Could not install zsh completion (non-critical)${RESET}\n"
+        fi
+    else
+        printf "${YELLOW}⚠️  Zsh completion file not found (skipping)${RESET}\n"
+    fi
+else
+    # Bash completion setup (original code)
+    COMPLETION_FILE="$SCRIPT_DIR/lib/completion/wp-db-import.bash"
+    COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
+    COMPLETION_SYMLINK="$COMPLETION_DIR/wp-db-import"
+
+    if [[ -f "$COMPLETION_FILE" ]]; then
+        mkdir -p "$COMPLETION_DIR"
+
+        if ln -sf "$COMPLETION_FILE" "$COMPLETION_SYMLINK" 2>/dev/null; then
+            printf "${GREEN}✅ Bash completion installed${RESET}\n"
+            printf "   Location: $COMPLETION_SYMLINK\n"
+
+            # Check if bash-completion is available
+            if command -v brew >/dev/null 2>&1 && brew list bash-completion >/dev/null 2>&1; then
+                printf "${GREEN}✅ bash-completion package detected${RESET}\n"
+            elif [[ -f "/usr/share/bash-completion/bash_completion" ]] || [[ -f "/etc/bash_completion" ]]; then
+                printf "${GREEN}✅ System bash-completion detected${RESET}\n"
+            else
+                printf "${YELLOW}💡 For tab completion to work, install bash-completion:${RESET}\n"
+                printf "   ${BOLD}brew install bash-completion${RESET} (macOS)\n"
+                printf "   ${BOLD}sudo apt install bash-completion${RESET} (Ubuntu/Debian)\n"
+            fi
+        else
+            printf "${YELLOW}⚠️  Could not install bash completion (non-critical)${RESET}\n"
+        fi
+    else
+        printf "${YELLOW}⚠️  Completion file not found (skipping)${RESET}\n"
+    fi
 fi
 
 # Installation result
@@ -152,6 +238,7 @@ printf "wp-db-import setup-proxy        # Configure stage file proxy\n"
 printf "wp-db-import update             # Update to latest version\n"
 printf "wp-db-import version            # Show version and git info\n"
 printf "wp-db-import --help             # Show help\n"
+printf "\n${CYAN}💡 Tab Completion:${RESET} Type 'wp-db-import ' and press TAB to see all commands\n"
 
 printf "\n${CYAN}${BOLD}🔍 Testing Installation${RESET}\n"
 printf "======================\n"

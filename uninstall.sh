@@ -93,6 +93,34 @@ for installation in "${FOUND_INSTALLATIONS[@]}"; do
     fi
 done
 
+# Remove shell completions
+printf "\n${CYAN}🔧 Removing shell completions...${RESET}\n"
+
+# Remove bash completion
+BASH_COMPLETION_SYMLINK="$HOME/.local/share/bash-completion/completions/wp-db-import"
+if [[ -L "$BASH_COMPLETION_SYMLINK" || -f "$BASH_COMPLETION_SYMLINK" ]]; then
+    if rm -f "$BASH_COMPLETION_SYMLINK" 2>/dev/null; then
+        printf "${GREEN}✅ Bash completion removed${RESET}\n"
+    else
+        printf "${YELLOW}⚠️  Could not remove bash completion${RESET}\n"
+    fi
+fi
+
+# Remove zsh completion
+ZSH_COMPLETION_SYMLINK="$HOME/.local/share/zsh/site-functions/_wp-db-import"
+if [[ -L "$ZSH_COMPLETION_SYMLINK" || -f "$ZSH_COMPLETION_SYMLINK" ]]; then
+    if rm -f "$ZSH_COMPLETION_SYMLINK" 2>/dev/null; then
+        printf "${GREEN}✅ Zsh completion removed${RESET}\n"
+    else
+        printf "${YELLOW}⚠️  Could not remove zsh completion${RESET}\n"
+    fi
+fi
+
+if [[ ! -L "$BASH_COMPLETION_SYMLINK" && ! -f "$BASH_COMPLETION_SYMLINK" &&
+      ! -L "$ZSH_COMPLETION_SYMLINK" && ! -f "$ZSH_COMPLETION_SYMLINK" ]]; then
+    printf "${CYAN}   No shell completions found${RESET}\n"
+fi
+
 printf "\n${CYAN}${BOLD}📋 Uninstallation Summary${RESET}\n"
 printf "============================\n"
 

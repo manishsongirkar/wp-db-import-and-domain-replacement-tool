@@ -34,6 +34,8 @@ wp-db-import version            # Show version info
 wp-db-import --help             # Show help
 ```
 
+💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
+
 ### Example Workflow
 ```bash
 # Navigate to WordPress directory
@@ -172,6 +174,7 @@ git pull
 
 - **🚀 User Local Installation** - Installs to user directory only
 - **🔗 Symlinked installation** - Updates apply immediately
+- **⌨️ Tab Completion** - Auto-complete commands with TAB key
 - **🌐 Multisite support** - Handles subdomain & subdirectory networks
 - **🗑️ Bulk revision cleanup** - High-speed cleanup via xargs
 - **📸 Stage File Proxy** - Media management between environments

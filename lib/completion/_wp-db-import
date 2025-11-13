@@ -1,0 +1,41 @@
+#compdef wp-db-import
+
+# ===============================================
+# Zsh Completion for wp-db-import command
+# ===============================================
+#
+# This provides tab completion for wp-db-import command options in zsh
+#
+# Installation:
+#   This file is automatically sourced when wp-db-import is installed
+#
+# Usage:
+#   wp-db-import <TAB>  # Shows all available commands
+#   wp-db-import conf<TAB>  # Completes to config-* commands
+#
+
+_wp_db_import() {
+    local context state state_descr line
+    local -a commands
+
+    commands=(
+        'config-show:Show current configuration'
+        'config-create:Create new configuration file'
+        'config-validate:Validate configuration file'
+        'config-edit:Open configuration in editor'
+        'show-links:Show local site links'
+        'setup-proxy:Setup stage file proxy'
+        'show-cleanup:Generate revision cleanup commands'
+        'update:Update to latest version'
+        'version:Show version info'
+        '--help:Show help'
+    )
+
+    case $words[1] in
+        wp-db-import)
+            _describe 'wp-db-import commands' commands
+            ;;
+    esac
+}
+
+_wp_db_import "$@"
