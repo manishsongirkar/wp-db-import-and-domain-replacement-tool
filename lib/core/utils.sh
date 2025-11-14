@@ -734,3 +734,376 @@ create_temp_file() {
 
     echo "$temp_file"
 }
+
+# ===============================================
+# Bash Version Compatibility System
+# ===============================================
+# Comprehensive bash version detection and fallback utilities
+# Supports Bash 3.2, 4.x, and 5.x with intelligent feature detection
+
+# Global bash version variables (set once, used throughout)
+# Using compatible syntax for Bash 3.2+ (no -g flag)
+BASH_VERSION_MAJOR=""
+BASH_VERSION_MINOR=""
+BASH_FEATURE_ASSOCIATIVE_ARRAYS=""
+BASH_FEATURE_NAMEREF=""
+BASH_FEATURE_LOWERCASE=""
+BASH_FEATURE_MAPFILE=""
+BASH_VERSION_DETECTED=""
+
+# -----------------------------------------------
+# Bash Version Detection and Feature Analysis
+# -----------------------------------------------
+# Detects bash version and available features for compatibility
+detect_bash_version() {
+    # Skip if already detected
+    [[ -n "$BASH_VERSION_DETECTED" ]] && return 0
+
+    # Extract major and minor version numbers
+    if [[ -n "${BASH_VERSION:-}" ]]; then
+        BASH_VERSION_MAJOR="${BASH_VERSION%%.*}"
+        local version_remainder="${BASH_VERSION#*.}"
+        BASH_VERSION_MINOR="${version_remainder%%.*}"
+    else
+        # Fallback for very old systems
+        BASH_VERSION_MAJOR="3"
+        BASH_VERSION_MINOR="0"
+    fi
+
+    # Feature detection based on version
+    # Bash 4.0+ features
+    if [[ "$BASH_VERSION_MAJOR" -gt 4 ]] || [[ "$BASH_VERSION_MAJOR" -eq 4 && "$BASH_VERSION_MINOR" -ge 0 ]]; then
+        BASH_FEATURE_ASSOCIATIVE_ARRAYS="true"
+        BASH_FEATURE_LOWERCASE="true"
+        BASH_FEATURE_MAPFILE="true"
+    else
+        BASH_FEATURE_ASSOCIATIVE_ARRAYS="false"
+        BASH_FEATURE_LOWERCASE="false"
+        BASH_FEATURE_MAPFILE="false"
+    fi
+
+    # Bash 4.3+ features
+    if [[ "$BASH_VERSION_MAJOR" -gt 4 ]] || [[ "$BASH_VERSION_MAJOR" -eq 4 && "$BASH_VERSION_MINOR" -ge 3 ]]; then
+        BASH_FEATURE_NAMEREF="true"
+    else
+        BASH_FEATURE_NAMEREF="false"
+    fi
+
+    BASH_VERSION_DETECTED="true"
+
+    # Debug info (optional)
+    if [[ "${BASH_DEBUG_VERSION:-}" == "true" ]]; then
+        printf "🔍 Bash Version: %s.%s\n" "$BASH_VERSION_MAJOR" "$BASH_VERSION_MINOR" >&2
+        printf "📋 Features: AA=%s, NR=%s, LC=%s, MF=%s\n" \
+            "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" "$BASH_FEATURE_NAMEREF" \
+            "$BASH_FEATURE_LOWERCASE" "$BASH_FEATURE_MAPFILE" >&2
+    fi
+}
+
+# -----------------------------------------------
+# Associative Array Compatibility
+# -----------------------------------------------
+# Provides associative array functionality across bash versions
+
+# Initialize associative array with fallback
+# Usage: init_associative_array "array_name"
+init_associative_array() {
+    local array_name="$1"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
+        # Bash 4.0+: Use native associative arrays
+        # Use eval to avoid syntax errors in older bash
+        eval "declare -A $array_name" 2>/dev/null || {
+            # Fallback if declare -A fails
+            eval "declare -a ${array_name}_KEYS"
+            eval "declare -a ${array_name}_VALUES"
+            eval "${array_name}_INITIALIZED=true"
+        }
+    else
+        # Bash 3.2: Use regular array with key encoding
+        eval "declare -a ${array_name}_KEYS"
+        eval "declare -a ${array_name}_VALUES"
+        eval "${array_name}_INITIALIZED=true"
+    fi
+}
+
+# Set associative array value with fallback
+# Usage: set_associative_value "array_name" "key" "value"
+set_associative_value() {
+    local array_name="$1"
+    local key="$2"
+    local value="$3"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
+        # Bash 4.0+: Direct assignment
+        eval "${array_name}['$key']='$value'"
+    else
+        # Bash 3.2: Parallel arrays
+        eval "local keys_array_name=\"${array_name}_KEYS\""
+        eval "local values_array_name=\"${array_name}_VALUES\""
+
+        # Check if key exists
+        eval "local -a existing_keys=(\"\${${array_name}_KEYS[@]}\")"
+        local index=-1
+        local i=0
+
+        for existing_key in "${existing_keys[@]}"; do
+            if [[ "$existing_key" == "$key" ]]; then
+                index=$i
+                break
+            fi
+            ((i++))
+        done
+
+        if [[ $index -ge 0 ]]; then
+            # Update existing value
+            eval "${values_array_name}[$index]='$value'"
+        else
+            # Add new key-value pair
+            eval "${keys_array_name}+=('$key')"
+            eval "${values_array_name}+=('$value')"
+        fi
+    fi
+}
+
+# Get associative array value with fallback
+# Usage: get_associative_value "array_name" "key"
+get_associative_value() {
+    local array_name="$1"
+    local key="$2"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
+        # Bash 4.0+: Direct access
+        eval "echo \"\${${array_name}['$key']:-}\""
+    else
+        # Bash 3.2: Search parallel arrays
+        eval "local -a existing_keys=(\"\${${array_name}_KEYS[@]}\")"
+        eval "local -a existing_values=(\"\${${array_name}_VALUES[@]}\")"
+
+        local i=0
+        for existing_key in "${existing_keys[@]}"; do
+            if [[ "$existing_key" == "$key" ]]; then
+                echo "${existing_values[$i]}"
+                return 0
+            fi
+            ((i++))
+        done
+
+        # Key not found
+        echo ""
+    fi
+}
+
+# List all keys in associative array
+# Usage: get_associative_keys "array_name"
+get_associative_keys() {
+    local array_name="$1"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
+        # Bash 4.0+: Get keys directly
+        eval "local -a keys=(\"\${!${array_name}[@]}\")"
+        printf '%s\n' "${keys[@]}"
+    else
+        # Bash 3.2: Return keys array
+        eval "local -a keys=(\"\${${array_name}_KEYS[@]}\")"
+        printf '%s\n' "${keys[@]}"
+    fi
+}
+
+# -----------------------------------------------
+# String Case Conversion Compatibility
+# -----------------------------------------------
+# Provides string case conversion across bash versions
+
+# Convert string to lowercase
+# Usage: to_lowercase "string"
+to_lowercase() {
+    local input="$1"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_LOWERCASE" == "true" ]]; then
+        # Bash 4.0+: Built-in parameter expansion
+        echo "${input,,}"
+    else
+        # Bash 3.2: Use tr command
+        echo "$input" | tr '[:upper:]' '[:lower:]'
+    fi
+}
+
+# Convert string to uppercase
+# Usage: to_uppercase "string"
+to_uppercase() {
+    local input="$1"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_LOWERCASE" == "true" ]]; then
+        # Bash 4.0+: Built-in parameter expansion
+        echo "${input^^}"
+    else
+        # Bash 3.2: Use tr command
+        echo "$input" | tr '[:lower:]' '[:upper:]'
+    fi
+}
+
+# -----------------------------------------------
+# Array Reading Compatibility
+# -----------------------------------------------
+# Provides mapfile/readarray functionality across bash versions
+
+# Read lines into array with fallback
+# Usage: read_lines_into_array "array_name" < file
+# or: echo "data" | read_lines_into_array "array_name"
+read_lines_into_array() {
+    local array_name="$1"
+
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_MAPFILE" == "true" ]]; then
+        # Bash 4.0+: Use mapfile
+        eval "mapfile -t $array_name"
+    else
+        # Bash 3.2: Manual line reading
+        eval "$array_name=()"
+        local line
+        while IFS= read -r line; do
+            eval "$array_name+=(\"\$line\")"
+        done
+    fi
+}
+
+# -----------------------------------------------
+# Array Passing Compatibility
+# -----------------------------------------------
+# Safe array passing for functions across bash versions
+
+# Pass array by name to function (Bash 3.2 compatible)
+# Usage in function:
+#   process_array_by_name "array_name"
+#   # Access with: ${ARRAY_ELEMENTS[i]}
+#   # Length with: ${#ARRAY_ELEMENTS[@]}
+process_array_by_name() {
+    local array_name="$1"
+
+    # Copy array to global ARRAY_ELEMENTS for processing
+    eval "ARRAY_ELEMENTS=(\"\${${array_name}[@]}\")"
+}
+
+# Alternative: Copy array contents to local variables
+# Usage: copy_array_to_local "source_array" "dest_array"
+copy_array_to_local() {
+    local source_name="$1"
+    local dest_name="$2"
+
+    eval "local -a temp_array=(\"\${${source_name}[@]}\")"
+    eval "$dest_name=(\"\${temp_array[@]}\")"
+}
+
+# -----------------------------------------------
+# Version-Specific Feature Detection
+# -----------------------------------------------
+
+# Check if specific bash feature is available
+# Usage: has_bash_feature "associative_arrays|nameref|lowercase|mapfile"
+has_bash_feature() {
+    local feature="$1"
+
+    detect_bash_version
+
+    case "$feature" in
+        "associative_arrays"|"aa")
+            [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]
+            ;;
+        "nameref"|"nr")
+            [[ "$BASH_FEATURE_NAMEREF" == "true" ]]
+            ;;
+        "lowercase"|"lc")
+            [[ "$BASH_FEATURE_LOWERCASE" == "true" ]]
+            ;;
+        "mapfile"|"mf")
+            [[ "$BASH_FEATURE_MAPFILE" == "true" ]]
+            ;;
+        *)
+            echo "Unknown feature: $feature" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Get bash version info
+# Usage: get_bash_version_info
+get_bash_version_info() {
+    detect_bash_version
+
+    printf "Bash Version: %s.%s (%s)\n" \
+        "$BASH_VERSION_MAJOR" "$BASH_VERSION_MINOR" "${BASH_VERSION:-unknown}"
+    printf "Features Available:\n"
+    printf "  - Associative Arrays: %s\n" "$BASH_FEATURE_ASSOCIATIVE_ARRAYS"
+    printf "  - Nameref Variables: %s\n" "$BASH_FEATURE_NAMEREF"
+    printf "  - Case Conversion: %s\n" "$BASH_FEATURE_LOWERCASE"
+    printf "  - Mapfile/Readarray: %s\n" "$BASH_FEATURE_MAPFILE"
+}
+
+# ===============================================
+# Enhanced Configuration Compatibility
+# ===============================================
+
+# Safe configuration array access
+# Handles associative arrays with fallbacks for older bash
+CONFIG_STORAGE_METHOD=""
+
+# Initialize configuration storage
+init_config_storage() {
+    detect_bash_version
+
+    if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
+        # Try to declare associative array
+        eval "declare -A WP_IMPORT_CONFIG" 2>/dev/null || {
+            # Fallback if declare fails
+            CONFIG_STORAGE_METHOD="arrays"
+            init_associative_array "WP_IMPORT_CONFIG"
+        }
+        if [[ -z "$CONFIG_STORAGE_METHOD" ]]; then
+            CONFIG_STORAGE_METHOD="associative"
+        fi
+    else
+        CONFIG_STORAGE_METHOD="arrays"
+        init_associative_array "WP_IMPORT_CONFIG"
+    fi
+}
+
+# Set configuration value with version compatibility
+set_config_value() {
+    local key="$1"
+    local value="$2"
+
+    [[ -z "$CONFIG_STORAGE_METHOD" ]] && init_config_storage
+
+    if [[ "$CONFIG_STORAGE_METHOD" == "associative" ]]; then
+        WP_IMPORT_CONFIG["$key"]="$value"
+    else
+        set_associative_value "WP_IMPORT_CONFIG" "$key" "$value"
+    fi
+}
+
+# Get configuration value with version compatibility
+get_config_value() {
+    local key="$1"
+
+    [[ -z "$CONFIG_STORAGE_METHOD" ]] && init_config_storage
+
+    if [[ "$CONFIG_STORAGE_METHOD" == "associative" ]]; then
+        echo "${WP_IMPORT_CONFIG[$key]:-}"
+    else
+        get_associative_value "WP_IMPORT_CONFIG" "$key"
+    fi
+}

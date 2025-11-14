@@ -96,9 +96,7 @@ check_gitignore_semantic_duplicate() {
 
         # Compare normalized entries
         if [[ "$normalized_new" == "$normalized_existing" ]]; then
-            printf "${CYAN}ℹ️  Semantically equivalent entry '%s' already exists in '%s'.${RESET}\n" "$line" "$(basename "$gitignore_file")"
-            printf "${CYAN}   (equivalent to '%s')${RESET}\n" "$new_entry"
-            return 0  # Found semantic duplicate
+            return 0  # Found semantic duplicate (silent)
         fi
     done < "$gitignore_file"
 
@@ -176,7 +174,7 @@ add_gitignore_entry_safe() {
             fi
             return 1
         fi
-        printf "${GREEN}✅ Created new '%s' and added '%s'.${RESET}\n" "$(basename "$gitignore_file")" "$entry"
+        # Silent success for new file creation
         return 0
     fi
 
@@ -225,7 +223,7 @@ add_gitignore_entry_safe() {
         return 1
     fi
 
-    printf "${GREEN}✅ Added '%s' to '%s'.${RESET}\n" "$entry" "$(basename "$gitignore_file")"
+    # Silent success for entry addition
     return 0
 }
 
@@ -249,8 +247,7 @@ add_stage_file_proxy_to_gitignore() {
         fi
     fi
 
-    printf "${CYAN}${BOLD:-}=== Stage File Proxy GitIgnore Setup ===${RESET}\n"
-    printf "${BLUE}Preventing accidental plugin commits to repository...${RESET}\n\n"
+
 
     # Auto-detect WordPress root directory
     local wp_root
@@ -273,9 +270,8 @@ add_stage_file_proxy_to_gitignore() {
     local gitignore_entry="/plugins/stage-file-proxy/"
 
     # Add the entry safely
-    if add_gitignore_entry_safe "$gitignore_file" "$gitignore_entry" "stage-file-proxy plugin exclusion"; then
-        printf "\n${GREEN}${BOLD:-}🎉 Success!${RESET}\n"
-        printf "${GREEN}The Stage File Proxy plugin will now be ignored by Git.${RESET}\n"
+    if add_gitignore_entry_safe "$gitignore_file" "$gitignore_entry" "stage-file-proxy plugin exclusion" >/dev/null 2>&1; then
+        printf "${GREEN}✅ The Stage File Proxy plugin will now be ignored by Git.${RESET}\n"
         return 0
     else
         printf "\n${RED}❌ Failed to add Stage File Proxy to .gitignore${RESET}\n"

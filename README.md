@@ -5,6 +5,7 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 ## ✨ Features
 
 - 🌍 **Global Command Access** - Available anywhere after installation with `wp-db-import`
+- 🔧 **Universal Bash Compatibility** - Works seamlessly across Bash 3.2, 4.x, and 5.x versions ([View Compatibility Guide](docs/BASH_COMPATIBILITY.md))
 - 📋 **Project-Specific Configuration System** - Auto-saves settings in `wpdb-import.conf` file
 - 🔄 **Automatic WordPress installation detection** (single-site or multisite)
 - 🗺️ **Smart Multisite Mapping** - Remembers site mappings and prompts only for new sites
@@ -33,7 +34,8 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 
 | Requirement | Description | Version Notes |
 |--------------|-------------|---------------|
-| **Operating System** | macOS/Linux environment with Bash shell | Bash 4.0+ recommended |
+| **Operating System** | macOS/Linux environment with Bash shell | **All Bash versions supported (3.2+)** |
+| **Bash Compatibility** | Cross-version support with automatic fallbacks | **Bash 3.2, 4.x, 5.x** |
 | **WP-CLI** | WordPress Command Line Interface | Latest stable version |
 | **WordPress** | WordPress installation with wp-config.php | Single-site or multisite |
 | **Database** | MySQL/MariaDB database with import privileges | 5.7+ or 10.2+ |
@@ -522,7 +524,7 @@ Setup stage file proxy: enabled (from config)
 ✅ Plugin already activated
 
 🔒 Securing plugin from accidental repository commits...
-ℹ️  '/plugins/stage-file-proxy/' already exists in '.gitignore'.
+✅ The Stage File Proxy plugin will now be ignored by Git.
 ✅ Configured: example.test → https://www.example.com
 
 ================================================================
@@ -831,7 +833,7 @@ Setup stage file proxy: enabled (from config)
 ✅ Plugin already activated network-wide
 
 🔒 Securing plugin from accidental repository commits...
-ℹ️  '/plugins/stage-file-proxy/' already exists in '.gitignore'.
+✅ The Stage File Proxy plugin will now be ignored by Git.
 ✅ Configuring 6 sites with stage-file-proxy
   ✅ Site 1 (example.test): Already configured
   ✅ Site 2 (example.test/shop): Already configured
@@ -1053,9 +1055,11 @@ lib/
 ├── module_loader.sh        # Automatic module discovery and loading system
 ├── core/                   # Core functionality modules
 │   └── utils.sh           # Utility functions, domain sanitization, file operations
-├── config/                # Configuration management system (NEW)
+├── config/                # Configuration management system
 │   ├── config_manager.sh  # Config file operations, parsing, validation, creation
 │   └── integration.sh     # Config integration with import flow, smart prompting
+├── database/              # Database operation modules (NEW)
+│   └── search_replace.sh  # Advanced search-replace with multisite support
 └── utilities/             # Standalone utility modules
     ├── site_links.sh      # Show local site links with clickable URLs
     ├── stage_file_proxy.sh # Media proxy setup with automatic plugin management
@@ -1122,11 +1126,12 @@ find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
 
 ## 📚 Documentation
 
-For additional documentation, see the `docs/` directory:
+For additional documentation, see:
 
+- **[Bash Compatibility Guide](docs/BASH_COMPATIBILITY.md)** - Cross-version bash support and compatibility features
+- **[Usage Guide](USAGE.md)** - Comprehensive usage examples and workflows
 - **[Installation Methods](docs/INSTALLATION_METHODS.md)** - Detailed installation options and troubleshooting
 - **[Version Management](docs/VERSION_MANAGEMENT.md)** - Version control and update procedures
-- **[Usage Guide](USAGE.md)** - Comprehensive usage examples and workflows
 
 ## 🤝 Contributing
 

@@ -270,35 +270,29 @@ import_wp_db() {
       fi
       printf "💡 Creating new config: %s/${BOLD}%s${RESET}\n\n" "$config_dir" "$config_file"
 
-      # Create empty config arrays (with shell compatibility)
-      if [[ -n "${BASH_VERSION:-}" ]]; then
-        # Running in bash - check version for associative array support
-        if [[ ${BASH_VERSION%%.*} -ge 4 ]]; then
-          declare -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null || {
-            # Fallback if declare -A fails in restricted bash
-            BLOG_ID_MAP=""
-            OLD_DOMAIN_MAP=""
-            NEW_DOMAIN_MAP=""
-          }
-        else
-          # Bash 3.x fallback
-          BLOG_ID_MAP=""
-          OLD_DOMAIN_MAP=""
-          NEW_DOMAIN_MAP=""
-        fi
+      # Create empty config arrays (with enhanced shell compatibility)
+      # Use the new bash compatibility system
+      if has_bash_feature "associative_arrays" 2>/dev/null; then
+        # Bash 4.0+: Use native associative arrays
+        declare -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null || {
+          # Initialize using compatibility functions if declare fails
+          init_associative_array "BLOG_ID_MAP"
+          init_associative_array "OLD_DOMAIN_MAP"
+          init_associative_array "NEW_DOMAIN_MAP"
+        }
       elif [[ -n "${ZSH_VERSION:-}" ]]; then
         # Running in zsh - use typeset for associative arrays
         typeset -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null || {
-          # Fallback if typeset fails
-          BLOG_ID_MAP=""
-          OLD_DOMAIN_MAP=""
-          NEW_DOMAIN_MAP=""
+          # Fallback for restricted zsh
+          init_associative_array "BLOG_ID_MAP"
+          init_associative_array "OLD_DOMAIN_MAP"
+          init_associative_array "NEW_DOMAIN_MAP"
         }
       else
-        # Unknown shell or restricted environment - use regular variables
-        BLOG_ID_MAP=""
-        OLD_DOMAIN_MAP=""
-        NEW_DOMAIN_MAP=""
+        # Use compatibility functions for all other shells/versions
+        init_associative_array "BLOG_ID_MAP"
+        init_associative_array "OLD_DOMAIN_MAP"
+        init_associative_array "NEW_DOMAIN_MAP"
       fi
     fi
   else
@@ -846,282 +840,6 @@ import_wp_db() {
     fi
   fi
 
-  # --- Search-Replace Execution Function (Handles Double Pass with Domain+Path Logic) ---
-  #
-  # This function executes the critical two-pass search-replace operation.
-  # It intelligently handles domain+path combinations from the wp_blogs table,
-  # ensuring correct slash handling for both source and destination URLs in serialized data.
-  #
-  # Key Features:
-  # - Searches for domain+path as per wp_blogs table structure.
-  # - Conditional slash handling: ensures consistency between source and destination formats.
-  # - Maintains compatibility for single-site and simple domain-only replacements.
-  # - Supports both subdomain and subdirectory multisite configurations.
-  #
-  # Arguments: $1=old_domain $2=new_domain $3=log_file $4=url_flag $5=old_path (optional) $6=new_path (optional)
-  run_search_replace() {
-      local old_domain="$1"
-      local new_domain="$2"
-      local log_file="$3"
-      local url_flag="$4" # --url=... or --network or empty
-      local old_path="${5:-}"  # Optional path from wp_blogs table
-      local new_path="${6:-}"  # Optional new path
-
-      # Validate inputs
-      if [[ -z "$old_domain" || -z "$new_domain" ]]; then
-          printf "Error: Missing domain parameters\n" >&2
-          return 1
-      fi
-
-      # Parse url_flag to determine if it's --network flag or --url flag
-      local actual_url_flag=""
-      local network_flag_arg=""
-
-      if [[ "$url_flag" == "--network" ]]; then
-          network_flag_arg="--network"
-      elif [[ "$url_flag" == *"--url="* ]]; then
-          actual_url_flag="$url_flag"
-      fi
-
-      # Enhanced domain+path construction with intelligent slash handling
-      local search_domain_with_path="$old_domain"
-      local replace_domain_with_path="$new_domain"
-
-      # CRITICAL LOGIC: Only apply path handling in a multisite context with non-root paths.
-      # Path logic should only execute when:
-      # 1. Paths are provided AND meaningful (not just "/")
-      # 2. We're in a multisite context (indicated by --url flag or --network flag)
-      local is_multisite_context=false
-      if [[ "$actual_url_flag" == *"--url="* ]] || [[ -n "$network_flag_arg" ]]; then
-          is_multisite_context=true
-      fi
-
-      # If paths are provided, meaningful, AND we're in multisite context, construct domain+path combinations
-      # Note: For multisite, main site path is "/" while subsites have paths like "/subsite/"
-      if [[ -n "$old_path" && "$old_path" != "/" && "$is_multisite_context" == true ]]; then
-          # Remove leading and trailing slashes from paths for clean handling
-          local clean_old_path="${old_path#/}"
-          clean_old_path="${clean_old_path%/}"
-          local clean_new_path="${new_path#/}"
-          clean_new_path="${clean_new_path%/}"
-
-          # Clean destination domain of trailing slash for proper concatenation
-          local clean_new_domain="${new_domain%/}"
-
-          # Determine if destination should have trailing slash based on original new_domain format
-          local dest_has_trailing_slash=false
-          if [[ "$new_domain" =~ /$ ]]; then
-              dest_has_trailing_slash=true
-          fi
-
-          # Construct source domain+path with conditional trailing slash
-          if [[ "$dest_has_trailing_slash" == true ]]; then
-              # If destination has slash, add slash to source
-              search_domain_with_path="${old_domain}/${clean_old_path}/"
-          else
-              # If destination has no slash, don't add slash to source
-              search_domain_with_path="${old_domain}/${clean_old_path}"
-          fi
-
-          # Construct replace domain+path - preserve destination format
-          if [[ -n "$clean_new_path" ]]; then
-              if [[ "$dest_has_trailing_slash" == true ]]; then
-                  replace_domain_with_path="${clean_new_domain}/${clean_new_path}/"
-              else
-                  replace_domain_with_path="${clean_new_domain}/${clean_new_path}"
-              fi
-          else
-              # If new_path is empty or just "/", use the new_domain with proper slash handling
-              if [[ "$dest_has_trailing_slash" == true ]]; then
-                  replace_domain_with_path="${clean_new_domain}/"
-              else
-                  replace_domain_with_path="$clean_new_domain"
-              fi
-          fi
-      else
-          # For main sites (path="/") or when no path info available, use domain-only replacement
-          # Apply destination slash logic to domain-only replacements as well
-          local clean_old_domain="${old_domain%/}"  # Remove any existing trailing slash
-          local dest_has_trailing_slash=false
-          if [[ "$new_domain" =~ /$ ]]; then
-              dest_has_trailing_slash=true
-          fi
-
-          if [[ "$dest_has_trailing_slash" == true ]]; then
-              # If destination domain has trailing slash, add to source for consistency
-              search_domain_with_path="${clean_old_domain}/"
-              replace_domain_with_path="${new_domain}"  # Use as-is since it already has the slash
-          else
-              # No trailing slash needed
-              search_domain_with_path="$clean_old_domain"
-              replace_domain_with_path="$new_domain"
-          fi
-      fi
-
-      # Enhanced www/non-www handling - determine source domain variations
-      local base_domain_with_path="$search_domain_with_path"
-      local www_domain_with_path
-      local non_www_domain_with_path
-      local has_www=false
-
-      # Check if the search domain starts with www
-      if [[ "$search_domain_with_path" =~ ^www\. ]]; then
-          # Source is www.domain - create non-www variant
-          www_domain_with_path="$search_domain_with_path"
-          non_www_domain_with_path="${search_domain_with_path#www.}"
-          has_www=true
-      else
-          # Source is non-www domain - only handle non-www variant
-          non_www_domain_with_path="$search_domain_with_path"
-          www_domain_with_path="www.${search_domain_with_path}"
-          has_www=false
-      fi
-
-      # Define search-replace patterns
-      local sr1_old_non_www="//${non_www_domain_with_path}"
-      local sr2_old_non_www="\\\\//${non_www_domain_with_path}"
-      local sr_new="//${replace_domain_with_path}"
-      local sr_new_escaped="\\\\//${replace_domain_with_path}"
-
-      # Only define www patterns if source has www
-      local sr1_old_www
-      local sr2_old_www
-      if [[ "$has_www" == true ]]; then
-          sr1_old_www="//${www_domain_with_path}"
-          sr2_old_www="\\\\//${www_domain_with_path}"
-      fi
-
-      # --- Pass 1 Execution (Standard replacement for non-www variant - always executed) ---
-      # printf "[Pass 1] Updating standard domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_non_www" "$sr_new"
-
-      # Build the command array to avoid word splitting issues
-      local cmd_args=("search-replace" "$sr1_old_non_www" "$sr_new")
-
-      if [[ -n "$actual_url_flag" ]]; then
-          cmd_args+=("$actual_url_flag")
-      fi
-
-      cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-      if [[ -n "$all_tables_flag" ]]; then
-          cmd_args+=("$all_tables_flag")
-      fi
-
-      if [[ -n "$network_flag_arg" ]]; then
-          cmd_args+=("$network_flag_arg")
-      fi
-
-      if [[ -n "$dry_run_flag" ]]; then
-          cmd_args+=("$dry_run_flag")
-      fi
-
-      # Execute Pass 1 (non-www variant - always executed)
-      if ! execute_wp_cli "${cmd_args[@]}" &> "$log_file"; then
-          return 1
-      fi
-
-      # --- Pass 2 Execution (Standard replacement for www variant - only if source has www) ---
-      if [[ "$has_www" == true ]]; then
-          # printf "[Pass 2] Updating standard domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr1_old_www" "$sr_new"
-
-          # Rebuild command args for pass 2 (www variant)
-          cmd_args=("search-replace" "$sr1_old_www" "$sr_new")
-
-          if [[ -n "$actual_url_flag" ]]; then
-              cmd_args+=("$actual_url_flag")
-          fi
-
-          cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-          if [[ -n "$all_tables_flag" ]]; then
-              cmd_args+=("$all_tables_flag")
-          fi
-
-          if [[ -n "$network_flag_arg" ]]; then
-              cmd_args+=("$network_flag_arg")
-          fi
-
-          if [[ -n "$dry_run_flag" ]]; then
-              cmd_args+=("$dry_run_flag")
-          fi
-
-          # Execute Pass 2 (www variant)
-          if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
-              return 1
-          fi
-      fi
-
-      # --- Serialized Data Pass Execution (Conditional numbering based on www presence) ---
-      local serialized_pass_num
-      if [[ "$has_www" == true ]]; then
-          serialized_pass_num="3"
-      else
-          serialized_pass_num="2"
-      fi
-
-      # --- Serialized data repair for non-www variant (always executed) ---
-      # printf "[Pass %s] Updating serialized domain URLs: ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$serialized_pass_num" "$sr2_old_non_www" "$sr_new_escaped"
-
-      # Rebuild command args for serialized non-www variant
-      cmd_args=("search-replace" "$sr2_old_non_www" "$sr_new_escaped")
-
-      if [[ -n "$actual_url_flag" ]]; then
-          cmd_args+=("$actual_url_flag")
-      fi
-
-      cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-      if [[ -n "$all_tables_flag" ]]; then
-          cmd_args+=("$all_tables_flag")
-      fi
-
-      if [[ -n "$network_flag_arg" ]]; then
-          cmd_args+=("$network_flag_arg")
-      fi
-
-      if [[ -n "$dry_run_flag" ]]; then
-          cmd_args+=("$dry_run_flag")
-      fi
-
-      # Execute serialized non-www variant
-      if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
-          return 1
-      fi
-
-      # --- Final Pass Execution (Serialized data repair for www variant - only if source has www) ---
-      if [[ "$has_www" == true ]]; then
-          # printf "[Pass 4] Updating serialized domain URLs (www): ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$sr2_old_www" "$sr_new_escaped"
-
-          # Rebuild command args for serialized www variant
-          cmd_args=("search-replace" "$sr2_old_www" "$sr_new_escaped")
-
-          if [[ -n "$actual_url_flag" ]]; then
-              cmd_args+=("$actual_url_flag")
-          fi
-
-          cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-          if [[ -n "$all_tables_flag" ]]; then
-              cmd_args+=("$all_tables_flag")
-          fi
-
-          if [[ -n "$network_flag_arg" ]]; then
-              cmd_args+=("$network_flag_arg")
-          fi
-
-          if [[ -n "$dry_run_flag" ]]; then
-              cmd_args+=("$dry_run_flag")
-          fi
-
-          # Execute serialized www variant
-          if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
-              return 1
-          fi
-      fi
-
-      return 0
-  }
-
   # 🌐 Handle Multisite (Logic for site list, mapping, and per-site replacement)
   if [[ "$is_multisite" == "yes" ]]; then
 
@@ -1639,123 +1357,9 @@ ${subsite_line}"
           local main_site_value=""
           local main_site_path=""
 
-          # --- Dynamic Visual System Functions ---
-          # Step-by-step processing functions
-          start_site_processing() {
-              local site_id="$1" from_domain="$2" to_domain="$3" is_main="$4"
-
-              if [[ "$is_main" == "true" ]]; then
-                  printf "\n🏠 Main Site Processing:\n"
-              else
-                  printf "\n🌍 Site %s Processing:\n" "$site_id"
-              fi
-
-              printf "   From: %s\n" "$from_domain"
-              printf "   To:   %s\n" "$to_domain"
-              printf "\n"
-          }
-
-          update_step_status() {
-              local step_num="$1" description="$2" status="$3"
-
-              if [[ "$status" == "complete" ]]; then
-                  printf "   Step %s: ✅ %s\n" "$step_num" "$description"
-              elif [[ "$status" == "processing" ]]; then
-                  printf "   Step %s: 🔄 %s\n" "$step_num" "$description"
-              elif [[ "$status" == "failed" ]]; then
-                  printf "   Step %s: ❌ %s\n" "$step_num" "$description"
-              fi
-          }
-
-          # --- Execution Loop 1: Subsites (ID != main_site_id) ---
-          local array_length=${#domain_keys[@]}
-
-          # Display header
-          printf "\n${CYAN}${BOLD}🔄 SEARCH-REPLACE OPERATIONS${RESET}\n"
-          printf "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
-
-          for ((i=0; i<array_length; i++)); do
-            local cleaned_domain="${domain_keys[i]}"
-            local new_domain="${domain_values[i]}"
-            local blog_id="${domain_blog_ids[i]}"
-            local site_path_var="${domain_paths[i]}"
-
-            # Skip main site for now - store its data for later processing
-            if [[ "$blog_id" == "$main_site_id" ]]; then
-                main_site_key="$cleaned_domain"
-                main_site_value="$new_domain"
-                main_site_path="$site_path_var"
-                continue
-            fi
-
-            if [[ -z "$new_domain" || "$cleaned_domain" == "$new_domain" ]]; then
-              continue
-            fi
-
-            SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
-
-            # Parse whether cleaned_domain already contains path (from config)
-            local actual_domain="$cleaned_domain"
-            local actual_path="$site_path_var"
-            local display_from_domain="$cleaned_domain"
-
-            # Check if cleaned_domain already contains a path component
-            if [[ "$cleaned_domain" == *"/"* && "$site_path_var" != "/" ]]; then
-                # Domain already has path - extract base domain for search-replace
-                actual_domain="${cleaned_domain%%/*}"
-                # Keep the path as-is since domain already contains it
-                display_from_domain="$cleaned_domain"
-            elif [[ -n "$site_path_var" && "$site_path_var" != "/" ]]; then
-                # Domain is clean, add path for display
-                local clean_display_path="${site_path_var%/}"
-                display_from_domain="${cleaned_domain}${clean_display_path}"
-            fi
-
-            # Start site processing
-            start_site_processing "$blog_id" "$display_from_domain" "$new_domain" "false"
-
-            # Use enhanced run_search_replace with correct domain and path
-            if run_search_replace "$actual_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$actual_domain" "$actual_path" ""; then
-              # Update steps as complete
-              update_step_status "1" "Standard URL replacement complete" "complete"
-              update_step_status "2" "Serialized data replacement complete" "complete"
-            else
-              # Update steps as failed
-              update_step_status "1" "Standard URL replacement failed" "failed"
-              update_step_status "2" "Serialized data replacement failed" "failed"
-            fi
-          done
-
-          # --- Execution Loop 2: Main Site (ID = main_site_id) ---
-          if [[ -n "$main_site_key" && "$main_site_key" != "$main_site_value" ]]; then
-              local main_site_log="/tmp/wp_replace_${main_site_id}_$$.log"
-
-              # Construct display domain including path when meaningful
-              local main_display_old="$main_site_key"
-              if [[ -n "$main_site_path" && "$main_site_path" != "/" ]]; then
-                  # Clean the path for display (remove trailing slash for consistency)
-                  local clean_main_path="${main_site_path%/}"
-                  main_display_old="${main_site_key}${clean_main_path}"
-              fi
-
-              # Start main site processing
-              start_site_processing "$main_site_id" "$main_display_old" "$main_site_value" "true"
-
-              # Run main site search-replace with path information (using the main site's old domain in --url for safety)
-              if run_search_replace "$main_site_key" "$main_site_value" "$main_site_log" "--url=$main_site_key" "$main_site_path" ""; then
-                # Update steps as complete
-                update_step_status "1" "Standard URL replacement complete" "complete"
-                update_step_status "2" "Serialized data replacement complete" "complete"
-              else
-                # Update steps as failed
-                update_step_status "1" "Standard URL replacement failed" "failed"
-                update_step_status "2" "Serialized data replacement failed" "failed"
-              fi
-          elif [[ -n "$main_site_key" ]]; then
-              printf "\n${YELLOW}⏭️  Main Site (ID %s) - No changes needed${RESET}\n" "$main_site_id"
-          else
-              printf "\n${RED}❌ Could not find Main Site mapping (ID %s) to process.${RESET}\n" "$main_site_id"
-          fi
+          # --- Use modular search-replace processing ---
+          # Call the extracted multisite processing function from search_replace module
+          process_multisite_mappings "$main_site_id" domain_keys domain_values domain_blog_ids domain_paths
 
       fi  # End of subdirectory vs subdomain multisite logic
 
@@ -2293,8 +1897,8 @@ ${subsite_line}"
     # Automatically add plugin to .gitignore to prevent accidental commits
     printf "\n${CYAN}🔒 Securing plugin from accidental repository commits...${RESET}\n"
     if command -v add_stage_file_proxy_to_gitignore >/dev/null 2>&1; then
-        if add_stage_file_proxy_to_gitignore; then
-            printf "${GREEN}✅ Plugin successfully added to .gitignore${RESET}\n"
+        if add_stage_file_proxy_to_gitignore >/dev/null 2>&1; then
+            printf "${GREEN}✅ The Stage File Proxy plugin will now be ignored by Git.${RESET}\n"
         else
             printf "${YELLOW}⚠️  Could not automatically add to .gitignore${RESET}\n"
             printf "${YELLOW}💡 Consider adding '/plugins/stage-file-proxy/' to wp-content/.gitignore manually${RESET}\n"

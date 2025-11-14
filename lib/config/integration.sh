@@ -47,27 +47,46 @@ load_site_mappings() {
     # Clear any existing arrays
     unset BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP
 
-    # Create associative arrays with shell compatibility
+    # Create associative arrays with enhanced shell compatibility
     local use_arrays=false
-    if [[ -n "${BASH_VERSION:-}" ]]; then
-        # Running in bash - check version for associative array support
-        if [[ ${BASH_VERSION%%.*} -ge 4 ]]; then
-            if declare -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null; then
-                use_arrays=true
-            fi
+
+    # Check if associative arrays are available using compatibility system
+    if has_bash_feature "associative_arrays" 2>/dev/null; then
+        # Bash 4.0+: Use native associative arrays
+        if declare -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null; then
+            use_arrays=true
+        else
+            # Fallback to compatibility functions
+            init_associative_array "BLOG_ID_MAP"
+            init_associative_array "OLD_DOMAIN_MAP"
+            init_associative_array "NEW_DOMAIN_MAP"
+            use_arrays=true
         fi
     elif [[ -n "${ZSH_VERSION:-}" ]]; then
         # Running in zsh - use typeset for associative arrays
         if typeset -A BLOG_ID_MAP OLD_DOMAIN_MAP NEW_DOMAIN_MAP 2>/dev/null; then
             use_arrays=true
+        else
+            # Fallback to compatibility functions
+            init_associative_array "BLOG_ID_MAP"
+            init_associative_array "OLD_DOMAIN_MAP"
+            init_associative_array "NEW_DOMAIN_MAP"
+            use_arrays=true
         fi
+    else
+        # Use compatibility functions for other shells
+        init_associative_array "BLOG_ID_MAP"
+        init_associative_array "OLD_DOMAIN_MAP"
+        init_associative_array "NEW_DOMAIN_MAP"
+        use_arrays=true
     fi
 
-    # If arrays failed, we'll rely purely on config file storage
+    # Fallback if all methods fail
+    if [[ "$use_arrays" != "true" ]]; then
         BLOG_ID_MAP=""
         OLD_DOMAIN_MAP=""
         NEW_DOMAIN_MAP=""
-    # fi
+    fi
 
     local mappings
     mappings=$(get_site_mappings "$config_path")
