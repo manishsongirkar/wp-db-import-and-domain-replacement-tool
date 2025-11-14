@@ -2290,6 +2290,20 @@ ${subsite_line}"
       printf "${GREEN}✅ Plugin already active${RESET}\n"
     fi
 
+    # Automatically add plugin to .gitignore to prevent accidental commits
+    printf "\n${CYAN}🔒 Securing plugin from accidental repository commits...${RESET}\n"
+    if command -v add_stage_file_proxy_to_gitignore >/dev/null 2>&1; then
+        if add_stage_file_proxy_to_gitignore; then
+            printf "${GREEN}✅ Plugin successfully added to .gitignore${RESET}\n"
+        else
+            printf "${YELLOW}⚠️  Could not automatically add to .gitignore${RESET}\n"
+            printf "${YELLOW}💡 Consider adding '/plugins/stage-file-proxy/' to wp-content/.gitignore manually${RESET}\n"
+        fi
+    else
+        printf "${YELLOW}⚠️  GitIgnore manager not available${RESET}\n"
+        printf "${YELLOW}💡 Ensure gitignore_manager.sh is loaded or add manually to wp-content/.gitignore${RESET}\n"
+    fi
+
     # Function to sanitize and validate domain input for Stage File Proxy (expects full URL)
     sanitize_stage_proxy_domain() {
         local input="$1"

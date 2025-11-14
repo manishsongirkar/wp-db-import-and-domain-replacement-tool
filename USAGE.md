@@ -28,6 +28,10 @@ wp-db-import config-validate    # Validate configuration file
 wp-db-import config-edit        # Open configuration in editor
 wp-db-import show-links         # Show local site links
 wp-db-import setup-proxy        # Setup stage file proxy
+```
+**Note:** Automatically includes GitIgnore protection to prevent accidental plugin commits.
+
+💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
 wp-db-import show-cleanup       # Generate revision cleanup commands
 wp-db-import update             # Update to latest version
 wp-db-import version            # Show version info
@@ -178,6 +182,7 @@ git pull
 - **🌐 Multisite support** - Handles subdomain & subdirectory networks
 - **🗑️ Bulk revision cleanup** - High-speed cleanup via xargs
 - **📸 Stage File Proxy** - Media management between environments
+- **🔒 GitIgnore Protection** - Automatic .gitignore management for development plugins
 - **🔄 Smart domain replacement** - Handles serialized data & www variants
 - **💻 Terminal-friendly** - Colored output with progress indicators
 
@@ -193,6 +198,46 @@ git pull
 ```bash
 # From the repository directory
 ./uninstall.sh
+```
+
+## 🔒 GitIgnore Protection System
+
+The tool includes comprehensive GitIgnore management for Stage File Proxy and other development plugins:
+
+### Automatic Protection
+- **Seamless Integration**: Automatically adds `/plugins/stage-file-proxy/` to `wp-content/.gitignore`
+- **Smart Detection**: Recognizes semantic equivalent entries already present
+- **Cross-Platform**: Works reliably across macOS, Linux, and Flywheel hosting environments
+- **Prevents Accidents**: Blocks accidental commits of local/staging-only plugins
+
+### Semantic Duplicate Detection
+The enhanced gitignore manager can detect and handle these equivalent entries:
+- `./plugins/stage-file-proxy/` ↔ `/plugins/stage-file-proxy/`
+- `plugins/stage-file-proxy/` ↔ `/plugins/stage-file-proxy/`
+- `plugins/stage-file-proxy` ↔ `/plugins/stage-file-proxy/`
+- Plus whitespace variations and trailing slash differences
+
+### Manual GitIgnore Operations
+```bash
+# Load the gitignore manager module
+source lib/utilities/gitignore_manager.sh
+
+# Add stage-file-proxy to .gitignore
+add_stage_file_proxy_to_gitignore
+
+# Check current gitignore status
+show_stage_file_proxy_gitignore_status
+
+# Remove from gitignore (if needed)
+remove_stage_file_proxy_from_gitignore
+```
+
+### Example Output
+```
+🔒 Securing plugin from accidental repository commits...
+
+🎉 Success!
+The Stage File Proxy plugin will now be ignored by Git.
 ```
 
 ## 🔧 Development

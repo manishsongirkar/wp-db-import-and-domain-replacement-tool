@@ -58,6 +58,11 @@ load_config_modules() {
 load_utilities_modules() {
     local utilities_dir="$LIB_DIR/utilities"
 
+    # Load gitignore manager utilities (load first as dependency for stage_file_proxy)
+    if [[ -f "$utilities_dir/gitignore_manager.sh" ]]; then
+        source "$utilities_dir/gitignore_manager.sh" 2>/dev/null
+    fi
+
     # Load stage file proxy utilities
     if [[ -f "$utilities_dir/stage_file_proxy.sh" ]]; then
         source "$utilities_dir/stage_file_proxy.sh" 2>/dev/null

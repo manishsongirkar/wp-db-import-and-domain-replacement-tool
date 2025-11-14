@@ -25,6 +25,7 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 - 🛡️ **Comprehensive error handling** and logging
 - 🎨 **Colored terminal output** with clear progress indicators
 - 📸 **Stage File Proxy Plugin** automatic installation and configuration
+- 🔒 **GitIgnore Protection** - Automatically prevents stage-file-proxy plugin commits
 - 📦 **User-Local Installation** - Installs to ~/.local/bin
 - 📋 **Centralized Version Management** - Single VERSION file with automated tracking
 
@@ -361,6 +362,7 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
    - **Context-aware activation**: Network-wide for multisite, site-wide for single-site
    - **Mapping-aware configuration**: Uses established domain mappings from import process
    - **HTTPS protocol enforcement**: Security compliance with proper protocol handling
+   - **🔒 GitIgnore Protection**: Automatically adds plugin to .gitignore to prevent accidental commits
 
 10. **💾 Configuration Updates & Memory**
     - **Auto-save new mappings**: Any new site mappings are saved to config file
@@ -441,6 +443,9 @@ Run in dry-run mode: live mode (from config)
 📸 Stage File Proxy Setup
 Setup stage file proxy: enabled (from config)
 ✅ Plugin activated successfully
+
+🔒 Securing plugin from accidental repository commits...
+✅ Plugin successfully added to .gitignore
 ✅ Configured: example.test → https://www.example.com
 
 ================================================================
@@ -515,6 +520,9 @@ Run in dry-run mode: live mode (from config)
 📸 Stage File Proxy Setup
 Setup stage file proxy: enabled (from config)
 ✅ Plugin already activated
+
+🔒 Securing plugin from accidental repository commits...
+ℹ️  '/plugins/stage-file-proxy/' already exists in '.gitignore'.
 ✅ Configured: example.test → https://www.example.com
 
 ================================================================
@@ -821,6 +829,9 @@ Using configuration-aware site mapping...
 📸 Stage File Proxy Setup
 Setup stage file proxy: enabled (from config)
 ✅ Plugin already activated network-wide
+
+🔒 Securing plugin from accidental repository commits...
+ℹ️  '/plugins/stage-file-proxy/' already exists in '.gitignore'.
 ✅ Configuring 6 sites with stage-file-proxy
   ✅ Site 1 (example.test): Already configured
   ✅ Site 2 (example.test/shop): Already configured
@@ -951,7 +962,30 @@ Setup the Stage File Proxy plugin with interactive domain mapping:
 ```bash
 wp-db-import setup-proxy
 ```
-Configures media proxy settings for both single-site and multisite installations.
+Configures media proxy settings for both single-site and multisite installations. **Note:** Automatically includes GitIgnore protection to prevent accidental plugin commits.
+
+#### GitIgnore Management
+The tool includes comprehensive GitIgnore management for Stage File Proxy plugin:
+
+**Automatic Protection** (included in all setup processes):
+- Automatically adds `/plugins/stage-file-proxy/` to `wp-content/.gitignore`
+- Prevents accidental commits of local/staging-only plugin to repository
+- Works across all Unix-based systems (macOS, Linux, Flywheel)
+
+**Manual GitIgnore Operations** (available via module functions):
+```bash
+# Load gitignore manager module
+source lib/utilities/gitignore_manager.sh
+
+# Add stage-file-proxy to .gitignore
+add_stage_file_proxy_to_gitignore
+
+# Check current gitignore status
+show_stage_file_proxy_gitignore_status
+
+# Remove from gitignore (if needed)
+remove_stage_file_proxy_from_gitignore
+```
 
 #### Show Local Site Links
 Display clickable links to local WordPress sites:
@@ -1049,6 +1083,15 @@ lib/
 - **🔌 Plugin Architecture**: Easy extension with new utility modules
 - **📋 Configuration API**: Consistent interface for config operations across modules
 - **🧪 Error Handling**: Comprehensive error handling and graceful degradation
+
+### GitIgnore Protection System
+- **🔒 Automatic Integration**: All stage-file-proxy setups include automatic .gitignore protection
+- **🌍 Cross-Platform**: Works reliably across macOS, Linux, and Flywheel hosting environments
+- **🛡️ Repository Safety**: Prevents accidental commits of local/staging-only plugins
+- **📁 Smart Detection**: Auto-detects WordPress root directory and wp-content location
+- **🔧 Manual Control**: Standalone functions available for advanced gitignore management
+- **✅ Validation**: Comprehensive permission and file existence checking
+- **📋 Status Reporting**: Clear feedback about gitignore operations and current status
 
 ## Log Analysis:
 
