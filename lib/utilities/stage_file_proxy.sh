@@ -675,8 +675,16 @@ setup_single_site_stage_file_proxy_automatic() {
         printf "${YELLOW}⚠️  Could not activate plugin - may need manual activation${RESET}\n"
     fi
 
-    # Configure using the mapped domain
-    if configure_stage_file_proxy "$production_domain" "header"; then
+    # Sanitize domain for Stage File Proxy (ensure https:// protocol)
+    local sanitized_domain
+    sanitized_domain=$(sanitize_stage_proxy_domain "$production_domain")
+    if [[ $? -ne 0 || -z "$sanitized_domain" ]]; then
+        printf "${RED}❌ Invalid production domain format: $production_domain${RESET}\n"
+        return 1
+    fi
+
+    # Configure using the sanitized domain
+    if configure_stage_file_proxy "$sanitized_domain" "header"; then
         printf "${GREEN}✅ Single site configured automatically${RESET}\n"
         return 0
     else
@@ -747,12 +755,19 @@ setup_multisite_stage_file_proxy_automatic() {
         done <<< "$mappings"
 
         if [[ -n "$production_domain" ]]; then
-            printf "${CYAN}Configuring site $blog_id ($site_url) → $production_domain${RESET}\n"
-            if configure_stage_file_proxy "$production_domain" "header" "$site_url"; then
-                printf "${GREEN}✅ $site_url configured${RESET}\n"
-                configured_count=$((configured_count + 1))
+            # Sanitize domain for Stage File Proxy (ensure https:// protocol)
+            local sanitized_domain
+            sanitized_domain=$(sanitize_stage_proxy_domain "$production_domain")
+            if [[ $? -eq 0 && -n "$sanitized_domain" ]]; then
+                printf "${CYAN}Configuring site $blog_id ($site_url) → $sanitized_domain${RESET}\n"
+                if configure_stage_file_proxy "$sanitized_domain" "header" "$site_url"; then
+                    printf "${GREEN}✅ $site_url configured${RESET}\n"
+                    configured_count=$((configured_count + 1))
+                else
+                    printf "${RED}❌ Failed to configure $site_url${RESET}\n"
+                fi
             else
-                printf "${RED}❌ Failed to configure $site_url${RESET}\n"
+                printf "${RED}❌ Invalid domain format for site $blog_id: $production_domain${RESET}\n"
             fi
         else
             printf "${YELLOW}⚠️  No mapping found for site $blog_id ($site_url) - skipping${RESET}\n"
@@ -806,15 +821,22 @@ setup_multisite_from_config_mappings() {
             fi
         fi
 
-        printf "${CYAN}Configuring site $blog_id (from mapping) → $production_domain${RESET}\n"
+        # Sanitize domain for Stage File Proxy (ensure https:// protocol)
+        local sanitized_domain
+        sanitized_domain=$(sanitize_stage_proxy_domain "$production_domain")
+        if [[ $? -eq 0 && -n "$sanitized_domain" ]]; then
+            printf "${CYAN}Configuring site $blog_id (from mapping) → $sanitized_domain${RESET}\n"
 
-        # Configure using the blog ID approach
-        if wp option update sfp_url "$production_domain" --url="$site_url" --quiet 2>/dev/null && \
-           wp option update sfp_mode "header" --url="$site_url" --quiet 2>/dev/null; then
-            printf "${GREEN}✅ Site $blog_id configured successfully${RESET}\n"
-            configured_count=$((configured_count + 1))
+            # Configure using the blog ID approach
+            if wp option update sfp_url "$sanitized_domain" --url="$site_url" --quiet 2>/dev/null && \
+               wp option update sfp_mode "header" --url="$site_url" --quiet 2>/dev/null; then
+                printf "${GREEN}✅ Site $blog_id configured successfully${RESET}\n"
+                configured_count=$((configured_count + 1))
+            else
+                printf "${YELLOW}⚠️  Site $blog_id configuration may need manual setup${RESET}\n"
+            fi
         else
-            printf "${YELLOW}⚠️  Site $blog_id configuration may need manual setup${RESET}\n"
+            printf "${RED}❌ Invalid domain format for site $blog_id: $production_domain${RESET}\n"
         fi
     done <<< "$mappings"
 
@@ -862,7 +884,7 @@ setup_single_site_stage_file_proxy_manual() {
             fi
         fi
 
-        # Configure the site
+        # Configure the site (source_domain is already sanitized from get_validated_domain)
         if configure_stage_file_proxy "$source_domain" "header"; then
             printf "${GREEN}✅ Single site configured manually${RESET}\n"
             return 0
@@ -977,10 +999,18 @@ setup_multisite_stage_file_proxy_manual() {
             fi
         fi
 
-        if configure_stage_file_proxy "$source_domain" "header" "$site_url"; then
-            printf "${GREEN}✅ $site_url configured${RESET}\n"
+        # Sanitize domain for Stage File Proxy (ensure https:// protocol)
+        # This is especially important for existing domains from config that may lack protocol
+        local sanitized_domain
+        sanitized_domain=$(sanitize_stage_proxy_domain "$source_domain")
+        if [[ $? -eq 0 && -n "$sanitized_domain" ]]; then
+            if configure_stage_file_proxy "$sanitized_domain" "header" "$site_url"; then
+                printf "${GREEN}✅ $site_url configured${RESET}\n"
+            else
+                printf "${RED}❌ Failed to configure site: $site_url${RESET}\n"
+            fi
         else
-            printf "${RED}❌ Failed to configure site: $site_url${RESET}\n"
+            printf "${RED}❌ Invalid domain format for site: $source_domain${RESET}\n"
         fi
     done <<< "$sites_without_header"
 
