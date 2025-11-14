@@ -1382,6 +1382,18 @@ ${subsite_line}"
     # Execute search-replace for single site (Pass search_domain and replace_domain, with no --url flag)
     if run_search_replace "$search_domain" "$replace_domain" "$SR_LOG_SINGLE" ""; then
       printf "\n${GREEN}✅ Search-replace completed successfully!${RESET}\n"
+      
+      # Save single site mapping to config for future Stage File Proxy usage
+      if [[ -n "$config_path" ]]; then
+        # Use unified config reader if available, otherwise fallback to existing config_manager
+        if command -v write_site_mapping >/dev/null 2>&1; then
+          write_site_mapping "1" "$search_domain" "$replace_domain" "$config_path"
+          printf "${GREEN}💾 Saved domain mapping to config for future Stage File Proxy usage${RESET}\n"
+        elif command -v update_site_mapping >/dev/null 2>&1; then
+          update_site_mapping "$config_path" "1" "$search_domain" "$replace_domain"
+          printf "${GREEN}💾 Saved domain mapping to config for future Stage File Proxy usage${RESET}\n"
+        fi
+      fi
     else
       printf "\n${RED}❌ Search-replace failed. See %s.${RESET}\n" "$SR_LOG_SINGLE"
       return 1
@@ -1792,285 +1804,34 @@ ${subsite_line}"
     fi
 
     if [[ "$setup_stage_proxy" == [Yy]* ]]; then
-      # Check if stage-file-proxy plugin is already installed
-      # Use execute_wp_cli for reliable command execution
-      if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
-        printf "${CYAN}🔍 stage-file-proxy plugin found! Configuring...${RESET}\n"
-      else
-        # Install the plugin with enhanced error handling
-        printf "${CYAN}📦 Installing stage-file-proxy plugin...${RESET}\n"
+      # Use the unified stage file proxy module
+      # Automatically detects mode based on available configuration
+      if command -v setup_stage_file_proxy_unified >/dev/null 2>&1; then
+        printf "\n${CYAN}${BOLD}📸 Stage File Proxy Unified Setup${RESET}\n"
 
-        # Create a temporary log for installation debugging
-        local install_log="/tmp/wp_plugin_install_$$.log"
-        local install_success=false
-
-        # Method 1: Try installing from GitHub release
-        printf "${CYAN}    Attempting installation from GitHub release...${RESET}\n"
-        if execute_wp_cli plugin install https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip > "$install_log" 2>&1; then
-          printf "${GREEN}✅ Plugin installed successfully from GitHub${RESET}\n"
-          install_success=true
+        # Call unified function with config path - it auto-detects automatic vs manual mode
+        if setup_stage_file_proxy_unified "$config_path"; then
+          printf "${GREEN}🎉 Stage File Proxy setup completed successfully!${RESET}\n"
         else
-          printf "${YELLOW}⚠️  GitHub installation failed, trying direct download method...${RESET}\n"
-
-          # Method 2: Try direct download and install
-          printf "${CYAN}    Attempting direct download method...${RESET}\n"
-          local temp_plugin_file="/tmp/stage-file-proxy-$$.zip"
-
-          # Try downloading with curl first, then wget as fallback
-          if command -v curl &>/dev/null; then
-            if curl -L -o "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
-              if execute_wp_cli plugin install "$temp_plugin_file" >> "$install_log" 2>&1; then
-                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                install_success=true
-              fi
-              rm -f "$temp_plugin_file" 2>/dev/null
-            fi
-          elif command -v wget &>/dev/null; then
-            if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
-              if execute_wp_cli plugin install "$temp_plugin_file" >> "$install_log" 2>&1; then
-                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                install_success=true
-              fi
-              rm -f "$temp_plugin_file" 2>/dev/null
-            fi
-          fi
+          printf "${YELLOW}⚠️  Stage File Proxy setup encountered some issues, but continuing...${RESET}\n"
         fi
-        # Handle installation result
-        if [[ "$install_success" == true ]]; then
-          # Verify installation was actually successful
-          if execute_wp_cli plugin is-installed stage-file-proxy &>/dev/null; then
-            printf "${GREEN}✅ Plugin installation verified${RESET}\n"
-          else
-            printf "${RED}❌ Plugin installation verification failed${RESET}\n"
-            install_success=false
-          fi
-        fi
-
-        if [[ "$install_success" == false ]]; then
-          printf "${RED}❌ Failed to install plugin using all methods${RESET}\n"
-          printf "${YELLOW}💡 Installation error details:${RESET}\n"
-          if [[ -f "$install_log" ]]; then
-            # Use built-in bash features instead of external commands
-            printf "   Last few lines from installation log:\n"
-            local line_count=0
-            local lines=()
-            while IFS= read -r line; do
-              lines+=("$line")
-              ((line_count++))
-            done < "$install_log"
-
-            # Display last 5 lines or all lines if less than 5
-            local start_index=$((line_count > 5 ? line_count - 5 : 0))
-            for ((i=start_index; i<line_count; i++)); do
-              printf "   %s\n" "${lines[i]}"
-            done
-          fi
-          printf "${YELLOW}⚠️  Skipping stage-file-proxy configuration${RESET}\n"
-          printf "${CYAN}🔧 Manual installation options:${RESET}\n"
-          printf "   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip\n"
-          printf "   2. Install via WP Admin: Plugins → Add New → Upload Plugin\n"
-          printf "   3. Check internet connection and try again\n"
-          setup_stage_proxy="n"
-        fi
-
-        # Clean up installation log
-        rm -f "$install_log" 2>/dev/null
-      fi
-
-      # Only proceed with configuration if plugin installation was successful or plugin was already installed
-      if [[ "$setup_stage_proxy" == [Yy]* ]]; then
-
-    # Check if plugin is active and activate if needed
-    # Use execute_wp_cli for reliable command execution
-    if ! execute_wp_cli plugin is-active stage-file-proxy $network_flag &>/dev/null; then
-      printf "${CYAN}📦 Activating stage-file-proxy plugin...${RESET}\n"
-      # Use execute_wp_cli for reliable command execution
-      if execute_wp_cli plugin activate stage-file-proxy $network_flag &>/dev/null; then
-        printf "${GREEN}✅ Plugin activated successfully${RESET}\n"
       else
-        printf "${RED}❌ Failed to activate plugin${RESET}\n"
-      fi
-    else
-      printf "${GREEN}✅ Plugin already active${RESET}\n"
-    fi
+        printf "${RED}❌ Stage File Proxy unified module not found${RESET}\n"
+        printf "${YELLOW}💡 Falling back to original setup process...${RESET}\n"
 
-    # Automatically add plugin to .gitignore to prevent accidental commits
-    printf "\n${CYAN}🔒 Securing plugin from accidental repository commits...${RESET}\n"
-    if command -v add_stage_file_proxy_to_gitignore >/dev/null 2>&1; then
-        if add_stage_file_proxy_to_gitignore >/dev/null 2>&1; then
-            printf "${GREEN}✅ The Stage File Proxy plugin will now be ignored by Git.${RESET}\n"
+        # Fallback to original setup (legacy compatibility)
+        if command -v setup_stage_file_proxy >/dev/null 2>&1; then
+          setup_stage_file_proxy
         else
-            printf "${YELLOW}⚠️  Could not automatically add to .gitignore${RESET}\n"
-            printf "${YELLOW}💡 Consider adding '/plugins/stage-file-proxy/' to wp-content/.gitignore manually${RESET}\n"
+          printf "${RED}❌ Stage File Proxy module not available${RESET}\n"
         fi
-    else
-        printf "${YELLOW}⚠️  GitIgnore manager not available${RESET}\n"
-        printf "${YELLOW}💡 Ensure gitignore_manager.sh is loaded or add manually to wp-content/.gitignore${RESET}\n"
-    fi
-
-    # Function to sanitize and validate domain input for Stage File Proxy (expects full URL)
-    sanitize_stage_proxy_domain() {
-        local input="$1"
-        local clean_domain
-
-        # Check if input is empty
-        if [[ -z "$input" ]]; then
-            return 1
-        fi
-
-        # Check input length (reasonable URL length limit)
-        if [[ ${#input} -gt 2048 ]]; then
-            return 1
-        fi
-
-        # Initialize clean_domain with input
-        clean_domain="$input"
-
-        # Remove leading/trailing whitespace using bash built-ins (more portable than sed)
-        # Remove leading whitespace
-        while [[ "$clean_domain" =~ ^[[:space:]] ]]; do
-          clean_domain="${clean_domain#[[:space:]]}"
-        done
-        # Remove trailing whitespace
-        while [[ "$clean_domain" =~ [[:space:]]$ ]]; do
-          clean_domain="${clean_domain%[[:space:]]}"
-        done
-
-        # Check for dangerous characters that could cause injection
-        if [[ "$clean_domain" =~ [\;\|\&\$\`\(\)\<\>\"\'] ]]; then
-            return 1
-        fi
-
-        # Check for control characters and non-printable characters
-        if [[ "$clean_domain" =~ [[:cntrl:]] ]]; then
-            return 1
-        fi
-
-        # Remove trailing slashes
-        clean_domain=${clean_domain%/}
-
-        # Prepare for HTTPS: Remove any existing protocol first
-        clean_domain="${clean_domain#http://}"
-        clean_domain="${clean_domain#https://}"
-
-        # Add https:// protocol (required for database storage by plugin)
-        clean_domain="https://$clean_domain"
-
-        # Validate URL format more thoroughly (with required https protocol)
-        # Domain must have at least one dot (.), except for localhost and IP addresses
-        if [[ "$clean_domain" =~ ^https://localhost([:]([0-9]{1,5}))?(/.*)?$ ]]; then
-            # Allow localhost with optional port and path
-            :
-        elif [[ "$clean_domain" =~ ^https://([0-9]{1,3}\.){3}[0-9]{1,3}([:]([0-9]{1,5}))?(/.*)?$ ]]; then
-            # Allow IP addresses with optional port and path
-            :
-        elif ! [[ "$clean_domain" =~ ^https://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+([:]([0-9]{1,5}))?(/.*)?$ ]]; then
-            return 1
-        fi
-
-        # Additional security check: ensure no multiple protocols using bash built-ins
-        local protocol_count=0
-        local temp_domain="$clean_domain"
-        while [[ "$temp_domain" == *"://"* ]]; do
-            protocol_count=$((protocol_count + 1))
-            temp_domain="${temp_domain#*://}"
-        done
-
-        if [[ "$protocol_count" -gt 1 ]]; then
-            return 1
-        fi
-
-        # Return the sanitized domain with https:// protocol
-        echo "$clean_domain"
-        return 0
-    }
-
-    # Function to configure site-specific stage-file-proxy settings (using sfp_url and sfp_mode options)
-    configure_site_proxy() {
-      local source_domain="$1"
-      local target_site="$2"
-      local mode="${3:-header}"  # Default mode is 'header'.
-      local wp_url_flag=""
-
-      if [[ "$is_multisite" == "yes" ]]; then
-        wp_url_flag="--url=$target_site"
       fi
 
-      # Configure sfp_url (production source)
-      local sanitized_domain
-      sanitized_domain=$(sanitize_stage_proxy_domain "$source_domain")
-      if [[ $? -ne 0 ]]; then
-        printf "${RED}  ❌ Configuration failed for %s (invalid domain)${RESET}\n" "$target_site"
-        return 1
-      fi
+      # Show revision cleanup commands at the end if needed
+      show_revision_cleanup_at_end
 
-      # Configure sfp_url
-      local wp_url_output wp_url_exit_code
-      wp_url_output=$(execute_wp_cli option update sfp_url "$sanitized_domain" $wp_url_flag 2>&1)
-      wp_url_exit_code=$?
-
-      if [[ $wp_url_exit_code -ne 0 ]]; then
-        printf "${RED}  ❌ Failed to set sfp_url for %s${RESET}\n" "$target_site"
-        printf "${RED}     WP-CLI Error: %s${RESET}\n" "$wp_url_output"
-        return 1
-      fi
-
-      # Configure sfp_mode
-      local wp_mode_output wp_mode_exit_code
-      wp_mode_output=$(execute_wp_cli option update sfp_mode "$mode" $wp_url_flag 2>&1)
-      wp_mode_exit_code=$?
-
-      if [[ $wp_mode_exit_code -ne 0 ]]; then
-        printf "${RED}  ❌ Failed to set sfp_mode for %s${RESET}\n" "$target_site"
-        printf "${RED}     WP-CLI Error: %s${RESET}\n" "$wp_mode_output"
-        return 1
-      fi
-
-      printf "${GREEN}  ✅ Configured successfully: %s (URL: %s, Mode: %s)${RESET}\n" "$target_site" "$sanitized_domain" "$mode"
-      return 0
-    }
-
-    # Configure based on installation type
-    if [[ "$is_multisite" == "yes" ]]; then
-      printf "${CYAN}🌐 Configuring multisite stage-file-proxy...${RESET}\n"
-
-      # Use existing domain mappings
-      local array_length=${#domain_keys[@]}
-
-      if [[ $array_length -eq 0 ]]; then
-        printf "${YELLOW}⚠️  No domain mappings found. Using fallback configuration.${RESET}\n"
-        configure_site_proxy "$search_domain" "$search_domain" "header"
-      else
-        printf "${GREEN}✅ Configuring %d sites with stage-file-proxy${RESET}\n" "$array_length"
-
-        for ((i=0; i<array_length; i++)); do
-          local old_domain="${domain_keys[i]}"
-          local new_domain="${domain_values[i]}"
-
-          # Skip if empty or unchanged
-          if [[ -z "$old_domain" || -z "$new_domain" || "$old_domain" == "$new_domain" ]]; then
-            continue
-          fi
-
-          # Configure stage-file-proxy: production source (old_domain) → target site (new_domain)
-          configure_site_proxy "$old_domain" "$new_domain" "header"
-        done
-      fi
-
-    else
-      printf "${CYAN}🧩 Configuring single site stage-file-proxy...${RESET}\n"
-      configure_site_proxy "$search_domain" "$replace_domain" "header"
-    fi
-
-    printf "${GREEN}🎉 stage-file-proxy configuration complete!${RESET}\n"
-
-    # Show revision cleanup commands at the end if needed
-    show_revision_cleanup_at_end
-
-    # Call the separate function to display local site access links
-    show_local_site_links
-
-      fi
+      # Call the separate function to display local site access links
+      show_local_site_links
     else
       printf "${YELLOW}ℹ️ Skipping stage-file-proxy setup as requested${RESET}\n"
 

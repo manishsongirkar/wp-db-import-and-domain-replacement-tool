@@ -14,7 +14,7 @@
 #   wp-db-import                    # Run the main import function
 #   wp-db-import show-links         # Show local site links
 #   wp-db-import show-cleanup       # Show revision cleanup commands
-#   wp-db-import setup-proxy        # Setup stage file proxy
+#   wp-db-import setup-proxy        # Auto-detect config and setup stage file proxy
 #   wp-db-import update             # Update to latest version (git pull)
 #   wp-db-import version            # Show current version and git info
 #   wp-db-import --help             # Show help
@@ -54,11 +54,11 @@ show_help() {
     printf "${BOLD}USAGE:${RESET}\n"
     printf "  wp-db-import                    Run the main import function\n"
     printf "  wp-db-import show-links         Show local site links\n"
-    printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
-    printf "  wp-db-import setup-proxy        Setup stage file proxy\n"
-    printf "  wp-db-import config-show        Show current configuration\n"
-    printf "  wp-db-import config-create      Create new configuration file\n"
-    printf "  wp-db-import config-validate    Validate configuration file\n"
+    printf "  wp-db-import show-cleanup       Generate database revision cleanup commands\n"
+    printf "  wp-db-import setup-proxy        Auto-setup stage file proxy (uses config)\n"
+    printf "  wp-db-import config-show        Show unified configuration status\n"
+    printf "  wp-db-import config-create      Create configuration with site mappings\n"
+    printf "  wp-db-import config-validate    Validate configuration structure\n"
     printf "  wp-db-import config-edit        Open configuration in editor\n"
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
@@ -85,13 +85,13 @@ show_help() {
     printf "${BOLD}EXAMPLES:${RESET}\n"
     printf "  cd ~/Local\\ Sites/mysite/app/public\n"
     printf "  wp-db-import                    # Start database import wizard\n"
-    printf "  wp-db-import config-show        # Show current configuration\n"
-    printf "  wp-db-import config-create      # Create new configuration file\n"
-    printf "  wp-db-import config-validate    # Validate configuration file\n"
+    printf "  wp-db-import config-show        # Show unified configuration status\n"
+    printf "  wp-db-import config-create      # Create configuration with site mappings\n"
+    printf "  wp-db-import config-validate    # Validate configuration structure\n"
     printf "  wp-db-import config-edit        # Open configuration in editor\n"
     printf "  wp-db-import show-links         # Show clickable links to local sites\n"
-    printf "  wp-db-import show-cleanup       # Show revision cleanup commands\n"
-    printf "  wp-db-import setup-proxy        # Configure media proxy settings\n"
+    printf "  wp-db-import show-cleanup       # Generate database revision cleanup commands\n"
+    printf "  wp-db-import setup-proxy        # Auto-setup stage file proxy (detects config)\n"
     printf "  wp-db-import update             # Update to latest version\n"
     printf "  wp-db-import version            # Show version and git info\n"
     printf "  wp-db-import --help             # Show this help message\n\n"
@@ -313,7 +313,23 @@ case "${1:-}" in
         if ! load_main_script; then
             exit 1
         fi
-        setup_stage_file_proxy
+
+        # Get config file path for unified setup
+        config_path=""
+        if command -v get_config_file_path >/dev/null 2>&1; then
+            config_path=$(get_config_file_path)
+        elif command -v get_wpdb_config_path >/dev/null 2>&1; then
+            config_path=$(get_wpdb_config_path)
+        else
+            config_path="wpdb-import.conf"
+        fi
+
+        # Use unified setup if available, otherwise fallback to legacy
+        if command -v setup_stage_file_proxy_unified >/dev/null 2>&1; then
+            setup_stage_file_proxy_unified "$config_path"
+        else
+            setup_stage_file_proxy
+        fi
         ;;
     config-show)
         printf "${CYAN}📋 Showing configuration...${RESET}\n\n"

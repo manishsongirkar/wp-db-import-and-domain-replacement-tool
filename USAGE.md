@@ -22,17 +22,17 @@ wp-db-import
 ### Main Commands
 ```bash
 wp-db-import                    # Main import wizard
-wp-db-import config-show        # Show current configuration
-wp-db-import config-create      # Create new configuration file
-wp-db-import config-validate    # Validate configuration file
+wp-db-import config-show        # Show unified configuration status
+wp-db-import config-create      # Create configuration with site mappings
+wp-db-import config-validate    # Validate configuration structure
 wp-db-import config-edit        # Open configuration in editor
 wp-db-import show-links         # Show local site links
-wp-db-import setup-proxy        # Setup stage file proxy
+wp-db-import setup-proxy        # Auto-setup stage file proxy (detects config)
 ```
 **Note:** Automatically includes GitIgnore protection to prevent accidental plugin commits.
 
 💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
-wp-db-import show-cleanup       # Generate revision cleanup commands
+wp-db-import show-cleanup       # Generate database revision cleanup commands
 wp-db-import update             # Update to latest version
 wp-db-import version            # Show version info
 wp-db-import --help             # Show help

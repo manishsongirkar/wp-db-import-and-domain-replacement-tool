@@ -128,18 +128,18 @@ wp-db-import update  # Automatic git pull
 wp-db-import
 
 # Configuration management
-wp-db-import config-show          # Show current configuration
-wp-db-import config-create        # Create new configuration file
-wp-db-import config-validate      # Validate configuration file
+wp-db-import config-show          # Show unified configuration status
+wp-db-import config-create        # Create configuration with site mappings
+wp-db-import config-validate      # Validate configuration structure
 wp-db-import config-edit          # Open configuration in editor
 
 # Show local site links
 wp-db-import show-links
 
-# Setup stage file proxy
+# Auto-setup stage file proxy (detects config)
 wp-db-import setup-proxy
 
-# Show revision cleanup commands
+# Generate database revision cleanup commands
 wp-db-import show-cleanup
 
 # Update to latest version (git only)
@@ -197,13 +197,13 @@ auto_proceed=false
 ### 📋 Configuration Commands
 
 ```bash
-# Show current configuration
+# Show unified configuration status
 wp-db-import config-show
 
-# Create new configuration file interactively
+# Create configuration with site mappings interactively
 wp-db-import config-create
 
-# Validate configuration file format
+# Validate configuration structure and format
 wp-db-import config-validate
 
 # Open configuration in your default editor
@@ -929,26 +929,26 @@ UPDATE wp_blogs SET domain = "example.test", path = "/docs/" WHERE blog_id = 7;
 
 The tool provides comprehensive configuration management for project-specific settings:
 
-#### Show Current Configuration
-Display your current configuration settings in a user-friendly format:
+#### Show Unified Configuration Status
+Display your current unified configuration settings in a user-friendly format:
 ```bash
 wp-db-import config-show
 ```
-Shows all general settings, site mappings, and configuration file location.
+Shows all general settings, site mappings, auto-detection status, and configuration file location.
 
-#### Create New Configuration
-Interactively create a new configuration file with guided prompts:
+#### Create Configuration with Site Mappings
+Interactively create a new configuration file with guided prompts and site mappings:
 ```bash
 wp-db-import config-create
 ```
-Walks through all settings and creates a properly formatted config file.
+Walks through all settings including site mappings and creates a properly formatted unified config file.
 
-#### Validate Configuration
-Check your configuration file for proper format and required settings:
+#### Validate Configuration Structure
+Check your configuration file for proper structure, format and required settings:
 ```bash
 wp-db-import config-validate
 ```
-Validates INI format, required sections, and setting completeness.
+Validates INI format, required sections, site mappings, and setting completeness.
 
 #### Edit Configuration
 Open your configuration file in your preferred editor:
@@ -959,12 +959,12 @@ Uses your `$EDITOR` environment variable or defaults to nano.
 
 ### Utility Functions
 
-#### Manual Setup Stage File Proxy
-Setup the Stage File Proxy plugin with interactive domain mapping:
+#### Auto-Setup Stage File Proxy
+Automatically setup the Stage File Proxy plugin using existing configuration or interactive mapping:
 ```bash
 wp-db-import setup-proxy
 ```
-Configures media proxy settings for both single-site and multisite installations. **Note:** Automatically includes GitIgnore protection to prevent accidental plugin commits.
+Auto-detects existing configuration and applies site mappings automatically. Falls back to interactive mode only if no config exists. Configures media proxy settings for both single-site and multisite installations. **Note:** Automatically includes GitIgnore protection to prevent accidental plugin commits.
 
 #### GitIgnore Management
 The tool includes comprehensive GitIgnore management for Stage File Proxy plugin:
