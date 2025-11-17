@@ -1382,7 +1382,7 @@ ${subsite_line}"
     # Execute search-replace for single site (Pass search_domain and replace_domain, with no --url flag)
     if run_search_replace "$search_domain" "$replace_domain" "$SR_LOG_SINGLE" ""; then
       printf "\n${GREEN}✅ Search-replace completed successfully!${RESET}\n"
-      
+
       # Save single site mapping to config for future Stage File Proxy usage
       if [[ -n "$config_path" ]]; then
         # Use unified config reader if available, otherwise fallback to existing config_manager

@@ -120,7 +120,19 @@ detect_wordpress_installation_type() {
         if [[ "$blog_count_wp" =~ ^[0-9]+$ ]]; then
             blog_count="$blog_count_wp"
         else
-            blog_count="N/A"
+            # Fallback: Try wp-config.php method
+            local wp_config_count=""
+            if grep -q "define.*MULTISITE.*true" wp-config.php 2>/dev/null; then
+                # Try to get site count using WP-CLI site list (doesn't require db query)
+                wp_config_count=$(execute_wp_cli site list --format=count 2>&1)
+                if [[ "$wp_config_count" =~ ^[0-9]+$ ]]; then
+                    blog_count="$wp_config_count"
+                else
+                    blog_count="1" # Default fallback
+                fi
+            else
+                blog_count="1" # Default fallback
+            fi
         fi
         # Site count is always at least 1 (main site)
         site_count="1"
@@ -162,7 +174,7 @@ detect_wordpress_installation_type() {
             detection_method="wp-config"
 
             # Try to get site count using WP-CLI site list (doesn't require db query)
-            if [[ "$blog_count" == "0" ]]; then
+            if [[ "$blog_count" == "0" || ! "$blog_count" =~ ^[0-9]+$ ]]; then
                 local wp_site_list_count wp_cli_output
                 wp_cli_output=$(execute_wp_cli site list --format=count 2>&1)
                 wp_cli_exit_code=$?
@@ -170,9 +182,10 @@ detect_wordpress_installation_type() {
                 if [[ $wp_cli_exit_code -eq 0 ]] && [[ "$wp_cli_output" =~ ^[0-9]+$ ]]; then
                     blog_count="$wp_cli_output"
                 else
-                    # Mark counts as unavailable rather than 0
-                    blog_count="N/A"
-                    site_count="N/A"
+                    blog_count="1" # Default fallback
+                fi
+                if [[ ! "$site_count" =~ ^[0-9]+$ ]]; then
+                    site_count="1"
                 fi
             fi
         fi
@@ -218,6 +231,14 @@ detect_wordpress_installation_type() {
 
     # Return to original directory
     cd "$original_dir"
+
+    # Ensure blog_count and site_count are always numeric before returning
+    if [[ ! "$blog_count" =~ ^[0-9]+$ ]]; then
+        blog_count="1"
+    fi
+    if [[ ! "$site_count" =~ ^[0-9]+$ ]]; then
+        site_count="1"
+    fi
 
     # Return formatted result
     echo "${installation_type}|${multisite_type}|${network_flag}|${blog_count}|${site_count}|${detection_method}"
