@@ -152,6 +152,37 @@ wp-db-import version
 wp-db-import --help
 ```
 
+## 🧪 Testing
+
+The tool includes a comprehensive test suite that ensures cross-platform compatibility and reliability across different Unix-based operating systems and Bash versions.
+
+### ⚡ Quick Test
+```bash
+# Run all tests from anywhere (recommended)
+wp-db-import test
+
+# Or run from project directory
+./run_tests.sh
+```
+
+### 🎯 Test Coverage
+- **Operating System Compatibility** - Linux, macOS, FreeBSD, WSL, Cygwin/MSYS2
+- **Bash Version Support** - Bash 3.2, 4.x, 5.x with feature detection
+- **System Environment** - User permissions, utilities, resource limits
+- **WordPress Functionality** - WP-CLI integration, database operations, multisite handling
+- **Unit Tests** - Core functions, string utilities, configuration management
+
+### 📊 Test Reports
+Tests generate comprehensive reports in multiple formats:
+- **HTML** - Interactive web report with detailed results
+- **JSON** - Machine-readable for CI/CD integration
+- **Text** - Terminal-friendly summary
+
+Reports are saved to `reports/` directory and automatically cleaned up between runs.
+
+## 🔧 Configuration System
+```
+
 ## � Configuration System
 
 The tool now features a **project-specific configuration system** that remembers your settings and site mappings, making subsequent imports much faster and more convenient.
