@@ -60,6 +60,7 @@ show_help() {
     printf "  wp-db-import config-create      Create configuration with site mappings\n"
     printf "  wp-db-import config-validate    Validate configuration structure\n"
     printf "  wp-db-import config-edit        Open configuration in editor\n"
+    printf "  wp-db-import test               Run test suite to validate tool functionality\n"
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
     printf "  wp-db-import --help             Show this help message\n\n"
@@ -89,6 +90,7 @@ show_help() {
     printf "  wp-db-import config-create      # Create configuration with site mappings\n"
     printf "  wp-db-import config-validate    # Validate configuration structure\n"
     printf "  wp-db-import config-edit        # Open configuration in editor\n"
+    printf "  wp-db-import test               # Run test suite\n"
     printf "  wp-db-import show-links         # Show clickable links to local sites\n"
     printf "  wp-db-import show-cleanup       # Generate database revision cleanup commands\n"
     printf "  wp-db-import setup-proxy        # Auto-setup stage file proxy (detects config)\n"
@@ -418,6 +420,64 @@ case "${1:-}" in
             fi
         else
             printf "${RED}❌ Could not determine config file path${RESET}\n"
+            exit 1
+        fi
+        ;;
+    test)
+        # Public command to run test suite - can be executed from any directory
+        printf "${CYAN}🧪 Running WordPress Database Import Tool Test Suite${RESET}\n\n"
+
+        # Shift to remove 'test' from arguments
+        shift
+
+        # Change to the script directory to run tests
+        original_dir="$(pwd)"
+        cd "$SCRIPT_DIR"
+
+        # Check if test runner exists
+        if [[ ! -f "run_tests.sh" ]]; then
+            printf "${RED}❌ Test runner not found: run_tests.sh${RESET}\n"
+            printf "${YELLOW}💡 Ensure you have the complete tool installation${RESET}\n"
+            cd "$original_dir"
+            exit 1
+        fi
+
+        # Make test runner executable if needed
+        chmod +x run_tests.sh
+
+        # Run tests with passed arguments (default to all tests if no args)
+        test_args="${*}"
+        if [[ -z "$test_args" ]]; then
+            test_args="all"
+        fi
+
+        printf "${DIM}Running from: $SCRIPT_DIR${RESET}\n"
+        printf "${DIM}Arguments: $test_args${RESET}\n\n"
+
+        # Execute the test runner
+        if ./run_tests.sh $test_args; then
+            printf "\n${GREEN}✅ Test suite completed successfully${RESET}\n"
+            exit_code=0
+        else
+            printf "\n${RED}❌ Test suite completed with failures${RESET}\n"
+            exit_code=1
+        fi
+
+        # Return to original directory
+        cd "$original_dir"
+        exit $exit_code
+        ;;
+    validate)
+        # Private command for testing - validate tool functionality
+        # This command is not shown in help and is used for automated testing
+        if ! load_main_script; then
+            exit 1
+        fi
+        # Run validation tests
+        if command -v validate_tool_functionality >/dev/null 2>&1; then
+            validate_tool_functionality "$@"
+        else
+            printf "${RED}❌ Validation function not available${RESET}\n"
             exit 1
         fi
         ;;

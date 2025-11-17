@@ -129,6 +129,11 @@ load_core_modules() {
             fi
         fi
     fi
+
+    # Load validation module (for testing purposes)
+    if [[ -f "$core_dir/validation.sh" ]]; then
+        source "$core_dir/validation.sh" 2>/dev/null
+    fi
 }
 
 # Load configuration modules

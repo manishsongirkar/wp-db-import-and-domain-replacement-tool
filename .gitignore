@@ -27,3 +27,14 @@ wp_*_*.csv
 # Local development
 .vscode/
 .idea/
+
+# Test reports and output
+lib/tests/reports/*
+!lib/tests/reports/README.md
+test-reports/
+reports/*.html
+reports/*.json
+reports/*.txt
+*.test.html
+*.test.json
+*.test.txt
