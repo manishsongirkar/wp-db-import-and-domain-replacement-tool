@@ -134,6 +134,11 @@ load_core_modules() {
     if [[ -f "$core_dir/validation.sh" ]]; then
         source "$core_dir/validation.sh" 2>/dev/null
     fi
+    
+    # Load WordPress detection module
+    if [[ -f "$core_dir/wp_detection.sh" ]]; then
+        source "$core_dir/wp_detection.sh" 2>/dev/null
+    fi
 }
 
 # Load configuration modules

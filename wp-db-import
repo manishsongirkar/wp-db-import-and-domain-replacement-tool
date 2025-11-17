@@ -15,6 +15,7 @@
 #   wp-db-import show-links         # Show local site links
 #   wp-db-import show-cleanup       # Show revision cleanup commands
 #   wp-db-import setup-proxy        # Auto-detect config and setup stage file proxy
+#   wp-db-import detect             # Detect WordPress installation type
 #   wp-db-import update             # Update to latest version (git pull)
 #   wp-db-import version            # Show current version and git info
 #   wp-db-import --help             # Show help
@@ -54,7 +55,10 @@ show_help() {
     printf "${BOLD}USAGE:${RESET}\n"
     printf "  wp-db-import                    Run the main import function\n"
     printf "  wp-db-import show-links         Show local site links\n"
-    printf "  wp-db-import show-cleanup       Generate database revision cleanup commands\n"
+    printf "  wp-db-import show-links         Show local site links\n"
+    printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
+    printf "  wp-db-import setup-proxy        Setup stage file proxy plugin\n"
+    printf "  wp-db-import detect             Detect WordPress installation type\n"
     printf "  wp-db-import setup-proxy        Auto-setup stage file proxy (uses config)\n"
     printf "  wp-db-import config-show        Show unified configuration status\n"
     printf "  wp-db-import config-create      Create configuration with site mappings\n"
@@ -64,39 +68,6 @@ show_help() {
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
     printf "  wp-db-import --help             Show this help message\n\n"
-
-    printf "${BOLD}SETUP:${RESET}\n"
-    printf "${CYAN}Option 1 - Git Clone (Recommended for auto-updates):${RESET}\n"
-    printf "  1. git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git\n"
-    printf "  2. cd wp-db-import-and-domain-replacement-tool\n"
-    printf "  3. ./install.sh (makes 'wp-db-import' globally available)\n"
-    printf "  4. Navigate to any WordPress directory and run: wp-db-import\n\n"
-    printf "${CYAN}Option 2 - ZIP Download (Manual updates):${RESET}\n"
-    printf "  1. Download and extract the ZIP archive from GitHub\n"
-    printf "  2. cd wp-db-import-and-domain-replacement-tool\n"
-    printf "  3. ./install.sh (makes 'wp-db-import' globally available)\n"
-    printf "  4. Navigate to any WordPress directory and run: wp-db-import\n\n"
-
-    printf "${BOLD}REQUIREMENTS:${RESET}\n"
-    printf "  - WP-CLI installed and in PATH\n"
-    printf "  - WordPress installation (run from WP root or subdirectory)\n"
-    printf "  - MySQL/MariaDB database access\n"
-    printf "  - Bash shell (macOS/Linux)\n\n"
-
-    printf "${BOLD}EXAMPLES:${RESET}\n"
-    printf "  cd ~/Local\\ Sites/mysite/app/public\n"
-    printf "  wp-db-import                    # Start database import wizard\n"
-    printf "  wp-db-import config-show        # Show unified configuration status\n"
-    printf "  wp-db-import config-create      # Create configuration with site mappings\n"
-    printf "  wp-db-import config-validate    # Validate configuration structure\n"
-    printf "  wp-db-import config-edit        # Open configuration in editor\n"
-    printf "  wp-db-import test               # Run test suite\n"
-    printf "  wp-db-import show-links         # Show clickable links to local sites\n"
-    printf "  wp-db-import show-cleanup       # Generate database revision cleanup commands\n"
-    printf "  wp-db-import setup-proxy        # Auto-setup stage file proxy (detects config)\n"
-    printf "  wp-db-import update             # Update to latest version\n"
-    printf "  wp-db-import version            # Show version and git info\n"
-    printf "  wp-db-import --help             # Show this help message\n\n"
 
     printf "${BOLD}UPDATES:${RESET}\n"
     printf "  Since installation uses symlinks, running 'git pull' in the\n"
@@ -332,6 +303,78 @@ case "${1:-}" in
         else
             setup_stage_file_proxy
         fi
+        ;;
+    detect)
+        printf "${CYAN}🔍 Detecting WordPress installation type...${RESET}\n\n"
+
+        # Load main script to get detection function
+        if ! load_main_script; then
+            exit 1
+        fi
+
+        # Ensure detection function is loaded
+        if ! declare -f detect_wordpress_installation_type >/dev/null; then
+            detection_module="$SCRIPT_DIR/lib/core/wp_detection.sh"
+            if [[ -f "$detection_module" ]]; then
+                source "$detection_module" || {
+                    printf "${RED}❌ Error: Failed to load detection module${RESET}\n"
+                    exit 1
+                }
+            else
+                printf "${RED}❌ Error: Detection module not found at: $detection_module${RESET}\n"
+                exit 1
+            fi
+        fi
+
+        # Parse arguments for detect command
+        verbose="false"
+        detection_dir=""
+        shift
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --verbose|-v)
+                    verbose="true"
+                    ;;
+                --quiet|-q|--quite)
+                    verbose="false"
+                    ;;
+                *)
+                    if [[ "$1" != -* ]]; then
+                        detection_dir="$1"
+                    fi
+                    ;;
+            esac
+            shift
+        done
+        detection_dir="${detection_dir:-$(pwd)}"
+
+        result=$(detect_wordpress_installation_type "$detection_dir" "$verbose")
+
+        IFS='|' read -r inst_type ms_type net_flag blog_count site_count method <<< "$result"
+
+        printf "${GREEN}✅ WordPress root found: %s${RESET}\n\n" "$detection_dir"
+
+        printf "${BOLD}🎯 WordPress Site Details:${RESET}\n"
+        printf "============================\n"
+        if [[ "$inst_type" == "multisite" ]]; then
+            printf "WordPress Site Type: ${GREEN}multisite${RESET}\n"
+            printf "Multisite Configuration: ${YELLOW}%s${RESET}\n" "$ms_type"
+            printf "WP-CLI Network Flag: ${CYAN}%s${RESET}\n" "$net_flag"
+            printf "Multisite Blog Count: %s\n" "$blog_count"
+            printf "Main Site Count: %s\n" "$site_count"
+            printf "Detection Method: %s\n" "$method"
+        elif [[ "$inst_type" == "single" ]]; then
+            printf "WordPress Site Type: ${GREEN}single${RESET}\n"
+            printf "Main Site Count: %s\n" "$site_count"
+            printf "Detection Method: %s\n" "$method"
+        else
+            # Fallback for single site detected by other methods
+            printf "WordPress Site Type: ${GREEN}single${RESET}\n"
+            printf "Main Site Count: %s\n" "$site_count"
+            printf "Detection Method: %s\n" "$method"
+        fi
+
+        printf "\n${GREEN}✅ Detection completed using method: %s${RESET}\n" "$method"
         ;;
     config-show)
         printf "${CYAN}📋 Showing configuration...${RESET}\n\n"
