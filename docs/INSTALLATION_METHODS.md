@@ -28,29 +28,24 @@ cd wp-db-import-and-domain-replacement-tool
 **Benefits:**
 - ✅ No git dependency required
 - ✅ Lightweight download
-- ✅ Still gets global command installation
+- ✅ Global command installation
 - ⚠️ Manual update process required
 
 ## 🌐 Can wp-db-import Run from Any Directory?
 
-**YES!** Once installed via `./install.sh`, the `wp-db-import` command is available globally from any directory:
+**YES!** After running `./install.sh`, the `wp-db-import` command is available globally from any directory:
 
 ```bash
-cd ~/Desktop
-wp-db-import --help  # ✅ Works
-
-cd ~/Documents/Projects
-wp-db-import version  # ✅ Works
-
-cd /tmp
-wp-db-import show-cleanup  # ✅ Works
+wp-db-import --help
+wp-db-import version
+wp-db-import show-cleanup
 ```
 
 ### How It Works
 - Installation creates a symlink in `~/.local/bin/wp-db-import` (or `~/bin/wp-db-import`)
-- The symlink points to the actual script in the repository directory
-- Shell PATH is updated to include the symlink directory
-- Global access works regardless of current working directory
+- The symlink points to the main script in the repository
+- Shell PATH is updated if needed
+- Global access works from any directory
 
 ## 🔄 Update Scenarios
 
@@ -61,99 +56,66 @@ wp-db-import show-cleanup  # ✅ Works
 wp-db-import update
 ```
 This command:
-- Detects it's a git repository
-- Shows current version/commit
+- Detects git repository
 - Runs `git pull` automatically
-- Reports what was updated
-- Changes are immediately available (symlink magic!)
+- Updates are available globally
 
 **Manual Git Updates:**
 ```bash
 cd /path/to/wp-db-import-and-domain-replacement-tool
 git pull
-# Changes immediately available via symlink
+# Changes available globally
 ```
 
 ### ZIP Installation Updates
 
 **Manual Process:**
 ```bash
-# 1. Download latest ZIP from GitHub
-# 2. Extract to same location, replacing files
-# 3. No need to re-run install.sh (symlink still works)
-# 4. Or re-run install.sh if needed
+# Download latest ZIP from GitHub
+# Extract and replace files
+# Re-run ./install.sh if needed
 ```
 
 **Update Detection:**
 ```bash
 wp-db-import update
 ```
-Output for ZIP installations:
-```
-❌ Error: Not in a git repository
-This tool was likely downloaded as a ZIP archive.
-To enable auto-updates, please:
-  1. Clone the repository instead:
-     git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
-  2. Run the installer from the cloned repository:
-     cd wp-db-import-and-domain-replacement-tool && ./install.sh
-
-For manual updates:
-  1. Download the latest release from GitHub
-  2. Extract and replace your current installation
-  3. Run ./install.sh again if needed
-```
+If not a git repository, you will be prompted to use manual update steps.
 
 ## 📋 Installation Type Detection
 
-The tool automatically detects how it was installed:
+The tool automatically detects installation type:
 
 ### Git Installation
 ```bash
 wp-db-import version
-```
-```
-Installation:
-  Installed as symlink: ✅
-  Symlink: /Users/name/.local/bin/wp-db-import
-  Target: /Users/name/wp-db-import-and-domain-replacement-tool/wp-db-import
-  Auto-updates: Available (git repository)
+# Shows: Installed as symlink, auto-updates available
 ```
 
 ### ZIP Installation
 ```bash
 wp-db-import version
-```
-```
-Installation:
-  Installed as symlink: ✅
-  Symlink: /Users/name/.local/bin/wp-db-import
-  Target: /Users/name/wp-db-import-and-domain-replacement-tool/wp-db-import
-  Auto-updates: Limited (not a git repository)
+# Shows: Installed as symlink, manual updates required
 ```
 
-### Direct Execution (Not Installed)
+### Direct Execution
 ```bash
 ./wp-db-import version
-```
-```
-Installation:
-  Running directly from: /path/to/wp-db-import-and-domain-replacement-tool/wp-db-import
-  Auto-updates: Available (git repository)
-  💡 Tip: Run ./install.sh to make this command globally available
+# Shows: Running directly, auto-updates if git repo
+# Tip: Run ./install.sh for global access
 ```
 
 ## 🎯 Recommendation
 
-For most users, **Git Clone installation** is recommended because:
+For most users, **Git Clone installation** is recommended:
 
-1. **Easy updates**: `wp-db-import update` keeps you current
-2. **Global access**: Works from any directory after `./install.sh`
-3. **Zero friction**: Updates are immediate due to symlink architecture
-4. **Version tracking**: Always know what version and commit you're running
+1. Easy updates: `wp-db-import update` keeps you current
+2. Global access: Works from any directory
+3. Immediate updates: Symlink architecture
+4. Version tracking: Know your version and commit
 
-ZIP installation is perfect for:
-- Users who don't want git dependency
-- Corporate environments with restricted git access
-- One-time usage scenarios
+ZIP installation is suitable for:
+- No git dependency
+- Restricted environments
+- One-time use
 - Air-gapped systems

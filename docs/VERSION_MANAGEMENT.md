@@ -6,7 +6,7 @@ This project uses a centralized version management system to ensure consistency 
 
 The current version is stored in the `VERSION` file at the project root:
 
-```
+```bash
 VERSION
 ```
 

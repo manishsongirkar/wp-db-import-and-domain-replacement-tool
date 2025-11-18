@@ -28,6 +28,7 @@ _wp_db_import() {
         'show-cleanup:Generate revision cleanup commands'
         'update:Update to latest version'
         'version:Show version info'
+        'test:Run test suite to validate tool functionality'
         '--help:Show help'
     )
 
