@@ -332,23 +332,29 @@ setup_stage_file_proxy() {
         printf "${YELLOW}💡 Ensure gitignore_manager.sh is loaded or add manually to wp-content/.gitignore${RESET}\n"
     fi
 
-    # Detect if this is a multisite installation
-    local is_multisite
-    local subdomain_install
-    is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
-    subdomain_install=$(wp config get SUBDOMAIN_INSTALL --quiet 2>/dev/null || echo "false")
+    # Detect WordPress installation type using centralized function
+    local wp_root
+    wp_root=$(find_wordpress_root)
+    local wp_detect_output
+    wp_detect_output=$(detect_wordpress_installation_type "$wp_root" "false")
+    IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
 
     printf "${CYAN}WordPress Installation Type:${RESET}\n"
-    if [[ "$is_multisite" == "1" || "$is_multisite" == "true" ]]; then
-        if [[ "$subdomain_install" == "1" || "$subdomain_install" == "true" ]]; then
+    if [[ "$installation_type" == "multisite" ]]; then
+        if [[ "$multisite_type" == "subdomain" ]]; then
             printf "${GREEN}✓ Multisite detected (subdomain configuration)${RESET}\n"
-        else
+        elif [[ "$multisite_type" == "subdirectory" ]]; then
             printf "${GREEN}✓ Multisite detected (subdirectory configuration)${RESET}\n"
+        else
+            printf "${GREEN}✓ Multisite detected${RESET}\n"
         fi
         setup_multisite_stage_file_proxy
-    else
+    elif [[ "$installation_type" == "single" ]]; then
         printf "${GREEN}✓ Single site detected${RESET}\n"
         setup_single_site_stage_file_proxy
+    else
+        printf "${RED}❌ Could not detect WordPress installation type${RESET}\n"
+        return 1
     fi
 }
 
@@ -457,18 +463,19 @@ setup_stage_file_proxy_unified() {
         return 1
     fi
 
-    # Detect multisite
-    local is_multisite
-    is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
+    # Detect WordPress installation type using centralized function
+    local wp_root
+    wp_root=$(find_wordpress_root)
+    local wp_detect_output
+    wp_detect_output=$(detect_wordpress_installation_type "$wp_root" "false")
+    IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
 
     # Check if we have config file and domain mappings available
     local has_mappings=false
     if [[ -n "$config_path" && -f "$config_path" ]]; then
-        # Use unified config reader if available
         if command -v has_site_mappings >/dev/null 2>&1; then
             has_site_mappings "$config_path" && has_mappings=true
         else
-            # Fallback check
             local mappings
             mappings=$(get_stage_proxy_mappings "$config_path")
             if [[ -n "$mappings" ]]; then
@@ -477,7 +484,7 @@ setup_stage_file_proxy_unified() {
         fi
     fi
 
-    if [[ "$is_multisite" == "1" || "$is_multisite" == "true" ]]; then
+    if [[ "$installation_type" == "multisite" ]]; then
         if [[ "$has_mappings" == "true" ]]; then
             printf "${GREEN}✓ Domain mappings found - using automatic mode${RESET}\n"
             setup_multisite_stage_file_proxy_automatic "$config_path"
@@ -485,7 +492,7 @@ setup_stage_file_proxy_unified() {
             printf "${YELLOW}⚠ No domain mappings found - using manual mode${RESET}\n"
             setup_multisite_stage_file_proxy_manual "$config_path"
         fi
-    else
+    elif [[ "$installation_type" == "single" ]]; then
         if [[ "$has_mappings" == "true" ]]; then
             printf "${GREEN}✓ Domain mappings found - using automatic mode${RESET}\n"
             setup_single_site_stage_file_proxy_automatic "$config_path"
@@ -493,6 +500,9 @@ setup_stage_file_proxy_unified() {
             printf "${YELLOW}⚠ No domain mappings found - using manual mode${RESET}\n"
             setup_single_site_stage_file_proxy_manual "$config_path"
         fi
+    else
+        printf "${RED}❌ Could not detect WordPress installation type${RESET}\n"
+        return 1
     fi
 }
 
@@ -564,10 +574,14 @@ setup_multisite_stage_file_proxy() {
 show_stage_file_proxy_config() {
     printf "${CYAN}=== Current Stage File Proxy Configuration ===${RESET}\n"
 
-    local is_multisite
-    is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
+    # Detect WordPress installation type using centralized function
+    local wp_root
+    wp_root=$(find_wordpress_root)
+    local wp_detect_output
+    wp_detect_output=$(detect_wordpress_installation_type "$wp_root" "false")
+    IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
 
-    if [[ "$is_multisite" == "1" || "$is_multisite" == "true" ]]; then
+    if [[ "$installation_type" == "multisite" ]]; then
         printf "${YELLOW}Multisite Configuration:${RESET}\n"
         local sites_data
         sites_data=$(wp site list --format=csv --fields=blog_id,url --quiet)
@@ -592,7 +606,7 @@ show_stage_file_proxy_config() {
         else
             printf "${YELLOW}⚠️  Could not retrieve sites list${RESET}\n"
         fi
-    else
+    elif [[ "$installation_type" == "single" ]]; then
         printf "${YELLOW}Single Site Configuration:${RESET}\n"
 
         # Get sfp_url and sfp_mode separately (new plugin structure)
@@ -602,15 +616,21 @@ show_stage_file_proxy_config() {
 
         printf "${GREEN}sfp_url:${RESET} $sfp_url\n"
         printf "${GREEN}sfp_mode:${RESET} $sfp_mode\n"
+    else
+        printf "${RED}❌ Could not detect WordPress installation type${RESET}\n"
     fi
 }
 
 # Function to quickly set all sites to the same domain (for multisite)
 bulk_configure_multisite() {
-    local is_multisite
-    is_multisite=$(wp config get MULTISITE --quiet 2>/dev/null || echo "false")
+    # Detect WordPress installation type using centralized function
+    local wp_root
+    wp_root=$(find_wordpress_root)
+    local wp_detect_output
+    wp_detect_output=$(detect_wordpress_installation_type "$wp_root" "false")
+    IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
 
-    if [[ "$is_multisite" != "1" && "$is_multisite" != "true" ]]; then
+    if [[ "$installation_type" != "multisite" ]]; then
         printf "${RED}This function is only for multisite installations${RESET}\n"
         return 1
     fi
@@ -724,13 +744,6 @@ setup_multisite_stage_file_proxy_automatic() {
 
     printf "\n"
     printf "${BLUE}Configuring sites automatically using existing mappings...${RESET}\n"
-
-    # Debug output (uncomment for troubleshooting)
-    # printf "${YELLOW}DEBUG: Sites data received:${RESET}\n"
-    # echo "$sites_data" | head -5
-    # printf "${YELLOW}DEBUG: Mappings found:${RESET}\n"
-    # echo "$mappings"
-
     printf "\n"
 
     local configured_count=0

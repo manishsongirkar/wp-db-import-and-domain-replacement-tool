@@ -513,61 +513,22 @@ import_wp_db() {
     printf "${YELLOW}⚠️  Could not detect domain from database. Proceeding with provided domain.${RESET}\n"
   fi
 
-  # 🧩 Enhanced multisite detection logic (Post-import database introspection using multiple methods)
+  # 🧩 Enhanced multisite detection logic.
   printf "\n${CYAN}🔍 Checking WordPress installation type...${RESET}\n"
 
-  # Method 1: Direct database queries (most reliable after import)
-  local is_multisite_db table_count blog_count site_count
-  local multisite_type=""
-  local network_flag=""
+  # Use the centralized detection function
+  local wp_detect_output
+  wp_detect_output=$(detect_wordpress_installation_type)
+  IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
 
-  # Check if wp_blogs table exists and has multiple entries
-  blog_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs;" --skip-column-names --silent 2>/dev/null || echo "0")
-  site_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_site;" --skip-column-names --silent 2>/dev/null || echo "0")
-
-  # Method 2: Check wp-config.php constants (fallback for local environment)
-  local multisite_config=""
-  if [[ -f "wp-config.php" ]]; then
-    # Check for MULTISITE constant in wp-config.php
-    if grep -q "define.*MULTISITE.*true" wp-config.php 2>/dev/null; then
-      multisite_config="yes"
-    elif grep -q "define.*('MULTISITE'.*true" wp-config.php 2>/dev/null; then
-      multisite_config="yes"
-    elif grep -q 'define.*("MULTISITE".*true' wp-config.php 2>/dev/null; then
-      multisite_config="yes"
-    fi
-  fi
-
-  # Method 3: WP-CLI eval without URL constraint (most compatible)
-  local is_multisite_wp=""
-  is_multisite_wp=$(execute_wp_cli eval 'echo is_multisite() ? "yes" : "no";' 2>/dev/null || echo "unknown")
-
-  # Decision logic: Combine all methods for accuracy
+  # Set is_multisite variable for compatibility with rest of script
   local is_multisite="no"
-
-  # If database has multisite tables with data, it's definitely multisite
-  if [[ "$blog_count" -gt 1 ]] || [[ "$site_count" -gt 0 ]]; then
+  if [[ "$installation_type" == "multisite" ]]; then
     is_multisite="yes"
-    printf "${GREEN}✅ Multisite detected via database analysis${RESET} (blogs: %s, sites: %s)\n" "$blog_count" "$site_count"
-  # If wp-config.php shows MULTISITE constant, trust it
-  elif [[ "$multisite_config" == "yes" ]]; then
-    is_multisite="yes"
-    printf "${GREEN}✅ Multisite detected via wp-config.php constants${RESET}\n"
-  # If WP-CLI can determine it, use that
-  elif [[ "$is_multisite_wp" == "yes" ]]; then
-    is_multisite="yes"
-    printf "${GREEN}✅ Multisite detected via WP-CLI evaluation${RESET}\n"
+    printf "${GREEN}✅ Multisite detected (%s) via %s${RESET} (blogs: %s, sites: %s)\n" "$multisite_type" "$detection_method" "$blog_count" "$site_count"
   else
     is_multisite="no"
-    printf "${GREEN}✅ Single site installation detected${RESET}\n"
-  fi
-
-  # Determine multisite type if it's multisite
-  if [[ "$is_multisite" == "yes" ]]; then
-    network_flag="--network"
-    multisite_type="subdomain" && printf "\n" # Placeholder; further analysis needed for subdirectory, but subdomain is a common default
-  else
-    printf "${GREEN}✅ Multisite status:${RESET} no\n"
+    printf "${GREEN}✅ Single site installation detected via %s${RESET}\n" "$detection_method"
   fi
 
   printf "\n"
