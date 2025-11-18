@@ -56,7 +56,7 @@
 #   # Searches up from wp-content and returns: "multisite|subdomain|--network|3|1|wp-cli"
 #
 #   result=$(detect_wordpress_installation_type)
-#   # Searches from current directory and returns: "single|||0|0|wp-cli"
+#   # Searches from current directory and returns: "single|NA|NA|0|0|wp-cli"
 #
 detect_wordpress_installation_type() {
     local starting_dir="${1:-$(pwd)}"
@@ -120,15 +120,27 @@ detect_wordpress_installation_type() {
         if [[ "$blog_count_wp" =~ ^[0-9]+$ ]]; then
             blog_count="$blog_count_wp"
         else
-            blog_count="N/A"
+            # Fallback: Try wp-config.php method
+            local wp_config_count=""
+            if grep -q "define.*MULTISITE.*true" wp-config.php 2>/dev/null; then
+                # Try to get site count using WP-CLI site list.
+                wp_config_count=$(execute_wp_cli site list --format=count 2>&1)
+                if [[ "$wp_config_count" =~ ^[0-9]+$ ]]; then
+                    blog_count="$wp_config_count"
+                else
+                    blog_count="1" # Default fallback
+                fi
+            else
+                blog_count="1" # Default fallback
+            fi
         fi
         # Site count is always at least 1 (main site)
         site_count="1"
 
     elif [[ "$is_multisite_wp" == "no" ]]; then
         installation_type="single"
-        multisite_type=""
-        network_flag=""
+        multisite_type="NA"
+        network_flag="NA"
         blog_count="0"
         site_count="1"
         detection_method="wp-cli"
@@ -140,29 +152,13 @@ detect_wordpress_installation_type() {
 
     # ===== METHOD 3: wp-config.php Constants Analysis (Fallback) =====
     if [[ "$installation_type" == "single" && "$is_multisite_wp" == "unknown" ]]; then
-
-        local multisite_config="no"
-
-        # Check for MULTISITE constant with various formatting patterns
-        if grep -q "define.*MULTISITE.*true" wp-config.php 2>/dev/null; then
-            multisite_config="yes"
-        elif grep -q "define.*('MULTISITE'.*true" wp-config.php 2>/dev/null; then
-            multisite_config="yes"
-        elif grep -q 'define.*("MULTISITE".*true' wp-config.php 2>/dev/null; then
-            multisite_config="yes"
-        elif grep -q "define('MULTISITE', true)" wp-config.php 2>/dev/null; then
-            multisite_config="yes"
-        elif grep -q 'define("MULTISITE", true)' wp-config.php 2>/dev/null; then
-            multisite_config="yes"
-        fi
-
-        if [[ "$multisite_config" == "yes" ]]; then
+        if [[ $(check_wp_config_constant "MULTISITE" "true" "$wp_root/wp-config.php") == "true" ]]; then
             installation_type="multisite"
             network_flag="--network"
             detection_method="wp-config"
 
-            # Try to get site count using WP-CLI site list (doesn't require db query)
-            if [[ "$blog_count" == "0" ]]; then
+            # Try to get site count using WP-CLI site list.
+            if [[ "$blog_count" == "0" || ! "$blog_count" =~ ^[0-9]+$ ]]; then
                 local wp_site_list_count wp_cli_output
                 wp_cli_output=$(execute_wp_cli site list --format=count 2>&1)
                 wp_cli_exit_code=$?
@@ -170,9 +166,10 @@ detect_wordpress_installation_type() {
                 if [[ $wp_cli_exit_code -eq 0 ]] && [[ "$wp_cli_output" =~ ^[0-9]+$ ]]; then
                     blog_count="$wp_cli_output"
                 else
-                    # Mark counts as unavailable rather than 0
-                    blog_count="N/A"
-                    site_count="N/A"
+                    blog_count="1" # Default fallback
+                fi
+                if [[ ! "$site_count" =~ ^[0-9]+$ ]]; then
+                    site_count="1"
                 fi
             fi
         fi
@@ -180,31 +177,9 @@ detect_wordpress_installation_type() {
 
     # ===== METHOD 4: Filesystem Structure Analysis =====
     if [[ "$installation_type" == "single" ]]; then
-
-        # Check for multisite-specific directories and files
-        local multisite_indicators=()
-
-        # Check for blogs.dir (legacy multisite)
-        if [[ -d "$wp_root/wp-content/blogs.dir" ]]; then
-            multisite_indicators+=("blogs.dir")
-        fi
-
-        # Check for uploads/sites/ directory (modern multisite)
-        if [[ -d "$wp_root/wp-content/uploads/sites" ]]; then
-            multisite_indicators+=("uploads/sites")
-        fi
-
-        # Check for mu-plugins directory (often used in multisite)
-        if [[ -d "$wp_root/wp-content/mu-plugins" ]] && [[ -n "$(ls -A "$wp_root/wp-content/mu-plugins" 2>/dev/null)" ]]; then
-            multisite_indicators+=("mu-plugins")
-        fi
-
-        # Check for .htaccess multisite rules
-        if [[ -f "$wp_root/.htaccess" ]] && grep -q "RewriteRule.*wp-includes/ms-files.php" "$wp_root/.htaccess" 2>/dev/null; then
-            multisite_indicators+=("htaccess-rules")
-        fi
-
-        if [[ ${#multisite_indicators[@]} -gt 0 ]]; then
+        local fs_indicators
+        fs_indicators=$(detect_multisite_filesystem_indicators "$wp_root")
+        if [[ -n "$fs_indicators" ]]; then
             installation_type="multisite"
             network_flag="--network"
             detection_method="filesystem"
@@ -218,6 +193,14 @@ detect_wordpress_installation_type() {
 
     # Return to original directory
     cd "$original_dir"
+
+    # Ensure blog_count and site_count are always numeric before returning
+    if [[ ! "$blog_count" =~ ^[0-9]+$ ]]; then
+        blog_count="1"
+    fi
+    if [[ ! "$site_count" =~ ^[0-9]+$ ]]; then
+        site_count="1"
+    fi
 
     # Return formatted result
     echo "${installation_type}|${multisite_type}|${network_flag}|${blog_count}|${site_count}|${detection_method}"
@@ -260,18 +243,12 @@ detect_multisite_type() {
         return 1
     fi
 
-    # Check wp-config.php for SUBDOMAIN_INSTALL constant
+    # Check wp-config.php for SUBDOMAIN_INSTALL constant using utility
     local subdomain_install=""
-    if [[ -f "$wp_root/wp-config.php" ]]; then
-        if grep -q "define.*SUBDOMAIN_INSTALL.*true" "$wp_root/wp-config.php" 2>/dev/null || \
-           grep -q "define('SUBDOMAIN_INSTALL', true)" "$wp_root/wp-config.php" 2>/dev/null || \
-           grep -q 'define("SUBDOMAIN_INSTALL", true)' "$wp_root/wp-config.php" 2>/dev/null; then
-            subdomain_install="true"
-        elif grep -q "define.*SUBDOMAIN_INSTALL.*false" "$wp_root/wp-config.php" 2>/dev/null || \
-             grep -q "define('SUBDOMAIN_INSTALL', false)" "$wp_root/wp-config.php" 2>/dev/null || \
-             grep -q 'define("SUBDOMAIN_INSTALL", false)' "$wp_root/wp-config.php" 2>/dev/null; then
-            subdomain_install="false"
-        fi
+    if [[ $(check_wp_config_constant "SUBDOMAIN_INSTALL" "true" "$wp_root/wp-config.php") == "true" ]]; then
+        subdomain_install="true"
+    elif [[ $(check_wp_config_constant "SUBDOMAIN_INSTALL" "false" "$wp_root/wp-config.php") == "true" ]]; then
+        subdomain_install="false"
     fi
 
     # Determine type based on SUBDOMAIN_INSTALL value

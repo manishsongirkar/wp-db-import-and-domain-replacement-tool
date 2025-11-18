@@ -47,60 +47,12 @@ show_local_site_links() {
     return 1
   fi
 
-  # 🧩 Detect WordPress installation type (single site vs multisite)
+  # 🧩 Detect WordPress installation type using centralized function
+  local wp_detect_output
+  wp_detect_output=$(detect_wordpress_installation_type "$wp_root" "false")
+  IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
   local is_multisite="no"
-  local blog_count site_count
-
-  # Check if wp_blogs table exists and has multiple entries
-  # Use fallback methods for Flywheel compatibility (avoid wp db query)
-  if command -v wp >/dev/null 2>&1; then
-    # Method 1: Try to get site list (most reliable and Flywheel-compatible)
-    local site_list_output
-    site_list_output=$(execute_wp_cli site list --format=count 2>/dev/null || echo "")
-
-    if [[ -n "$site_list_output" && "$site_list_output" =~ ^[0-9]+$ ]]; then
-      site_count="$site_list_output"
-      blog_count="$site_count"
-    else
-      # Fallback: Try to get blog IDs and count them
-      local blog_ids
-      blog_ids=$(execute_wp_cli site list --field=blog_id 2>/dev/null || echo "")
-      if [[ -n "$blog_ids" ]]; then
-        blog_count=$(echo "$blog_ids" | wc -l | tr -d ' ')
-        site_count="$blog_count"
-      else
-        # Final fallback: try database queries (may not work in Flywheel)
-        blog_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_blogs;" --skip-column-names --silent 2>/dev/null || echo "0")
-        site_count=$(execute_wp_cli db query "SELECT COUNT(*) FROM wp_site;" --skip-column-names --silent 2>/dev/null || echo "0")
-      fi
-    fi
-  else
-    blog_count="0"
-    site_count="0"
-  fi
-
-  # Check wp-config.php constants as fallback
-  local multisite_config=""
-  if [[ -f "wp-config.php" ]]; then
-    if grep -q "define.*MULTISITE.*true" wp-config.php 2>/dev/null; then
-      multisite_config="yes"
-    elif grep -q "define.*('MULTISITE'.*true" wp-config.php 2>/dev/null; then
-      multisite_config="yes"
-    elif grep -q 'define.*("MULTISITE".*true' wp-config.php 2>/dev/null; then
-      multisite_config="yes"
-    fi
-  fi
-
-  # WP-CLI eval check
-  local is_multisite_wp=""
-  is_multisite_wp=$(execute_wp_cli eval 'echo is_multisite() ? "yes" : "no";' 2>/dev/null || echo "unknown")
-
-  # Decision logic
-  if [[ "$blog_count" -gt 1 ]] || [[ "$site_count" -gt 0 ]]; then
-    is_multisite="yes"
-  elif [[ "$multisite_config" == "yes" ]]; then
-    is_multisite="yes"
-  elif [[ "$is_multisite_wp" == "yes" ]]; then
+  if [[ "$installation_type" == "multisite" ]]; then
     is_multisite="yes"
   fi
 

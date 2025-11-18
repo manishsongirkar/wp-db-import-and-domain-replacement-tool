@@ -55,7 +55,6 @@ show_help() {
     printf "${BOLD}USAGE:${RESET}\n"
     printf "  wp-db-import                    Run the main import function\n"
     printf "  wp-db-import show-links         Show local site links\n"
-    printf "  wp-db-import show-links         Show local site links\n"
     printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
     printf "  wp-db-import setup-proxy        Setup stage file proxy plugin\n"
     printf "  wp-db-import detect             Detect WordPress installation type\n"

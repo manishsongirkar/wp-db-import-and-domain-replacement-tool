@@ -551,6 +551,8 @@ if is_sourced; then
         export -f validate_wordpress_installation
         export -f check_wpcli_availability
         export -f create_temp_file
+        export -f check_wp_config_constant
+        export -f detect_multisite_filesystem_indicators
     } 2>/dev/null
 fi
 
@@ -575,6 +577,45 @@ find_wordpress_root() {
 
     echo "$wp_root"
     return 0
+}
+
+# -----------------------------------------------
+# Check if a constant in wp-config.php matches expected value
+# Usage: check_wp_config_constant CONSTANT_NAME EXPECTED_VALUE [wp_config_path]
+# Returns: "true" if found, "false" otherwise
+check_wp_config_constant() {
+    local constant="$1"
+    local expected="$2"
+    local config_path="${3:-wp-config.php}"
+
+    if [[ ! -f "$config_path" ]]; then
+        echo "false"
+        return 1
+    fi
+
+    if grep -q "define.*${constant}.*${expected}" "$config_path" 2>/dev/null || \
+       grep -q "define('${constant}', ${expected})" "$config_path" 2>/dev/null || \
+       grep -q "define(\"${constant}\", ${expected})" "$config_path" 2>/dev/null; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+# -----------------------------------------------
+# Detect multisite-related filesystem indicators
+# Usage: detect_multisite_filesystem_indicators WP_ROOT
+# Returns: Comma-separated list of indicators found
+detect_multisite_filesystem_indicators() {
+    local wp_root="$1"
+    local indicators=()
+
+    [[ -d "$wp_root/wp-content/blogs.dir" ]] && indicators+=("blogs.dir")
+    [[ -d "$wp_root/wp-content/uploads/sites" ]] && indicators+=("uploads/sites")
+    [[ -d "$wp_root/wp-content/mu-plugins" ]] && [[ -n "$(ls -A "$wp_root/wp-content/mu-plugins" 2>/dev/null)" ]] && indicators+=("mu-plugins")
+    [[ -f "$wp_root/.htaccess" ]] && grep -q "RewriteRule.*wp-includes/ms-files.php" "$wp_root/.htaccess" 2>/dev/null && indicators+=("htaccess-rules")
+
+    ((${#indicators[@]})) && echo "${indicators[*]}" || echo ""
 }
 
 # -----------------------------------------------
