@@ -223,6 +223,32 @@ execute_wp_cli() {
 
 ## 🧪 Testing Guidelines
 
+### Compatibility Test Suite (Required)
+
+Before committing and pushing changes, you must verify compatibility across global systems using the provided automated test cases. This ensures your code works on all supported Bash versions and environments.
+
+#### Run the Compatibility Test Suite
+
+```bash
+# Run full compatibility tests (Bash 3.2, 4.x, 5.x, zsh, POSIX sh)
+./lib/tests/compatibility/test_bash_versions.sh
+
+# Run simple compatibility check
+./lib/tests/compatibility/test_simple_compat.sh
+```
+
+- The test suite covers:
+  - Associative array fallback logic
+  - Nameref/global variable access
+  - Case conversion (native and fallback)
+  - Array reading (mapfile/readarray/manual)
+  - Edge cases and error handling
+  - Cross-shell compatibility (bash, zsh, sh)
+
+- **You must ensure all tests pass before submitting a PR.**
+- If you add new features, update or add new test cases in the appropriate test files.
+- For details, see `docs/BASH_COMPATIBILITY.md` and `lib/tests/compatibility/`.
+
 ### Manual Testing Checklist
 
 Before submitting a pull request, test your changes with:
@@ -366,9 +392,7 @@ What actually happened.
 - Database size: ~50MB
 
 **Error Logs**
-```bash
-# Paste relevant error messages or log contents
-```
+Paste relevant error messages or log contents
 
 **Additional Context**
 Any other relevant information.
@@ -399,20 +423,63 @@ Any other relevant information or mockups.
 
 Understanding the project structure helps with contributions:
 
-```
+```bash
 wp-db-import-and-domain-replacement-tool/
-├── import_wp_db.sh                    # Main script with core functionality
-├── lib/                              # Modular library system
-│   ├── module_loader.sh              # Central module loading system
-│   └── core/
-│       └── utils.sh                  # Core utilities (includes color management)
-├── setup-stage-file-proxy.sh         # Stage File Proxy plugin setup
-├── show_local_site_links.sh          # Display local site access links
-├── show_revision_cleanup_commands.sh # Generate MySQL cleanup commands
-├── README.md                         # Comprehensive documentation
-├── LICENSE                           # MIT license
-├── .gitignore                        # Git ignore patterns
-└── CONTRIBUTING.md                   # This file
+├── .gitignore
+├── CONTRIBUTING.md
+├── LICENSE
+├── README.md
+├── USAGE.md
+├── VERSION
+├── docs/
+│   ├── BASH_COMPATIBILITY.md
+│   ├── INSTALLATION_METHODS.md
+│   ├── TESTING.md
+│   └── VERSION_MANAGEMENT.md
+├── import_wp_db.sh
+├── install.sh
+├── uninstall.sh
+├── run_tests.sh
+├── wp-db-import
+├── wpdb-import-example-multisite.conf
+├── wpdb-import-example-single.conf
+├── lib/
+│   ├── module_loader.sh
+│   ├── version.sh
+│   ├── completion/
+│   │   ├── _wp-db-import
+│   │   └── wp-db-import.bash
+│   ├── config/
+│   │   ├── config_manager.sh
+│   │   ├── config_reader.sh
+│   │   └── integration.sh
+│   ├── core/
+│   │   ├── utils.sh
+│   │   ├── validation.sh
+│   │   └── wp_detection.sh
+│   ├── database/
+│   │   └── search_replace.sh
+│   ├── tests/
+│   │   ├── README.md
+│   │   ├── compatibility/
+│   │   │   ├── test_bash_versions.sh
+│   │   │   └── test_os_shell.sh
+│   │   ├── fixtures/
+│   │   │   └── README.md
+│   │   ├── integration/
+│   │   │   └── test_wordpress.sh
+│   │   ├── reports/
+│   │   │   └── README.md
+│   │   ├── system/
+│   │   │   └── test_environment.sh
+│   │   └── unit/
+│   │       └── test_core_functions.sh
+│   ├── utilities/
+│   │   ├── gitignore_manager.sh
+│   │   ├── revision_cleanup.sh
+│   │   ├── site_links.sh
+│   │   └── stage_file_proxy.sh
+├── reports/
 ```
 
 ### Core Files
@@ -507,7 +574,7 @@ work in progress
 
 ### Commit Message Format
 
-```
+```bash
 <type>(<scope>): <description>
 
 <body>
@@ -516,7 +583,7 @@ work in progress
 ```
 
 Example:
-```
+```bash
 feat(utils): add reusable file size display utility
 
 - Add show_file_size() function with TB/GB/MB/KB formatting

@@ -1047,31 +1047,23 @@ install_stage_file_proxy_plugin() {
 
     printf "${BLUE}Installing Stage File Proxy plugin...${RESET}\n"
 
-    # Try WordPress.org repository first
-    if wp plugin install stage-file-proxy --quiet >> "$install_log" 2>&1; then
-        printf "${GREEN}✅ Plugin installed from WordPress.org repository${RESET}\n"
-        install_success=true
-    else
-        printf "${YELLOW}⚠️  WordPress.org installation failed, trying direct download...${RESET}\n"
-
-        # Fallback: Direct download
-        local temp_plugin_file="/tmp/stage-file-proxy.zip"
-        if command -v curl >/dev/null 2>&1; then
-            if curl -sL "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" -o "$temp_plugin_file" >> "$install_log" 2>&1; then
-                if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
-                    printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                    install_success=true
-                fi
-                rm -f "$temp_plugin_file" 2>/dev/null
+    # Download Plugin
+    local temp_plugin_file="/tmp/stage-file-proxy.zip"
+    if command -v curl >/dev/null 2>&1; then
+        if curl -sL "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" -o "$temp_plugin_file" >> "$install_log" 2>&1; then
+            if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
+                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
+                install_success=true
             fi
-        elif command -v wget >/dev/null 2>&1; then
-            if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
-                if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
-                    printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                    install_success=true
-                fi
-                rm -f "$temp_plugin_file" 2>/dev/null
+            rm -f "$temp_plugin_file" 2>/dev/null
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
+            if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
+                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
+                install_success=true
             fi
+            rm -f "$temp_plugin_file" 2>/dev/null
         fi
     fi
 

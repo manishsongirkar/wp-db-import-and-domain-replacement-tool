@@ -1,89 +1,52 @@
 # WordPress Database Import & Domain Replacement Tool
 
-A robust command-line tool for WordPress database imports and domain/URL replacements, perfect for migrating environments.
+A robust, cross-platform CLI tool for WordPress database imports, domain/URL replacements, multisite migration, and advanced configuration management.
 
 ## 🚀 Quick Installation
-
 ```bash
-# 1. Clone the repository
 git clone https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git
-
-# 2. Install globally (creates symlink in ~/.local/bin)
 cd wp-db-import-and-domain-replacement-tool
 ./install.sh
-
-# 3. Use from anywhere!
-cd ~/Local\ Sites/mysite/app/public
-wp-db-import
+wp-db-import --help
 ```
 
 ## 📋 Usage
 
 ### Main Commands
 ```bash
-wp-db-import                    # Main import wizard
+wp-db-import                    # Run the main import function
 wp-db-import config-show        # Show unified configuration status
 wp-db-import config-create      # Create configuration with site mappings
 wp-db-import config-validate    # Validate configuration structure
 wp-db-import config-edit        # Open configuration in editor
 wp-db-import show-links         # Show local site links
-wp-db-import setup-proxy        # Auto-setup stage file proxy (detects config)
-```
-**Note:** Automatically includes GitIgnore protection to prevent accidental plugin commits.
-
-💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
-wp-db-import show-cleanup       # Generate database revision cleanup commands
+wp-db-import setup-proxy        # Auto-setup Stage File Proxy (uses config)
+wp-db-import show-cleanup       # Show revision cleanup commands
 wp-db-import update             # Update to latest version
-wp-db-import version            # Show version info
-wp-db-import --help             # Show help
+wp-db-import version            # Show version and git info
+wp-db-import test               # Run test suite to validate tool functionality
+wp-db-import --help             # Show this help message
 ```
 
 💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
+
+> **Note:** Autocomplete suggestions are automatically updated when you run `./install.sh`.
 
 ### Example Workflow
 ```bash
-# Navigate to WordPress directory
 cd ~/Local\ Sites/mysite/app/public
-
-# Place your SQL file in the directory
 cp ~/Downloads/production-db.sql ./
-
-# Run the import wizard
 wp-db-import
 ```
 
-## 📋 Configuration System
+## 🗂️ Configuration System
 
-### First-Time Setup
-When you run `wp-db-import` for the first time in a project, it will:
-1. Prompt for SQL file, old domain, and new domain
-2. Create a `wpdb-import.conf` file in your WordPress root
-3. For multisite, prompt for individual site mappings
-4. Save all settings for future use
-
-### Subsequent Runs
-On subsequent runs, the tool will:
-1. Load settings from the config file automatically
-2. Only prompt for new sites not yet mapped
-3. Update the config file with any new mappings
-
-### Configuration Management
-```bash
-# View current configuration
-wp-db-import config-show
-
-# Create/recreate configuration file
-wp-db-import config-create
-
-# Validate configuration format
-wp-db-import config-validate
-
-# Edit configuration file
-wp-db-import config-edit
-```
+- First run prompts for SQL file, domains, and creates `wpdb-import.conf`
+- Multisite: prompts for site mappings, saves all settings
+- Subsequent runs auto-load config, only prompt for new sites
+- Config management via `config-show`, `config-create`, `config-validate`, `config-edit`
 
 ### Example Configuration File
-The `wpdb-import.conf` file is created in your WordPress root:
 ```ini
 [general]
 sql_file=vip-db.sql
@@ -101,167 +64,98 @@ auto_proceed=false
 3:shop.production-site.com:local-site.test/shop
 ```
 
-### 📁 Configuration Examples
-
-The project includes example configuration files you can copy and customize:
-
-#### 🌐 Single Site Example
-**File**: `wpdb-import-example-single.conf`
-- For standard WordPress installations
-- Simple domain replacement setup
-- Includes all common settings with explanations
-
-#### 🗂️ Multisite Example
-**File**: `wpdb-import-example-multisite.conf`
-- For WordPress Multisite installations
-- Includes site mapping examples
-- Shows both subdirectory and subdomain patterns
-
-#### 🚀 Quick Setup Guide
-
-1. **Choose your example**: Copy the appropriate file for your setup
-2. **Rename**: Copy to your WordPress root as `wpdb-import.conf`
-3. **Customize**: Edit the settings for your specific project
-4. **Run**: Use `wp-db-import` - it will automatically use your config
-
+### Example Setup
 ```bash
-# For single site
 cp wpdb-import-example-single.conf ~/path/to/wordpress/wpdb-import.conf
-
-# For multisite
-cp wpdb-import-example-multisite.conf ~/path/to/wordpress/wpdb-import.conf
-
-# Edit the config
 nano ~/path/to/wordpress/wpdb-import.conf
-
-# Run the import
-cd ~/path/to/wordpress && wp-db-import
+wp-db-import
 ```
-
-#### ⚙️ Configuration Options Reference
-
-| Option | Description | Values |
-|--------|-------------|--------|
-| `sql_file` | Database file to import | Filename or path |
-| `old_domain` | Production domain to replace | Domain without protocol |
-| `new_domain` | Local domain to use | Domain without protocol |
-| `all_tables` | Include all database tables | `true` / `false` |
-| `dry_run` | Preview mode (no changes) | `true` / `false` |
-| `clear_revisions` | Remove post revisions first | `true` / `false` |
-| `setup_stage_proxy` | Configure media proxy | `true` / `false` |
-| `auto_proceed` | Skip confirmations | `true` / `false` |
-
-#### 💡 Configuration Tips
-
-- **Start Conservative**: Use `auto_proceed=false` until you're confident
-- **Test First**: Use `dry_run=true` for initial testing
-- **Version Control**: Add config files to your project's `.gitignore`
-- **Team Sharing**: Share config templates with your development team
 
 ## 🔄 Auto-Updates
-
-**Updates work automatically!** The installation creates a symlink to the repository, so:
-
-### Method 1: Automatic Update Command
 ```bash
-wp-db-import update
-```
-
-### Method 2: Manual Git Pull
-```bash
-cd ~/path/to/wp-db-import-and-domain-replacement-tool
-git pull
-# Changes are immediately available globally!
+wp-db-import update         # Automatic (git installations)
+cd ~/path/to/wp-db-import-and-domain-replacement-tool && git pull  # Manual
 ```
 
 ## ✨ Features
-
-- **🚀 User Local Installation** - Installs to user directory only
-- **🔗 Symlinked installation** - Updates apply immediately
-- **⌨️ Tab Completion** - Auto-complete commands with TAB key
-- **🌐 Multisite support** - Handles subdomain & subdirectory networks
-- **🗑️ Bulk revision cleanup** - High-speed cleanup via xargs
-- **📸 Stage File Proxy** - Media management between environments
-- **🔒 GitIgnore Protection** - Automatic .gitignore management for development plugins
-- **🔄 Smart domain replacement** - Handles serialized data & www variants
-- **💻 Terminal-friendly** - Colored output with progress indicators
+- User-local installation (no sudo required)
+- Symlinked global command (instant updates)
+- Tab completion for all commands
+- Multisite support (subdomain/subdirectory)
+- Bulk revision cleanup (xargs)
+- Stage File Proxy integration
+- GitIgnore protection for dev plugins
+- Smart domain replacement (handles serialized data)
+- Modern, colored terminal output
+- Full bash/zsh/POSIX compatibility (see BASH_COMPATIBILITY.md)
+- Comprehensive test suite (see TESTING.md)
 
 ## 🛠️ Requirements
-
 - WP-CLI installed and in PATH
 - WordPress installation (wp-config.php present)
 - MySQL/MariaDB database access
 - Bash shell (macOS/Linux)
 
-## 🗑️ Uninstallation
-
+## 🧪 Testing
 ```bash
-# From the repository directory
+wp-db-import test                # Run all tests (globally)
+./run_tests.sh                   # Run all tests from project directory
+./run_tests.sh compatibility     # OS/shell compatibility only
+./run_tests.sh --quick all       # Fast essential tests
+```
+See TESTING.md for full details.
+
+## 🔒 GitIgnore Protection System
+- Automatically adds `/plugins/stage-file-proxy/` to `wp-content/.gitignore`
+- Detects semantic duplicates and whitespace variations
+- Prevents accidental commits of local/staging-only plugins
+- Manual management via `add_stage_file_proxy_to_gitignore`, `show_stage_file_proxy_gitignore_status`, `remove_stage_file_proxy_from_gitignore`
+
+## 🔧 Development Structure
+```markdown
+wp-db-import-and-domain-replacement-tool/
+├── wp-db-import                        # Main executable
+├── import_wp_db.sh                     # Core import logic
+├── install.sh                          # Installer
+├── uninstall.sh                        # Uninstaller
+├── VERSION                             # Version file
+├── README.md                           # Main documentation
+├── USAGE.md                            # Usage guide
+├── CONTRIBUTING.md                     # Contributor guidelines
+├── LICENSE                             # License file
+├── lib/
+│   ├── module_loader.sh                # Module loader
+│   ├── version.sh                      # Version management
+│   ├── completion/                     # Autocomplete scripts
+│   ├── config/                         # Config management modules
+│   ├── core/                           # Core utilities
+│   ├── database/                       # Database utilities
+│   ├── tests/                          # Test framework and suites
+│   ├── utilities/                      # Utility modules
+├── docs/                               # Documentation
+│   ├── BASH_COMPATIBILITY.md           # Bash compatibility info
+│   ├── INSTALLATION_METHODS.md         # Installation methods
+│   ├── TESTING.md                      # Test documentation
+│   ├── VERSION_MANAGEMENT.md           # Version management
+├── reports/                            # Test reports (generated)
+│   ├── test_results.html               # HTML report
+│   ├── test_results.json               # JSON report
+│   ├── test_results.txt                # Text report
+├── temp/                               # Temporary files, examples, modules
+│   ├── examples/                       # Example configs/scripts
+│   ├── modules/                        # Example modules
+│   ├── patterns/                       # Example patterns
+│   ├── utilities/                      # Example utilities
+├── wpdb-import-example-single.conf     # Example single-site config
+├── wpdb-import-example-multisite.conf  # Example multisite config
+```
+
+## 🗑️ Uninstallation
+```bash
 ./uninstall.sh
 ```
 
-## 🔒 GitIgnore Protection System
-
-The tool includes comprehensive GitIgnore management for Stage File Proxy and other development plugins:
-
-### Automatic Protection
-- **Seamless Integration**: Automatically adds `/plugins/stage-file-proxy/` to `wp-content/.gitignore`
-- **Smart Detection**: Recognizes semantic equivalent entries already present
-- **Cross-Platform**: Works reliably across macOS, Linux, and Flywheel hosting environments
-- **Prevents Accidents**: Blocks accidental commits of local/staging-only plugins
-
-### Semantic Duplicate Detection
-The enhanced gitignore manager can detect and handle these equivalent entries:
-- `./plugins/stage-file-proxy/` ↔ `/plugins/stage-file-proxy/`
-- `plugins/stage-file-proxy/` ↔ `/plugins/stage-file-proxy/`
-- `plugins/stage-file-proxy` ↔ `/plugins/stage-file-proxy/`
-- Plus whitespace variations and trailing slash differences
-
-### Manual GitIgnore Operations
-```bash
-# Load the gitignore manager module
-source lib/utilities/gitignore_manager.sh
-
-# Add stage-file-proxy to .gitignore
-add_stage_file_proxy_to_gitignore
-
-# Check current gitignore status
-show_stage_file_proxy_gitignore_status
-
-# Remove from gitignore (if needed)
-remove_stage_file_proxy_from_gitignore
-```
-
-### Example Output
-```
-🔒 Securing plugin from accidental repository commits...
-
-🎉 Success!
-The Stage File Proxy plugin will now be ignored by Git.
-```
-
-## 🔧 Development
-
-### File Structure
-```
-wp-db-import-and-domain-replacement-tool/
-├── wp-db-import              # Main executable (global command)
-├── import_wp_db.sh           # Core import functionality
-├── install.sh                # Installation script
-├── uninstall.sh              # Clean removal
-├── VERSION                   # Version file
-└── lib/
-    ├── module_loader.sh      # Module loading system
-    ├── version.sh            # Version management script
-    ├── core/                 # Core utilities
-    └── utilities/            # Modular utility functions
-        ├── site_links.sh     # Local site link display
-        ├── stage_file_proxy.sh # Media proxy setup
-        └── revision_cleanup.sh # Cleanup commands
-```
-
-### Backward Compatibility
-The original sourcing method still works:
+## 🕰️ Backward Compatibility
 ```bash
 source ~/wp-db-import-and-domain-replacement-tool/import_wp_db.sh
 import_wp_db
