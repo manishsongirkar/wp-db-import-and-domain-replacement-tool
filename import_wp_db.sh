@@ -882,7 +882,8 @@ import_wp_db() {
       printf "\n"
 
       # Determine if multisite is subdirectory or subdomain (affects search-replace logic)
-      printf "${CYAN}🌐 %s Multisite Detected${RESET}\n" "$(echo ${multisite_type^})"
+      site_type_label=$(printf '%s' "$multisite_type" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
+      printf "${CYAN}🌐 %s Multisite Detected${RESET}\n" "$site_type_label"
       printf "Using configuration-aware site mapping...\n\n"
 
       # Handle site mappings with config system
@@ -1347,181 +1348,6 @@ ${subsite_line}"
 
   printf "\n${GREEN}${BOLD}🎉 All done!${RESET} Database import and replacements completed successfully.\n\n"
 
-  # ✅ wp_blogs/wp_site tables updated earlier (before search-replace) - OLD LOGIC DISABLED
-  if [[ "1" == "0" && "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 ]]; then
-    printf "\n${CYAN}${BOLD}🔧 Updating wp_blogs and wp_site tables automatically...${RESET}\n"
-    printf "================================================================\n\n"
-
-    # Extract the base domain from the main site mapping for wp_site update
-    local base_domain=""
-    local main_site_new_domain=""
-    local main_site_old_domain=""
-
-    # Find the main site mapping for base_domain calculation
-    local array_length=${#domain_keys[@]}
-    for ((i=0; i<array_length; i++)); do
-        local blog_id="${domain_blog_ids[i]}"
-        if [[ "$blog_id" == "$main_site_id" ]]; then
-            main_site_new_domain="${domain_values[i]}"
-            main_site_old_domain="${domain_keys[i]}"
-            break
-        fi
-    done
-
-    if [[ -n "$main_site_new_domain" ]]; then
-      base_domain="$main_site_new_domain"
-      # Remove protocol if present
-      base_domain="${base_domain#http://}"
-      base_domain="${base_domain#https://}"
-      # Remove trailing slash
-      base_domain="${base_domain%/}"
-      # Remove path if it's a subdirectory setup (we only want the base domain)
-      base_domain="${base_domain%%/*}"
-    fi
-
-    if [[ -n "$base_domain" ]]; then
-      printf "${CYAN}🔄 Executing wp_blogs and wp_site table updates via wp eval...${RESET}\n\n"
-
-      # Build the wp eval command with all necessary updates
-      local wp_eval_commands="global \\\$wpdb;"
-      local processed_blog_ids=()
-
-      # Generate wp_blogs UPDATE commands for subsites (ID != main_site_id)
-      printf "${YELLOW}📝 Preparing wp_blogs updates for subsites...${RESET}\n"
-      for ((i=0; i<array_length; i++)); do
-        local old_domain="${domain_keys[i]}"
-        local new_domain="${domain_values[i]}"
-        local blog_id="${domain_blog_ids[i]}"
-
-        # Skip main site for now
-        if [[ "$blog_id" == "$main_site_id" ]]; then
-          continue
-        fi
-
-        # Skip if empty or unchanged
-        if [[ -z "$new_domain" || "$old_domain" == "$new_domain" ]]; then
-          continue
-        fi
-
-        # Check for duplicates
-        local duplicate_blog_id=false
-        for processed_id in "${processed_blog_ids[@]}"; do
-          if [[ "$processed_id" == "$blog_id" ]]; then
-            duplicate_blog_id=true
-            break
-          fi
-        done
-
-        if [[ "$duplicate_blog_id" == true ]]; then
-          continue
-        fi
-
-        processed_blog_ids+=("$blog_id")
-
-        # Calculate the target domain and path
-        local target_domain="$base_domain"
-        local site_path="/"
-        local clean_new_domain="$new_domain"
-        clean_new_domain="${clean_new_domain#http://}"
-        clean_new_domain="${clean_new_domain#https://}"
-
-        # Extract path component for subdirectory setups
-        if [[ "$clean_new_domain" == *"/"* ]]; then
-          local path_part="${clean_new_domain#*/}"
-          if [[ -n "$path_part" ]]; then
-            site_path="/${path_part}"
-            if [[ ! "$site_path" =~ /$ ]]; then
-              site_path="${site_path}/"
-            fi
-          fi
-        fi
-
-        # For subdomain setups, use the full domain
-        if [[ "$multisite_type" != "subdirectory" ]]; then
-          local domain_part="$clean_new_domain"
-          domain_part="${domain_part%/}"
-          domain_part="${domain_part%%/*}"
-          target_domain="$domain_part"
-        fi
-
-        if [[ "$site_path" == "//" ]]; then
-          site_path="/"
-        fi
-
-        # Add to wp eval commands
-        wp_eval_commands="${wp_eval_commands} \\\$wpdb->query(\\\"UPDATE wp_blogs SET domain='${target_domain}', path='${site_path}' WHERE blog_id=${blog_id};\\\");"
-        printf "  → Blog ID %s: %s → %s%s\n" "$blog_id" "$old_domain" "$target_domain" "$site_path"
-      done
-
-      # Generate wp_blogs UPDATE command for main site (ID = main_site_id)
-      printf "\n${YELLOW}📝 Preparing wp_blogs update for main site (ID: %s)...${RESET}\n" "$main_site_id"
-      if [[ -n "$main_site_new_domain" ]]; then
-          local main_site_path="/"
-          local target_domain="$base_domain"
-
-          if [[ "$multisite_type" != "subdirectory" ]]; then
-            local domain_part="$main_site_new_domain"
-            domain_part="${domain_part#http://}"
-            domain_part="${domain_part#https://}"
-            domain_part="${domain_part%/}"
-            domain_part="${domain_part%%/*}"
-            target_domain="$domain_part"
-          fi
-
-          wp_eval_commands="${wp_eval_commands} \\\$wpdb->query(\\\"UPDATE wp_blogs SET domain='${target_domain}', path='${main_site_path}' WHERE blog_id=${main_site_id};\\\");"
-          printf "  → Blog ID %s: %s → %s%s\n" "$main_site_id" "$main_site_old_domain" "$target_domain" "$main_site_path"
-      fi
-
-      # Generate wp_site UPDATE command
-      printf "\n${YELLOW}📝 Preparing wp_site update for network (ID: 1)...${RESET}\n"
-      wp_eval_commands="${wp_eval_commands} \\\$wpdb->query(\\\"UPDATE wp_site SET domain='${base_domain}' WHERE id=1;\\\");"
-      printf "  → Site ID 1: Network domain → %s\n" "$base_domain"
-
-      # Add success message
-      wp_eval_commands="${wp_eval_commands} echo '✅ wp_blogs and wp_site updated successfully.';"
-
-      printf "\n${CYAN}⚡ Executing database updates...${RESET}\n"
-
-      # Execute the wp eval command using the original search domain for --url parameter
-      # This ensures WP-CLI can connect to the site before we update the domain tables
-      local eval_log="/tmp/wp_eval_updates_$$.log"
-      local eval_output eval_exit_code
-
-      # Use the original search_domain (before replacement) to execute wp eval
-      # This is crucial because after search-replace, the URLs are mixed and WP-CLI needs a valid reference point
-      if [[ -n "$main_site_old_domain" ]]; then
-        printf "${CYAN}   Using original domain for WP-CLI connection: %s${RESET}\n" "$main_site_old_domain"
-        eval_output=$(execute_wp_cli eval "$wp_eval_commands" --url="$main_site_old_domain" 2>&1)
-      else
-        printf "${CYAN}   Using fallback domain for WP-CLI connection: %s${RESET}\n" "$search_domain"
-        eval_output=$(execute_wp_cli eval "$wp_eval_commands" --url="$search_domain" 2>&1)
-      fi
-      eval_exit_code=$?
-
-      if [[ $eval_exit_code -eq 0 ]]; then
-        printf "${GREEN}✅ Database tables updated successfully!${RESET}\n"
-        printf "${GREEN}   %s${RESET}\n" "$eval_output"
-
-        # Set flag to indicate automatic updates were successful
-        local auto_updates_successful="yes"
-      else
-        printf "${RED}❌ Failed to update database tables automatically${RESET}\n"
-        printf "${RED}   Error: %s${RESET}\n\n" "$eval_output"
-        printf "${YELLOW}💡 Falling back to manual MySQL commands...${RESET}\n\n"
-
-        # Set flag to show manual commands as fallback
-        local auto_updates_successful="no"
-      fi
-
-      # Clean up eval log
-      rm -f "$eval_log" 2>/dev/null
-
-    else
-      printf "${YELLOW}⚠️  Could not determine base domain - falling back to manual MySQL commands${RESET}\n"
-      local auto_updates_successful="no"
-    fi
-  fi
-
   # 📋 Generate and display MySQL commands for manual execution (fallback only if early auto-updates failed)
   if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 && "${auto_updates_successful:-yes}" == "no" ]]; then
     printf "\n================================================================\n"
@@ -1556,7 +1382,7 @@ ${subsite_line}"
     fi
 
     if [[ -n "$base_domain" ]]; then
-      printf "-- 1. Update wp_blogs table: blog domain and path for SUB-SITES (ID != %s)\n\n" "$main_site_id"
+      printf "\n-- 1. Update wp_blogs table: blog domain and path for SUB-SITES (ID != %s)\n\n" "$main_site_id"
 
       # Generate commands for each mapped subsite domain
       local processed_blog_ids=() # Track processed blog_ids to prevent duplicates
@@ -1612,7 +1438,7 @@ ${subsite_line}"
         done
 
         if [[ "$duplicate_blog_id" == true ]]; then
-          printf "-- Skipping duplicate blog_id %s for domain %s\n" "$blog_id" "$old_domain"
+          printf "\n-- Skipping duplicate blog_id %s for domain %s\n" "$blog_id" "$old_domain"
           continue
         fi
 
@@ -1654,7 +1480,7 @@ ${subsite_line}"
           # Output the command for wp_blogs main_site_id
           printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Main Site)\n" "$target_domain" "$main_site_path" "$main_site_id" "$main_site_old_domain" "$main_site_new_domain"
       else
-          printf "-- WARNING: Main site mapping (ID %s) not found to generate wp_blogs command.\n" "$main_site_id"
+          printf "\n-- WARNING: Main site mapping (ID %s) not found to generate wp_blogs command.\n" "$main_site_id"
       fi
 
       printf "\n-- 3. Update wp_site table: the main network site domain (ID = 1)\n"
