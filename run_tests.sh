@@ -106,7 +106,7 @@ END_TIME=""
 cleanup_old_reports() {
     local output_dir="$1"
     if [[ -d "$output_dir" ]]; then
-        echo "🧹 Cleaning up old reports in $output_dir..."
+        # echo "🧹 Cleaning up old reports in $output_dir..."
         rm -rf "$output_dir"/*.html "$output_dir"/*.json "$output_dir"/*.txt 2>/dev/null || true
         # DON'T remove test_sessions here - wait until after report generation
     fi
@@ -402,7 +402,7 @@ run_test_suite() {
     local test_script="$2"
     local suite_description="$3"
 
-    log_info "Running $suite_name tests..."
+    # log_info "Running $suite_name tests..."
 
     if [[ ! -f "$test_script" ]]; then
         log_warning "$suite_name test script not found: $test_script"
@@ -568,7 +568,7 @@ run_unit_tests() {
 #   - Relies on the main `wp-db-import` executable being available.
 #
 run_validation_tests() {
-    log_info "Running validation tests..."
+    # log_info "Running validation tests..."
 
     local start_time=$(date +%s)
     local result=0
@@ -1243,6 +1243,7 @@ generate_reports() {
         return 1
     fi
 
+    echo ""
     log_info "Generating test reports..."
 
     for format in "${REPORT_FORMATS[@]}"; do
@@ -1301,6 +1302,7 @@ main() {
     if [[ "$CI_MODE" != "true" ]]; then
         printf "${BOLD}${CYAN}"
         cat << 'EOF'
+
 ╭─────────────────────────────────────────────────────────────────╮
 │  🧪 WordPress Database Import & Domain Replacement Tool Tests   │
 ╰─────────────────────────────────────────────────────────────────╯
@@ -1344,7 +1346,7 @@ EOF
             fi
         fi
 
-        printf "\n${DIM}Reports available in: %s${RESET}\n" "$OUTPUT_DIR"
+        # printf "\n${DIM}Reports available in: %s${RESET}\n" "$OUTPUT_DIR"
     fi
 
     return $test_result

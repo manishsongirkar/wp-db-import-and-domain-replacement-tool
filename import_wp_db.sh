@@ -1023,11 +1023,14 @@ ${subsite_line}"
         printf "${YELLOW}⚠️  No saved mappings found in config file${RESET}\n"
       fi
 
-      printf "\n🧾 ${BOLD}Domain mapping summary:${RESET}\n"
-      printf "    ${CYAN}ℹ️  Main site detected:${RESET} Blog ID %s (via WordPress database)\n" "$main_site_id"
+      printf "\n🧾 ${BOLD}Domain Mapping Summary:${RESET}\n\n"
+      # printf "    ${CYAN}ℹ️  Main site detected:${RESET} Blog ID %s (via WordPress database)\n" "$main_site_id"
 
       # --- Summary Loop using parallel arrays ---
       local array_length=${#domain_keys[@]}
+
+      printf "  %-9s %-35s → %s\n" "Blog ID" "Production Domain" "Local Domain"
+      printf "  %-9s %-35s   %s\n" "-------" "-----------------" "------------"
 
       for ((i=0; i<array_length; i++)); do
 
@@ -1036,30 +1039,28 @@ ${subsite_line}"
         local id="${domain_blog_ids[i]}"
         local site_path_var="${domain_paths[i]}"
 
-        # Check if key already contains path (from config storage fix)
         local display_key="$key"
         if [[ "$site_path_var" != "/" ]]; then
-            # Clean the path for comparison (remove trailing slash)
             local clean_path="${site_path_var%/}"
-            # Check if key already ends with the exact clean path
             if [[ -n "$clean_path" && "$key" != *"$clean_path" ]]; then
-                # Key doesn't contain this exact path yet, add it for display
                 display_key="${key}${clean_path}"
             fi
         fi
-        # If key already contains path, use as-is
 
-        local site_marker=""
-        if [[ "$id" == "$main_site_id" ]]; then
-          site_marker=" ${BOLD}(Main Site)${RESET}"
+        local main_site_emoji="    "
+        if [ "$id" = "$main_site_id" ]; then
+            main_site_emoji="🏠  "
         fi
 
         if [[ -z "$value" ]]; then
-          printf "    ❌ [ID: %s] %s → (no mapping found)%s\n" "$id" "$display_key" "$site_marker"
+          printf "  %-4s %s %-35s → %s\n" \
+              "$id" "$main_site_emoji" "$display_key" "(no mapping found)"
         elif [[ "$key" == "$value" ]]; then
-          printf "    ⏭️  [ID: %s] %s → (unchanged)%s\n" "$id" "$display_key" "$site_marker"
+            printf "  %-4s %s %-35s → %s\n" \
+                "$id" "$main_site_emoji" "$display_key" "(unchanged)"
         else
-          printf "    🔁 [ID: %s] %s → ${GREEN}%s${RESET}%s\n" "$id" "$display_key" "$value" "$site_marker"
+            printf "  %-4s %s %-35s → ${GREEN}%s${RESET}\n" \
+                "$id" "$main_site_emoji" "$display_key" "$value"
         fi
       done
 

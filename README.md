@@ -677,7 +677,6 @@ Using configuration-aware site mapping...
 ✅ Configuration updated with new site mappings
 
 🧾 Domain mapping summary:
-    ℹ️  Main site detected: Blog ID 1 (via WordPress database)
     🔁 [ID: 1] admin.example.com/ → example.test
     🔁 [ID: 2] shop.example.com/ → example.test/shop
     🔁 [ID: 3] blog.example.com/ → example.test/blog
