@@ -3,8 +3,11 @@
 # ===============================================
 # Zsh Completion for wp-db-import command
 # ===============================================
-#
-# This provides tab completion for wp-db-import command options in zsh
+## Zsh Completion Script for the `wp-db-import` command.
+##
+## This script provides tab completion for the command and its options
+## in the Zsh shell environment, enhancing usability and speed.
+##
 #
 # Installation:
 #   This file is automatically sourced when wp-db-import is installed
@@ -14,6 +17,12 @@
 #   wp-db-import conf<TAB>  # Completes to config-* commands
 #
 
+## @brief Provides Zsh completions for the `wp-db-import` command.
+##
+## This function uses the standard Zsh completion system to describe the
+## available subcommands for `wp-db-import` by listing them and their descriptions.
+##
+## @param $@ Standard Zsh completion arguments.
 _wp_db_import() {
     local context state state_descr line
     local -a commands

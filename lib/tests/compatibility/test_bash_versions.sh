@@ -1,19 +1,65 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # Bash Version Compatibility Tests
-# ===============================================
+# ================================================================
 #
-# Tests for different Bash versions to catch bashisms and
-# version-specific issues. Covers Bash 3.2, 4.x, and 5.x features.
+# Description:
+#   A comprehensive test suite designed to verify the availability and
+#   correct behavior of specific features across different major Bash versions,
+#   including 3.2, 4.x, and 5.x. This suite helps ensure that the main
+#   application script avoids known "bashisms" that would break in older
+#   or non-standard environments, while still utilizing modern features where available.
 #
-# ===============================================
+# Key Features Tested:
+# - Bash version detection and feature availability.
+# - Specific features of Bash 3.2, 4.x (e.g., associative arrays), and 5.x (e.g., namerefs).
+# - Common Bashisms (e.g., `[[ ]], $()`, process substitution).
+# - Array handling, parameter expansion, and command substitution compatibility.
+# - Strict mode (`set -e`) adherence.
+#
+# Functions provided:
+# - test_bash_version_detection
+# - test_bash_3_2_compatibility
+# - test_bash_4_features
+# - test_bash_5_features
+# - test_bashism_detection
+# - test_array_compatibility
+# - test_parameter_expansion
+# - test_command_substitution
+# - test_strict_mode_compatibility
+# - run_bash_version_tests
+#
+# Dependencies:
+# - test_framework.sh (Must be sourced for test session management)
+# - Color constants (e.g., ${CYAN}, ${YELLOW}, ${RED}, ${BOLD}, ${RESET}, ${DIM})
+#
+# Usage:
+#   ./test/bash_compatibility.sh
+#
+# ================================================================
 
 # Source the test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_framework.sh"
 
+# ===============================================
 # Test Bash version detection
+# ===============================================
+#
+# Description: Verifies that the script is running within a Bash environment
+#              and successfully extracts the major and minor version numbers.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test` based on the detection result.
+#
+# Behavior:
+#   - Checks for the presence of the $BASH_VERSION variable.
+#   - Uses `cut` to isolate major and minor version components.
+#
 test_bash_version_detection() {
     start_test "Bash Version Detection" "Test accurate detection of Bash version and features"
 
@@ -31,7 +77,24 @@ test_bash_version_detection() {
     fi
 }
 
-# Test Bash 3.2 compatibility (common on older macOS)
+# ===============================================
+# Test Bash 3.2 compatibility
+# ===============================================
+#
+# Description: Tests critical features that should either work (arrays, regex)
+#              or deliberately fail (associative arrays) in the Bash 3.2 environment
+#              (common on older macOS).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Only executes if the current Bash version is exactly 3.2.
+#   - Checks array handling, associative array availability, and regex operator (`=~`).
+#
 test_bash_3_2_compatibility() {
     start_test "Bash 3.2 Compatibility" "Test functionality with Bash 3.2 limitations"
 
@@ -71,7 +134,23 @@ test_bash_3_2_compatibility() {
     fi
 }
 
+# ===============================================
 # Test Bash 4.x features
+# ===============================================
+#
+# Description: Checks for the availability of key features introduced in Bash 4.0
+#              and later, which are crucial for more efficient modern scripting.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Only executes if the current Bash version is 4.x or higher.
+#   - Tests associative arrays, case modification (`${var,,}`), and `mapfile`/`readarray`.
+#
 test_bash_4_features() {
     start_test "Bash 4.x Features" "Test Bash 4.x specific features availability"
 
@@ -124,7 +203,25 @@ test_bash_4_features() {
     fi
 }
 
+# ===============================================
 # Test Bash 5.x features
+# ===============================================
+#
+# Description: Checks for the availability of features introduced in Bash 5.0
+#              and later, such as namerefs and negative array indexing.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Only executes if the current Bash version is 5.x or higher.
+#   - Tests nameref variables (`declare -n`).
+#   - Tests negative array indices (e.g., `${array[-1]}`).
+#   - Tests new parameter expansion syntax (e.g., `${var@U}`).
+#
 test_bash_5_features() {
     start_test "Bash 5.x Features" "Test Bash 5.x specific features availability"
 
@@ -175,7 +272,25 @@ test_bash_5_features() {
     fi
 }
 
+# ===============================================
 # Test for common bashisms that break in other shells
+# ===============================================
+#
+# Description: Checks for the availability of common Bash-specific constructs
+#              which may lead to incompatibility if the script is run in a
+#              different shell (like dash or older ksh).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks `[[ ]]` conditional construct.
+#   - Checks process substitution (`<()`).
+#   - Checks brace expansion (`{1..3}`).
+#
 test_bashism_detection() {
     start_test "Bashism Detection" "Test detection of bash-specific constructs"
 
@@ -221,7 +336,23 @@ test_bashism_detection() {
     fi
 }
 
+# ===============================================
 # Test array handling across versions
+# ===============================================
+#
+# Description: Tests fundamental array operations, including creation, length
+#              calculation, element access (especially with spaces), iteration,
+#              and appending (`+=`), which are essential for core logic.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Performs tests critical to compatibility across Bash 3.2+ where basic arrays are supported.
+#
 test_array_compatibility() {
     start_test "Array Compatibility" "Test array handling across different Bash versions"
 
@@ -278,7 +409,25 @@ test_array_compatibility() {
     fi
 }
 
+# ===============================================
 # Test parameter expansion compatibility
+# ===============================================
+#
+# Description: Tests various parameter expansion operations used for string
+#              manipulation (substring removal, substitution, default values).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Tests `${var#pattern}` (remove prefix).
+#   - Tests `${var%pattern}` (remove suffix).
+#   - Tests `${var/pattern/replacement}` (substitution).
+#   - Tests `${var:-default}` (default assignment).
+#
 test_parameter_expansion() {
     start_test "Parameter Expansion" "Test parameter expansion across Bash versions"
 
@@ -329,7 +478,24 @@ test_parameter_expansion() {
     fi
 }
 
+# ===============================================
 # Test command substitution compatibility
+# ===============================================
+#
+# Description: Tests both modern (`$()`) and legacy (``) command substitution
+#              methods, including nested usage, to ensure reliable command output capture.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Tests `$()` syntax.
+#   - Tests `\`` syntax.
+#   - Tests nested substitution.
+#
 test_command_substitution() {
     start_test "Command Substitution" "Test command substitution methods"
 
@@ -370,7 +536,23 @@ test_command_substitution() {
     fi
 }
 
+# ===============================================
 # Test script compatibility with set -e and other strict modes
+# ===============================================
+#
+# Description: Verifies that the shell correctly honors the `set -e` (exit on error)
+#              strict mode, ensuring that unhandled failures terminate execution early.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Runs a subshell where `set -e` is active.
+#   - Checks if a non-handled `false` command causes the script to terminate before printing "after\_false".
+#
 test_strict_mode_compatibility() {
     start_test "Strict Mode Compatibility" "Test script behavior with strict shell options"
 
@@ -395,7 +577,24 @@ test_strict_mode_compatibility() {
     fi
 }
 
+# ===============================================
 # Run all Bash version compatibility tests
+# ===============================================
+#
+# Description: The primary entry point function that initializes the test session
+#              and executes all individual Bash compatibility test functions sequentially.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - The exit code of the final `finalize_test_session` call (0 on success, non-zero on failure).
+#
+# Behavior:
+#   - Calls `init_test_session`.
+#   - Executes all `test_*` functions in logical order.
+#   - Calls `finalize_test_session`.
+#
 run_bash_version_tests() {
     init_test_session "bash_version_compatibility"
 

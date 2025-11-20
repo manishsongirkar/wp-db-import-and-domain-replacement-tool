@@ -1,19 +1,68 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # OS and Shell Compatibility Tests
-# ===============================================
+# ================================================================
 #
-# Tests for different Unix-based operating systems and shell types
-# to ensure the WordPress import tool works across various environments.
+# Description:
+#   A comprehensive test suite designed to verify the compatibility of the
+#   WordPress import tool across various Unix-like operating systems (Linux,
+#   macOS, BSD) and different shell environments (Bash, Zsh, POSIX sh).
+#   It also includes checks for Windows compatibility layers like WSL and Cygwin/MSYS2,
+#   and tests for differences in core utility implementations (GNU vs. BSD).
 #
-# ===============================================
+# Key Features Tested:
+# - OS and shell environment detection.
+# - Platform-specific command availability (Linux, macOS, BSD).
+# - Core POSIX shell compliance.
+# - Bash and Zsh specific feature availability.
+# - Behavior within WSL and Cygwin/MSYS2 environments.
+# - Utility implementation differences (sed, awk, grep).
+#
+# Functions provided:
+# - test_os_detection
+# - test_shell_detection
+# - test_linux_compatibility
+# - test_macos_compatibility
+# - test_bsd_compatibility
+# - test_posix_compliance
+# - test_bash_features
+# - test_zsh_compatibility
+# - test_wsl_compatibility
+# - test_cygwin_compatibility
+# - test_utility_differences
+# - run_os_shell_tests
+#
+# Dependencies:
+# - test_framework.sh (Must be sourced for test session management)
+# - External functions: `detect_os`, `detect_shell`, `require_platform`, `detect_bash_features`, `detect_utilities`.
+# - Color constants (e.g., ${CYAN}, ${BOLD}, ${RESET}, ${DIM})
+#
+# Usage:
+#   ./test/os_shell_compatibility.sh
+#
+# ================================================================
 
 # Source the test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_framework.sh"
 
+# ===============================================
 # Test OS compatibility detection
+# ===============================================
+#
+# Description: Verifies the functionality of the `detect_os` external function
+#              to ensure the host operating system name and version can be reliably identified.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test` based on the detection result.
+#
+# Behavior:
+#   - Executes `detect_os` and parses the output string (format: name|version).
+#
 test_os_detection() {
     start_test "OS Detection" "Test operating system detection functionality"
 
@@ -28,7 +77,22 @@ test_os_detection() {
     fi
 }
 
+# ===============================================
 # Test shell compatibility detection
+# ===============================================
+#
+# Description: Verifies the functionality of the `detect_shell` external function
+#              to ensure the current shell type and version can be reliably identified.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test` based on the detection result.
+#
+# Behavior:
+#   - Executes `detect_shell` and parses the output string (format: name|version).
+#
 test_shell_detection() {
     start_test "Shell Detection" "Test shell type and version detection"
 
@@ -43,7 +107,22 @@ test_shell_detection() {
     fi
 }
 
+# ===============================================
 # Test Linux distribution compatibility
+# ===============================================
+#
+# Description: Checks for the availability of essential system commands typically
+#              found on all standard Linux distributions (e.g., `uname`, `grep`, `awk`, `sed`).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or returns 0 if the platform is not Linux.
+#
+# Behavior:
+#   - Uses `require_platform "linux"` to conditionally run the test.
+#
 test_linux_compatibility() {
     if ! require_platform "linux"; then
         return 0
@@ -69,7 +148,24 @@ test_linux_compatibility() {
     fi
 }
 
+# ===============================================
 # Test macOS compatibility
+# ===============================================
+#
+# Description: Checks for macOS-specific commands and notes the implementation type
+#              of core tools like `sed` (BSD vs GNU), which affects scripting logic.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or returns 0 if the platform is not macOS.
+#
+# Behavior:
+#   - Uses `require_platform "macos"` to conditionally run the test.
+#   - Checks `sw_vers` and `defaults` commands.
+#   - Attempts to identify `sed` flavor.
+#
 test_macos_compatibility() {
     if ! require_platform "macos"; then
         return 0
@@ -102,7 +198,22 @@ test_macos_compatibility() {
     fi
 }
 
+# ===============================================
 # Test BSD systems compatibility
+# ===============================================
+#
+# Description: Checks for the presence of typical BSD utilities (e.g., `pkg_info`, `jot`)
+#              to confirm the environment is BSD-based.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `skip_test`, or returns 0 if the platform is not BSD.
+#
+# Behavior:
+#   - Uses `require_platform "bsd"` to conditionally run the test.
+#
 test_bsd_compatibility() {
     if ! require_platform "bsd"; then
         return 0
@@ -128,7 +239,22 @@ test_bsd_compatibility() {
     fi
 }
 
+# ===============================================
 # Test POSIX shell compliance
+# ===============================================
+#
+# Description: Executes a set of basic commands using `/bin/sh` to test strict
+#              adherence to the minimum POSIX shell standards.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Runs simple checks for environment variables, directory testing, and basic piping/commands.
+#
 test_posix_compliance() {
     start_test "POSIX Shell Compliance" "Test script compatibility with POSIX shell standards"
 
@@ -155,7 +281,23 @@ test_posix_compliance() {
     fi
 }
 
+# ===============================================
 # Test bash-specific features
+# ===============================================
+#
+# Description: Checks the availability and health of advanced Bash features
+#              (e.g., associative arrays, regex operator) necessary for Bash-optimized modules.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or returns 0 if the platform is not Bash.
+#
+# Behavior:
+#   - Uses `require_platform "bash"` to conditionally run the test.
+#   - Calls the external function `detect_bash_features` and assesses the score.
+#
 test_bash_features() {
     if ! require_platform "bash"; then
         return 0
@@ -186,7 +328,23 @@ test_bash_features() {
     fi
 }
 
+# ===============================================
 # Test zsh compatibility
+# ===============================================
+#
+# Description: Checks for Zsh-specific behaviors, primarily focusing on array
+#              handling, as Zsh arrays can sometimes behave differently than Bash arrays.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or returns 0 if the platform is not Zsh.
+#
+# Behavior:
+#   - Uses `require_platform "zsh"` to conditionally run the test.
+#   - Checks basic array initialization and length calculation.
+#
 test_zsh_compatibility() {
     if ! require_platform "zsh"; then
         return 0
@@ -210,7 +368,23 @@ test_zsh_compatibility() {
     fi
 }
 
+# ===============================================
 # Test WSL (Windows Subsystem for Linux) compatibility
+# ===============================================
+#
+# Description: Detects if the script is running inside WSL and checks for common
+#              compatibility issues specific to that environment (e.g., case sensitivity, Windows path access).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Uses `/proc/version` and WSL environment variables for detection.
+#   - Checks for the presence of the `/mnt/c` drive.
+#
 test_wsl_compatibility() {
     start_test "WSL Compatibility" "Test tool functionality on Windows Subsystem for Linux"
 
@@ -248,7 +422,23 @@ test_wsl_compatibility() {
     fi
 }
 
+# ===============================================
 # Test Cygwin/MSYS2 compatibility
+# ===============================================
+#
+# Description: Detects if the script is running under Cygwin or MSYS2 and verifies
+#              that the environment's path translation mechanism is working correctly.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Uses the `$OSTYPE` variable for detection.
+#   - Attempts a simple file operation to confirm path handling.
+#
 test_cygwin_compatibility() {
     start_test "Cygwin/MSYS2 Compatibility" "Test tool functionality on Cygwin and MSYS2"
 
@@ -272,7 +462,23 @@ test_cygwin_compatibility() {
     fi
 }
 
+# ===============================================
 # Test utility differences between distributions
+# ===============================================
+#
+# Description: Checks the flavor (GNU or BSD) and availability of essential command-line
+#              utilities (`sed`, `awk`, `grep`) whose behavior can differ between operating systems.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Calls the external function `detect_utilities`.
+#   - Parses the output string to count GNU, BSD, and missing utility implementations.
+#
 test_utility_differences() {
     start_test "Utility Differences" "Test handling of different utility implementations"
 
@@ -340,7 +546,24 @@ test_utility_differences() {
     fi
 }
 
+# ===============================================
 # Run all OS and shell compatibility tests
+# ===============================================
+#
+# Description: The primary entry point function that initializes the test session
+#              and executes all individual OS and shell compatibility test functions.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - The exit code of the final `finalize_test_session` call (0 on success, non-zero on failure).
+#
+# Behavior:
+#   - Calls `init_test_session`.
+#   - Executes all `test_*` functions in logical order by platform and environment.
+#   - Calls `finalize_test_session`.
+#
 run_os_shell_tests() {
     init_test_session "os_shell_compatibility"
 

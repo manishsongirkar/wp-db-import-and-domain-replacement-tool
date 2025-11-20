@@ -1,26 +1,50 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ================================================================
 # WordPress Revision Cleanup Utilities Module
 # ================================================================
 #
-# This module provides functions for generating MySQL commands to clean up
-# WordPress post revisions from both single-site and multisite installations.
+# Description:
+#   This module provides functions for generating MySQL commands to clean up
+#   WordPress post revisions from both single-site and multisite installations.
+#   It helps reduce database size by targeting the 'revision' post type in
+#   _posts and _postmeta tables.
 #
 # Features:
-#   - Automatic detection of single-site vs multisite installations
-#   - Table prefix detection from wp-config.php
-#   - WP-CLI integration for site discovery
-#   - Supports subdomain and subdirectory multisite configurations
-#   - Safe command generation with proper escaping
-#   - Colored terminal output for clarity
+#   - Automatic detection of single-site vs multisite installations using WP-CLI
+#   - Dynamic table prefix detection from wp-config.php
+#   - Accurate command generation for multisite subsites when site list is available
 #
 # Functions provided:
 # - show_revision_cleanup_commands        Generate MySQL cleanup commands
-# - show_revision_cleanup_if_needed       Conditional cleanup command display
+# - show_utilities_revision_cleanup_if_needed Conditional cleanup command display
 #
+# Dependencies:
+# - find_wordpress_root (from core/utils.sh)
+# - get_wp_table_prefix (from core/utils.sh)
+# - execute_wp_cli (from core/utils.sh)
+# - Color variables (CYAN, RED, YELLOW, GREEN, BOLD, RESET)
+#
+# ================================================================
 
-# Function to display MySQL commands for revision cleanup
+# ===============================================
+# Show Revision Cleanup Commands
+# ===============================================
+#
+# Description: Generates and displays the necessary MySQL DELETE commands to remove all WordPress post revisions.
+#
+# Parameters:
+#	- None (relies on current directory being within the WordPress installation).
+#
+# Returns:
+#	- Prints formatted MySQL commands and instructions to stdout.
+#	- Returns 1 if wp-config.php is not found.
+#
+# Behavior:
+#	- Detects table prefix.
+#	- Uses WP-CLI's `wp site list` and `wp eval 'is_multisite()'` for robust multisite detection.
+#	- Generates separate DELETE commands for each detected subsite's posts and postmeta tables.
+#
 show_revision_cleanup_commands() {
   printf "\n"
   printf "================================================================\n"
@@ -72,6 +96,7 @@ show_revision_cleanup_commands() {
             printf "${CYAN}-- Blog ID %s (Subsite) - Tables: %sposts, %spostmeta${RESET}\n" "$blog_id" "$site_prefix" "$site_prefix"
           fi
 
+          # Use backticks for table names for compatibility
           echo "DELETE FROM \`${site_prefix}postmeta\` WHERE \`post_id\` in (SELECT ID FROM \`${site_prefix}posts\` WHERE \`post_type\` = 'revision');"
           echo "DELETE FROM \`${site_prefix}posts\` WHERE \`post_type\` = 'revision';"
 
@@ -85,7 +110,7 @@ show_revision_cleanup_commands() {
       fi
     fi
 
-    # Method 2: Check WordPress multisite function
+    # Method 2: Check WordPress multisite function (Fallback for incomplete site list)
     local is_multisite_check
     is_multisite_check=$(wp eval "echo is_multisite() ? 'yes' : 'no';" 2>/dev/null)
 
@@ -117,7 +142,7 @@ show_revision_cleanup_commands() {
     echo "DELETE FROM \`${table_prefix}posts\` WHERE \`post_type\` = 'revision';"
 
   else
-    # No WP-CLI fallback
+    # No WP-CLI fallback (Hard fallback to single site assumption)
     printf "${YELLOW}⚠️  WP-CLI not available, generating basic commands${RESET}\n\n"
     printf "${CYAN}📊 Assuming Single Site Configuration:${RESET}\n"
     printf "   Blog ID: 1 (Main Site) - Tables: %sposts, %spostmeta\n\n" "$table_prefix" "$table_prefix"
@@ -131,7 +156,23 @@ show_revision_cleanup_commands() {
   echo
 }
 
-# Function to check if revisions need cleanup and show commands conditionally
+# ===============================================
+# Show Utilities Revision Cleanup If Needed
+# ===============================================
+#
+# Description: Checks for `wp-config.php` and conditionally calls the main command generator.
+#
+# Parameters:
+#	- $1: Optional. Path to the WordPress root directory.
+#
+# Returns:
+#	- Prints generated commands or an error message.
+#	- Returns 1 if `wp-config.php` is not found in the target directory.
+#
+# Behavior:
+#	- Temporarily changes directory if a path is provided.
+#	- This function serves as the primary entry point for displaying cleanup commands externally.
+#
 show_utilities_revision_cleanup_if_needed() {
   local wp_path="${1:-.}"
 

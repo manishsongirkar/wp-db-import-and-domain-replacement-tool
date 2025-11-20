@@ -1,86 +1,84 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # WordPress Database Import & Domain Replacement Tool
-# ===============================================
+# ================================================================
 #
 # Version: See VERSION file
 #
 # Description:
-#   A robust bash utility for performing WordPress database imports and domain/URL
-#   replacements, commonly needed for migrating environments (e.g., production to local/staging).
-#   It efficiently handles single-site and multi-domain WordPress Multisite setups.
+#   A robust bash utility for performing WordPress database imports and domain/URL
+#   replacements, commonly needed for migrating environments (e.g., production to local/staging).
+#   It efficiently handles single-site and multi-domain WordPress Multisite setups.
 #
 # Features:
-#   - Automatic WordPress installation detection (single-site or multisite)
-#   - **High-Speed Bulk Post Revision Cleanup (via xargs)**
-#   - **MySQL Commands for Manual Revision Cleanup (when automatic cleanup is skipped)**
-#   - Intelligent domain sanitization (removes protocols, trailing slashes)
-#   - **Robust Multi-Domain/Per-Site Mapping for Multisite**
-#   - Two-pass search-replace (standard + serialized data)
-#   - Cache and transient clearing via WP-CLI
-#   - Dry-run mode for testing replacements
-#   - MySQL command generation for network domain tables (critical for multisite completion)
-#   - Comprehensive error handling and logging
-#   - Colored terminal output with clear progress indicators
+#   - Automatic WordPress installation detection (single-site or multisite)
+#   - **High-Speed Bulk Post Revision Cleanup (via xargs)**
+#   - **MySQL Commands for Manual Revision Cleanup (when automatic cleanup is skipped)**
+#   - Intelligent domain sanitization (removes protocols, trailing slashes)
+#   - **Robust Multi-Domain/Per-Site Mapping for Multisite**
+#   - Two-pass search-replace (standard + serialized data)
+#   - Cache and transient clearing via WP-CLI
+#   - Dry-run mode for testing replacements
+#   - MySQL command generation for network domain tables (critical for multisite completion)
+#   - Comprehensive error handling and logging
+#   - Colored terminal output with clear progress indicators
 #
 # Requirements:
-#   - WP-CLI installed and accessible in PATH
-#   - WordPress installation (wp-config.php present)
-#   - MySQL/MariaDB database
-#   - Bash shell (minimum 4.0 recommended for best performance)
-#   - macOS/Linux environment
+#   - WP-CLI installed and accessible in PATH
+#   - WordPress installation (wp-config.php present)
+#   - MySQL/MariaDB database
+#   - Bash shell (minimum 4.0 recommended for best performance)
+#   - macOS/Linux environment
 #
 # Usage:
-#   1. Place SQL file in the same directory as this script.
-#   2. Navigate to WordPress root directory or subdirectory.
-#   3. Source this script: source import_wp_db.sh
-#   4. Run the function: import_wp_db
-#   5. Follow the interactive prompts.
+#   1. Place SQL file in the same directory as this script.
+#   2. Navigate to WordPress root directory or subdirectory.
+#   3. Source this script: source import_wp_db.sh
+#   4. Run the function: import_wp_db
+#   5. Follow the interactive prompts.
 #
 # Additional Functions (loaded via lib/utilities/ modules):
-#   show_local_site_links - Display clickable links to local WordPress sites
-#     Usage: show_local_site_links
-#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
-#     Note: Function is now loaded from lib/utilities/site_links.sh via module loader
+#   show_local_site_links - Display clickable links to local WordPress sites
+#     Usage: show_local_site_links
+#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
+#     Note: Function is now loaded from lib/utilities/site_links.sh via module loader
 #
-#   show_revision_cleanup_commands - Generate MySQL commands for manual revision cleanup
-#     Usage: show_revision_cleanup_commands [single|multisite|test|test-multisite|test-subdirectory]
-#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
-#     Note: Function is now loaded from lib/utilities/revision_cleanup.sh via module loader
+#   show_revision_cleanup_commands - Generate MySQL commands for manual revision cleanup
+#     Usage: show_revision_cleanup_commands [single|multisite|test|test-multisite|test-subdirectory]
+#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
+#     Note: Function is now loaded from lib/utilities/revision_cleanup.sh via module loader
 #
-#   setup_stage_file_proxy - Interactive setup for Stage File Proxy plugin
-#     Usage: setup_stage_file_proxy
-#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
-#     Note: Function is now loaded from lib/utilities/stage_file_proxy.sh via module loader
+#   setup_stage_file_proxy - Interactive setup for Stage File Proxy plugin
+#     Usage: setup_stage_file_proxy
+#     Requirements: Must be run from within a WordPress directory with WP-CLI installed
+#     Note: Function is now loaded from lib/utilities/stage_file_proxy.sh via module loader
 #
-#   show_revision_cleanup_if_needed - Helper function that conditionally shows revision cleanup commands
-#     Usage: show_revision_cleanup_if_needed (called automatically during import)
-#     Requirements: Variables cleanup_revisions and is_multisite should be set
-#     Note: Available globally after sourcing this script
+#   show_revision_cleanup_if_needed - Helper function that conditionally shows revision cleanup commands
+#     Usage: show_revision_cleanup_if_needed (called automatically during import)
+#     Requirements: Variables cleanup_revisions and is_multisite should be set
+#     Note: Available globally after sourcing this script
 #
 # Supported WordPress Types:
-#   - Single-site installations
-#   - Multisite subdomain networks
-#   - Multisite subdirectory networks (including multi-domain to single-domain migrations)
+#   - Single-site installations
+#   - Multisite subdomain networks
+#   - Multisite subdirectory networks (including multi-domain to single-domain migrations)
 #
 # File Structure:
-#   - Creates temporary log files in /tmp/ for debugging (uses PID to prevent collision)
-#   - Automatically cleans up temporary files on exit
-#   - Logs all WP-CLI operations for troubleshooting
+#   - Creates temporary log files in /tmp/ for debugging (uses PID to prevent collision)
+#   - Automatically cleans up temporary files on exit
+#   - Logs all WP-CLI operations for troubleshooting
 #
 # Security:
-#   - Uses absolute paths to prevent directory traversal
-#   - Validates all user inputs
-#   - Sanitizes domain inputs
-#   - Uses temporary files with process-specific names
+#   - Uses absolute paths to prevent directory traversal
+#   - Validates all user inputs
+#   - Sanitizes domain inputs
+#   - Uses temporary files with process-specific names
 #
 # Author: Manish Songirkar (@manishsongirkar)
 # Repository: https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool
 #
-# ===============================================
-# Global Configuration
-# ===============================================
+# ================================================================
 
 # Get the directory where the script is located
 # Handle both direct execution and sourcing scenarios
@@ -123,8 +121,24 @@ fi
 # and stage file proxy functions) are now loaded automatically through
 # the module loader system in lib/
 
+# ===============================================
 # Define helper function for conditional revision cleanup during import
-# This function calls show_revision_cleanup_commands when automatic cleanup is skipped
+# ===============================================
+#
+# Description: Helper function that conditionally calls `show_revision_cleanup_commands`
+#              (which generates manual MySQL commands) only if the user opted to
+#              skip the automatic revision cleanup step (`cleanup_revisions` is not 'Y'/'y').
+#
+# Parameters:
+#   - None (Relies on the global variable `cleanup_revisions`).
+#
+# Returns:
+#   - Prints manual MySQL commands to stdout if the condition is met.
+#
+# Behavior:
+#   - Calls `show_revision_cleanup_commands` (from `revision_cleanup.sh`)
+#     which must be loaded via the module system.
+#
 show_revision_cleanup_if_needed() {
     # Check if cleanup_revisions variable exists and is not Y/y
     if [[ "${cleanup_revisions:-}" != [Yy]* ]]; then
@@ -134,11 +148,24 @@ show_revision_cleanup_if_needed() {
     fi
 }
 
+# ===============================================
 # Define function to show revision cleanup commands at the end of the process
-# This function is called after stage file proxy setup and before showing local site links
-# It only shows commands in two specific cases:
-# 1. User declined revision cleanup (said "n")
-# 2. Some revisions remain after cleanup attempt
+# ===============================================
+#
+# Description: Conditionally displays manual MySQL commands for revision cleanup
+#              at the very end of the import process. This acts as a final fallback
+#              and reminder.
+#
+# Parameters:
+#   - None (Relies on global flags `revision_cleanup_declined` and `revisions_remain_after_cleanup`).
+#
+# Returns:
+#   - Prints manual MySQL commands and status messages to stdout if needed.
+#
+# Behavior:
+#   - Displays commands if the user declined cleanup explicitly (`revision_cleanup_declined=true`).
+#   - Displays commands if the automatic cleanup attempt failed to clear all revisions (`revisions_remain_after_cleanup=true`).
+#
 show_revision_cleanup_at_end() {
     local should_show_commands=false
 
@@ -163,6 +190,26 @@ show_revision_cleanup_at_end() {
 # ===============================================
 # import_wp_db() function definition
 # ===============================================
+#
+# Description: The main function of the tool. It orchestrates the entire database
+#              import, domain replacement, configuration management, multisite handling,
+#              and post-import cleanup process.
+#
+# Parameters:
+#   - None (Takes inputs interactively or from config files).
+#
+# Returns:
+#   - 0 (Success) on completion.
+#   - 1 (Failure) if critical steps (WP-CLI check, WP root detection, DB import, domain validation) fail.
+#
+# Behavior:
+#   - Manages a comprehensive cleanup trap (`trap cleanup EXIT`) for temporary files.
+#   - Auto-detects WP root, loads config, prompts for SQL file and domain mappings.
+#   - Executes database import (`wp db import`).
+#   - Handles single-site or multisite specific search-replace logic.
+#   - Performs multisite network table updates (`wp_blogs`, `wp_site`) either automatically (via `wp eval`) or manually (generates MySQL commands).
+#   - Flushes caches, optionally sets up Stage File Proxy, and shows site links.
+#
 import_wp_db() {
 
   # ⏱️ Start timer for total execution tracking
@@ -190,6 +237,27 @@ import_wp_db() {
   local REVISION_LOG="/tmp/wp_revision_delete_$$.log"
   local SUBSITE_DATA="/tmp/wp_subsite_data_$$.csv" # Temporary file to store subsite CSV data from WP-CLI
 
+  # ===============================================
+  # Comprehensive Cleanup Function
+  # ===============================================
+  #
+  # Description: This function executes a comprehensive cleanup routine designed to safely
+  #              remove all temporary files generated during the script's execution.
+  #              It is primarily intended to be executed via a Bash `trap cleanup EXIT`
+  #              command to ensure cleanup happens even if the script is interrupted or fails.
+  #
+  # Parameters:
+  #   - None (Operates on globally defined variables).
+  #
+  # Returns:
+  #   - 0 (Success) always.
+  #
+  # Behavior:
+  #   - Explicitly removes defined temporary files ($DB_LOG, $SR_LOG_SINGLE, etc.) using their PID ($$) in the filename for uniqueness.
+  #   - Uses `find` with the `delete` action to locate and remove any remaining temporary files or logs associated with the script's PID in `/tmp`.
+  #   - Safely cleans up stale WP-CLI cache files (older than 1 day) to maintain system hygiene.
+  #   - Uses `2>/dev/null` throughout to suppress errors for files that may already be gone or permissions issues.
+  #
   cleanup() {
     # 🧹 Comprehensive cleanup of all temporary files created by this script (using PID $$)
     local files_to_remove=(
@@ -586,16 +654,29 @@ import_wp_db() {
   if [[ "$cleanup_revisions" =~ ^[Yy]$ ]]; then
     printf "${CYAN}🗑️ Clearing ALL Post Revisions (improves search-replace speed)...${RESET}\n"
 
+  # ===============================================
   # Function to perform revision cleanup silently and quickly
+  # ===============================================
+  #
+  # Description: Deletes all WordPress post revisions for the current site or a specified subsite
+  #              in a multisite network. It leverages the high-speed bulk operation capability
+  #              of 'wp post list' piped to 'xargs wp post delete', which efficiently handles
+  #              a large number of post IDs while bypassing Bash array splitting limits.
+  #
+  # Parameters:
+  #   - $1 (optional, string): The `--url` parameter (e.g., `subsite.example.com`) to target a specific multisite subsite.
+  #
+  # Returns:
+  #   - 0 (Success) if all revisions were successfully deleted or if no revisions were found initially.
+  #   - 1 (Failure) if the bulk deletion fails or if revisions still remain in the database after the cleanup attempt.
+  #
+  # Behavior:
+  #   - Step 1: Retrieves all post revision IDs (`post_type=revision`) using WP-CLI.
+  #   - Step 2: Pipes the list of IDs to `xargs` to execute `wp post delete --force` in batches of 500.
+  #   - Step 3: Verifies the remaining revision count after deletion.
+  #   - Relies on the external functions `execute_wp_cli` and the global variable `$network_flag`.
+  #
   clean_revisions_silent() {
-    # Description: Deletes all post revisions for the current site or a specified subsite.
-    # It uses 'wp post list' piped to 'xargs wp post delete' for high-speed, reliable bulk operation,
-    # bypassing Bash's word-splitting limitations.
-    # Arguments:
-    #   $1 (optional, string): The --url parameter for a specific multisite subsite.
-    # Returns:
-    #   0 on successful deletion (or if no revisions found).
-    #   1 on failure or if revisions remain after the operation.
     local url_param="$1"
     local wp_cli_args
     local revision_ids_output

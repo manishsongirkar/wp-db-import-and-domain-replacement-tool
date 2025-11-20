@@ -1,8 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ===============================================
 # Bash Completion for wp-db-import command
 # ===============================================
+#
+# Description:
+#   Provides command-line tab completion for the `wp-db-import` tool in Bash.
+#   It lists available subcommands when the user hits <TAB> after the main command.
 #
 # Compatible with Bash 4.0+ and modern completion systems
 # Gracefully degrades on older systems
@@ -22,7 +26,23 @@ if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     return 0
 fi
 
-# Main completion function for wp-db-import (Bash 4.0+)
+# ===============================================
+# WP-DB-Import Completion
+# ===============================================
+#
+# Description: Main completion function for Bash 4.0+ environments.
+#
+# Parameters:
+#	- Uses global COMP_WORDS and COMP_CWORD provided by the Bash completion system.
+#
+# Returns:
+#	- 0 (Success) after setting the COMPREPLY array.
+#
+# Behavior:
+#	- Defines all available subcommands in the 'opts' variable.
+#	- Uses 'compgen -W' to filter the list based on the user's current input ('$cur').
+#	- Only provides completions immediately after 'wp-db-import'.
+#
 _wp_db_import_completion() {
     local cur prev opts
     COMPREPLY=()

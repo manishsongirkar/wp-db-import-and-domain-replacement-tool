@@ -1,15 +1,31 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # WordPress Database Import Tool - Installation Script
-# ===============================================
+# ================================================================
 #
-# This script installs the wp-db-import command globally
-# so it can be used from any directory.
+# Description:
+#   This script automates the installation of the **wp-db-import** command by
+#   creating a symbolic link to the main executable in a user-local binary
+#   directory (prioritizing `~/.local/bin`). It ensures the executable has
+#   proper permissions and configures shell completion for Bash and Zsh.
 #
-# Usage: ./install.sh
+# Key Features:
+# - Automatically detects `wp-db-import` executable path.
+# - Prioritizes user-local installation (`$HOME/.local/bin` or `$HOME/bin`).
+# - Attempts to add the installation path to the user's shell configuration (`.zshrc`, `.bashrc`, etc.).
+# - Configures shell completion for Bash and Zsh via symlinks.
+# - Detects Git installation for informing the user about auto-update availability.
 #
-# ===============================================
+# Usage:
+#   ./install.sh
+#
+# Dependencies:
+# - git (Optional, for detection)
+# - chmod, ln, mkdir, find, grep (Standard utilities)
+# - lib/core/utils.sh (For colors and basic shell utilities)
+#
+# ================================================================
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +72,7 @@ if [[ ! -x "$MAIN_EXECUTABLE" ]]; then
 fi
 
 # Determine the best installation method (prioritizing user-local installation)
-printf "${CYAN}� Installing wp-db-import command...${RESET}\n\n"
+printf "${CYAN} Installing wp-db-import command...${RESET}\n\n"
 
 # Modern approach: Use user-local installation paths like npm, cargo, etc.
 INSTALL_METHOD="user"
@@ -72,7 +88,7 @@ CHOSEN_INSTALL_PATH=""
 for path in "${USER_INSTALL_PATHS[@]}"; do
     if [[ -d "$path" ]]; then
         CHOSEN_INSTALL_PATH="$path"
-        printf "${CYAN}� Found existing user bin directory: $path${RESET}\n"
+        printf "${CYAN} Found existing user bin directory: $path${RESET}\n"
         break
     fi
 done
@@ -231,13 +247,18 @@ fi
 printf "\n${CYAN}${BOLD}🚀 Usage Examples${RESET}\n"
 printf "================\n"
 printf "cd ~/Local\\ Sites/mysite/app/public\n"
-printf "wp-db-import                    # Main import wizard\n"
+printf "wp-db-import                    # Run the main import function\n"
+printf "wp-db-import config-show        # Show unified configuration status\n"
+printf "wp-db-import config-create      # Create configuration with site mappings\n"
+printf "wp-db-import config-validate    # Validate configuration structure\n"
+printf "wp-db-import config-edit        # Open configuration in editor\n"
 printf "wp-db-import show-links         # Show local site links\n"
-printf "wp-db-import show-cleanup       # Generate database revision cleanup commands\n"
-printf "wp-db-import setup-proxy        # Auto-setup stage file proxy (detects config)\n"
+printf "wp-db-import setup-proxy        # Auto-setup Stage File Proxy (uses config)\n"
+printf "wp-db-import show-cleanup       # Show revision cleanup commands\n"
 printf "wp-db-import update             # Update to latest version\n"
 printf "wp-db-import version            # Show version and git info\n"
-printf "wp-db-import --help             # Show help\n"
+printf "wp-db-import test               # Run test suite to validate tool functionality\n"
+printf "wp-db-import --help             # Show this help message\n"
 printf "\n${CYAN}💡 Tab Completion:${RESET} Type 'wp-db-import ' and press TAB to see all commands\n"
 
 printf "\n${CYAN}${BOLD}🔍 Testing Installation${RESET}\n"

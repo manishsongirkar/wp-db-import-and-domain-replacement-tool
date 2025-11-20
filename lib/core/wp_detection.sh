@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ================================================================
 # WordPress Installation Type Detection Module
@@ -24,39 +24,32 @@
 #
 # Dependencies:
 # - execute_wp_cli function (from core/utils.sh)
+# - check_wp_config_constant function (from core/utils.sh)
+# - find_wordpress_root function (from core/utils.sh)
+# - detect_multisite_filesystem_indicators function (from core/utils.sh)
 # - Color variables (RED, GREEN, CYAN, YELLOW, RESET)
 #
 # ================================================================
 
-# -----------------------------------------------
+# ===============================================
 # Detect WordPress Installation Type
-# -----------------------------------------------
-# Comprehensive function to detect WordPress installation type using multiple methods
+# ===============================================
 #
-# Usage:
-#   result=$(detect_wordpress_installation_type [wp_root_path] [verbose])
+# Description: Comprehensively detects the WordPress installation type (single or multisite)
+#              using WP-CLI, wp-config.php constants, and filesystem indicators.
 #
-# Arguments:
-#   starting_dir  (optional): Starting directory to search from (default: current directory)
-#                             The function will automatically find WordPress root from this location
-#   verbose       (optional): Enable verbose output ("true"/"false", default: "false")
+# Parameters:
+#	- $1: Optional. Starting directory to search from (default: current directory).
+#	- $2: Optional. Enable verbose output ("true"/"false", default: "false"). (Note: Verbose logic removed in implementation).
 #
 # Returns:
-#   String in format: "installation_type|multisite_type|network_flag|blog_count|site_count|detection_method"
+#	- String in the format: "installation_type|multisite_type|network_flag|blog_count|site_count|detection_method" (echoed).
+#	- Returns 1 if WordPress root cannot be found or accessed (echos "error|...").
 #
-#   installation_type: "single" or "multisite"
-#   multisite_type:    "subdomain", "subdirectory", or "unknown" (only for multisite)
-#   network_flag:      "--network" or "" (for WP-CLI commands)
-#   blog_count:        Number of blogs (from get_blog_count() via WP-CLI)
-#   site_count:        Always 1 for main site (multisite), 0 for single site
-#   detection_method:  "wp-cli" (primary), "wp-config" (fallback), or "filesystem"
-#
-# Examples:
-#   result=$(detect_wordpress_installation_type "/var/www/wordpress/wp-content" "true")
-#   # Searches up from wp-content and returns: "multisite|subdomain|--network|3|1|wp-cli"
-#
-#   result=$(detect_wordpress_installation_type)
-#   # Searches from current directory and returns: "single|NA|NA|0|0|wp-cli"
+# Behavior:
+#	- Prioritizes WP-CLI's `is_multisite()` and `get_blog_count()` for accuracy.
+#	- Falls back to parsing `wp-config.php` constants and checking filesystem indicators.
+#	- Requires changing the working directory to the WordPress root.
 #
 detect_wordpress_installation_type() {
     local starting_dir="${1:-$(pwd)}"
@@ -207,21 +200,22 @@ detect_wordpress_installation_type() {
     return 0
 }
 
-# -----------------------------------------------
-# Detect Multisite Type (Subdomain vs Subdirectory)
-# -----------------------------------------------
-# Determines if a multisite installation uses subdomain or subdirectory configuration
+# ===============================================
+# Detect Multisite Type
+# ===============================================
 #
-# Usage:
-#   type=$(detect_multisite_type [wp_root_path] [verbose])
+# Description: Determines if a multisite installation uses subdomain or subdirectory configuration.
 #
-# Arguments:
-#   starting_dir  (optional): Starting directory to search from (default: current directory)
-#                             The function will automatically find WordPress root from this location
-#   verbose       (optional): Enable verbose output ("true"/"false", default: "false")
+# Parameters:
+#	- $1: Optional. Starting directory to search from (default: current directory).
+#	- $2: Optional. Enable verbose output ("true"/"false", default: "false"). (Note: Verbose logic removed in implementation).
 #
 # Returns:
-#   "subdomain", "subdirectory", or "unknown"
+#	- "subdomain", "subdirectory", or "unknown" (echoed).
+#
+# Behavior:
+#	- Prioritizes checking the `SUBDOMAIN_INSTALL` constant in `wp-config.php`.
+#	- Falls back to WP-CLI's `is_subdomain_install()` function.
 #
 detect_multisite_type() {
     local starting_dir="${1:-$(pwd)}"
@@ -279,20 +273,23 @@ detect_multisite_type() {
     fi
 }
 
-# -----------------------------------------------
+# ===============================================
 # Validate WordPress Detection Results
-# -----------------------------------------------
-# Validates detection results and ensures consistency
+# ===============================================
 #
-# Usage:
-#   validate_wordpress_detection "detection_result_string" [verbose]
+# Description: Validates the output string generated by `detect_wordpress_installation_type` to ensure consistency and correctness.
 #
-# Arguments:
-#   detection_result  Detection result string from detect_wordpress_installation_type
-#   verbose          (optional): Enable verbose output ("true"/"false", default: "false")
+# Parameters:
+#	- $1: Detection result string (e.g., "multisite|subdomain|--network|3|1|wp-cli").
+#	- $2: Optional. Enable verbose output ("true"/"false", default: "false").
 #
 # Returns:
-#   0 if validation passes, 1 if validation fails
+#	- 0 (Success) if validation passes.
+#	- 1 (Failure) if validation fails.
+#	- Prints validation status and errors to stderr if verbose is true.
+#
+# Behavior:
+#	- Checks field count, valid types for installation_type and multisite_type, and ensures numeric fields are valid.
 #
 validate_wordpress_detection() {
     local detection_result="$1"
@@ -350,7 +347,7 @@ validate_wordpress_detection() {
     fi
 
     # Validate detection method
-    local valid_methods=("database" "wp-config" "wp-cli" "fallback" "validation_failed")
+    local valid_methods=("database" "wp-config" "wp-cli" "filesystem" "fallback" "validation_failed")
     local method_valid=false
     for method in "${valid_methods[@]}"; do
         if [[ "$detection_method" == "$method" ]]; then

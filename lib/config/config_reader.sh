@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ===============================================
 # Unified Configuration Reader for WordPress Import Tool
@@ -7,7 +7,9 @@
 # Description:
 #   Unified module that consolidates all configuration reading, writing, and validation
 #   functionality for wpdb-import.conf. This module eliminates code duplication and
-#   provides a single interface for all config operations.
+#   provides a single interface for all config operations. It supports dependency
+#   chaining, preferring functions from 'config_manager.sh' if sourced, and falling
+#   back to internal, standalone implementations if not.
 #
 # Features:
 #   - Auto-detects WordPress root directory
@@ -39,14 +41,42 @@ readonly WPDB_CONFIG_FILE_NAME="wpdb-import.conf"
 # Core Configuration Detection Functions
 # ===============================================
 
-# Check if wpdb-import.conf exists in WordPress root
+# ===============================================
+# WPDB Config Exists
+# ===============================================
+#
+# Description: Checks for the existence of the wpdb-import.conf file.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if the file exists
+#	- 1 (Failure) if the file does not exist
+#
 wpdb_config_exists() {
     local config_path
     config_path=$(get_wpdb_config_path)
     [[ -f "$config_path" ]]
 }
 
-# Get full path to wpdb-import.conf
+# ===============================================
+# Get WPDB Config Path
+# ===============================================
+#
+# Description: Determines the full path to the wpdb-import.conf file.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Full config file path (echoed)
+#
+# Behavior:
+#	- Prefers `get_config_file_path` from config_manager.sh
+#	- Falls back to internal path detection (`find_wordpress_root`)
+#	- If WP root is not found, defaults to "./wpdb-import.conf"
+#
 get_wpdb_config_path() {
     if command -v get_config_file_path >/dev/null 2>&1; then
         # Use config_manager function if available
@@ -63,7 +93,22 @@ get_wpdb_config_path() {
     fi
 }
 
-# Find WordPress root directory (standalone version)
+# ===============================================
+# Find WordPress Root (Standalone)
+# ===============================================
+#
+# Description: Searches up the directory tree to find the WordPress root directory.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- WordPress root path (echoed) on success
+#	- Returns 1 if wp-config.php not found
+#
+# Behavior:
+#	- This is the standalone implementation, used if config_manager is not sourced.
+#
 find_wordpress_root() {
     local current_dir="$(pwd)"
     local wp_root="$current_dir"
@@ -82,10 +127,23 @@ find_wordpress_root() {
 }
 
 # ===============================================
-# Configuration Reading Functions
+# Read General Config
 # ===============================================
-
-# Read value from [general] section
+#
+# Description: Reads a specific key's value from the [general] section.
+#
+# Parameters:
+#	- $1: Key name to read (case-insensitive).
+#	- $2: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- The value of the key (echoed)
+#	- Returns 1 if the config file is not found
+#
+# Behavior:
+#	- Prefers `parse_config_section` from config_manager.sh
+#	- Falls back to internal `awk` parsing
+#
 read_general_config() {
     local key="$1"
     local config_path="$2"
@@ -117,7 +175,23 @@ read_general_config() {
     fi
 }
 
-# Read all site mappings
+# ===============================================
+# Read Site Mappings
+# ===============================================
+#
+# Description: Reads all site mapping entries from the [site_mappings] section.
+#
+# Parameters:
+#	- $1: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- A list of all mappings (e.g., "1:old.com:new.test"), one per line (echoed)
+#	- Returns 1 if the config file is not found
+#
+# Behavior:
+#	- Prefers `get_site_mappings` from config_manager.sh
+#	- Falls back to internal `awk` parsing
+#
 read_site_mappings() {
     local config_path="$1"
 
@@ -146,7 +220,24 @@ read_site_mappings() {
     fi
 }
 
-# Read specific site mapping by blog_id
+# ===============================================
+# Read Site Mapping
+# ===============================================
+#
+# Description: Reads the old and new domains for a specific blog ID.
+#
+# Parameters:
+#	- $1: The Blog ID (key for the mapping).
+#	- $2: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- The mapping in the format "old_domain:new_domain" (echoed)
+#	- Returns 1 if the mapping is not found
+#
+# Behavior:
+#	- Prefers `get_site_mapping` from config_manager.sh
+#	- Falls back to internal reading and parsing
+#
 read_site_mapping() {
     local blog_id="$1"
     local config_path="$2"
@@ -173,7 +264,19 @@ read_site_mapping() {
     fi
 }
 
-# Extract production domains for Stage File Proxy (blog_id:old_domain pairs)
+# ===============================================
+# Read Stage Proxy Mappings
+# ===============================================
+#
+# Description: Extracts blog_id and old_domain pairs specifically for Stage File Proxy setup.
+#
+# Parameters:
+#	- $1: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- A list of mappings in the format "blog_id:old_domain", one per line (echoed)
+#	- Returns 1 if the config file is not found
+#
 read_stage_proxy_mappings() {
     local config_path="$1"
 
@@ -201,7 +304,21 @@ read_stage_proxy_mappings() {
     ' "$config_path" 2>/dev/null
 }
 
-# Get production domain for specific blog_id (for Stage File Proxy)
+# ===============================================
+# Read Production Domain
+# ===============================================
+#
+# Description: Gets the production domain (old_domain) for a specific blog ID, with fallback.
+#
+# Parameters:
+#	- $1: The Blog ID.
+#	- $2: Optional. Explicit path to the config file.
+#	- $3: Optional. A fallback domain to return if no mapping is found.
+#
+# Returns:
+#	- The production domain (old_domain) (echoed)
+#	- Returns 1 if no domain or fallback is available
+#
 read_production_domain() {
     local blog_id="$1"
     local config_path="$2"
@@ -231,10 +348,24 @@ read_production_domain() {
 }
 
 # ===============================================
-# Configuration Writing Functions
+# Write General Config
 # ===============================================
-
-# Write/update value in [general] section
+#
+# Description: Writes or updates a key-value pair in the [general] section.
+#
+# Parameters:
+#	- $1: The key name.
+#	- $2: The new value.
+#	- $3: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- 0 (Success) on successful write/update
+#	- 1 (Failure) on error
+#
+# Behavior:
+#	- Prefers `update_config_general` from config_manager.sh
+#	- Falls back to internal `awk` writing logic
+#
 write_general_config() {
     local key="$1"
     local value="$2"
@@ -279,7 +410,26 @@ EOF
     fi
 }
 
-# Add/update site mapping
+# ===============================================
+# Write Site Mapping
+# ===============================================
+#
+# Description: Adds a new site mapping or updates an existing one for a given blog ID.
+#
+# Parameters:
+#	- $1: The Blog ID (key for the mapping).
+#	- $2: The old domain.
+#	- $3: The new domain.
+#	- $4: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- 0 (Success) on successful write/update
+#	- 1 (Failure) on error
+#
+# Behavior:
+#	- Prefers `update_site_mapping` from config_manager.sh
+#	- Falls back to internal file manipulation logic
+#
 write_site_mapping() {
     local blog_id="$1"
     local old_domain="$2"
@@ -346,7 +496,26 @@ EOF
     fi
 }
 
-# Create a new config file with template
+# ===============================================
+# Create WPDB Config
+# ===============================================
+#
+# Description: Creates a new configuration file with a template structure.
+#
+# Parameters:
+#	- $1: Optional. Explicit path to the config file.
+#	- $2: Optional. Initial SQL file name.
+#	- $3: Optional. Initial old domain.
+#	- $4: Optional. Initial new domain.
+#
+# Returns:
+#	- 0 (Success) on successful creation
+#	- 1 (Failure) on error
+#
+# Behavior:
+#	- Prefers `create_config_file` from config_manager.sh
+#	- Falls back to internal template creation
+#
 create_wpdb_config() {
     local config_path="$1"
     local sql_file="$2"
@@ -386,10 +555,22 @@ EOF
 }
 
 # ===============================================
-# Configuration Validation Functions
+# Validate WPDB Config
 # ===============================================
-
-# Validate config file structure and required fields
+#
+# Description: Validates the config file structure (checking for required sections).
+#
+# Parameters:
+#	- $1: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- 0 (Success) if the config is valid
+#	- 1 (Failure) if validation fails (prints errors)
+#
+# Behavior:
+#	- Prefers `validate_config_file` from config_manager.sh
+#	- Falls back to internal basic validation
+#
 validate_wpdb_config() {
     local config_path="$1"
 
@@ -428,7 +609,23 @@ validate_wpdb_config() {
     fi
 }
 
-# Check if a config value is 'true'
+# ===============================================
+# Is Config Enabled
+# ===============================================
+#
+# Description: Checks if a configuration value represents a boolean 'true' state.
+#
+# Parameters:
+#	- $1: The value to check (case-insensitive: 'true', 'yes', '1', 'on', 'enable', 'enabled').
+#
+# Returns:
+#	- 0 (Success) if the value is true
+#	- 1 (Failure) if the value is false
+#
+# Behavior:
+#	- Prefers `is_config_true` from config_manager.sh
+#	- Falls back to internal case statement check
+#
 is_config_enabled() {
     local value="$1"
 
@@ -445,10 +642,18 @@ is_config_enabled() {
 }
 
 # ===============================================
-# Convenience Functions
+# Get All General Config
 # ===============================================
-
-# Get all general config as associative array (if supported) or key=value pairs
+#
+# Description: Extracts all key=value pairs from the [general] section.
+#
+# Parameters:
+#	- $1: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- Key=value pairs (echoed), one per line
+#	- Returns 1 if the config file is not found
+#
 get_all_general_config() {
     local config_path="$1"
 
@@ -472,7 +677,19 @@ get_all_general_config() {
     ' "$config_path" 2>/dev/null
 }
 
-# Check if config has any site mappings
+# ===============================================
+# Has Site Mappings
+# ===============================================
+#
+# Description: Checks if the [site_mappings] section contains any non-commented entries.
+#
+# Parameters:
+#	- $1: Optional. Explicit path to the config file.
+#
+# Returns:
+#	- 0 (Success) if mappings are found
+#	- 1 (Failure) if no mappings are found or file is missing
+#
 has_site_mappings() {
     local config_path="$1"
 

@@ -1,14 +1,21 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # Search and Replace Module
-# ===============================================
+# ================================================================
 #
 # Description:
-#   Advanced search and replace functionality for WordPress database imports.
-#   Handles complex domain mappings, www variants, serialized data,
-#   and both single-site and multisite configurations.
-#   Compatible with Bash 3.2, 4.x, and 5.x with intelligent fallbacks.
+#   Provides advanced and robust search and replace functionality specifically
+#   designed for use with WP-CLI during WordPress database import and migration
+#   processes. It meticulously handles multiple replacement passes to correctly
+#   update standard URL strings, serialized data, and automatically accounts
+#   for WWW and non-WWW variants. This module supports both single-site and
+#   complex multisite domain mappings and path adjustments.
+#
+# Key Features:
+# - Executes four distinct search-replace passes (non-escaped and escaped, www and non-www).
+# - Handles multisite subsite domain and path configurations.
+# - Provides visual progress indicators for each site and step.
 #
 # Functions provided:
 # - run_search_replace           Core search-replace with enhanced www handling
@@ -16,26 +23,45 @@
 # - start_site_processing        Visual feedback for multisite operations
 # - update_step_status           Progress indicators for search-replace steps
 #
+# Dependencies:
+#   - detect_bash_version (from core/utils.sh)
+#   - execute_wp_cli (from core/utils.sh)
+#   - Global flag variables (all_tables_flag, dry_run_flag)
+#   - Global array variables (domain_keys, domain_values, domain_blog_ids, domain_paths)
+#   - Color constants (e.g., ${CYAN}, ${YELLOW}, ${RED}, ${BOLD}, ${RESET})
+#
+# ================================================================
 
 # Ensure bash version compatibility is detected
 detect_bash_version 2>/dev/null || true
 
-# -----------------------------------------------
+# ===============================================
 # Enhanced Search-Replace Function
-# -----------------------------------------------
-# Executes the critical search-replace operation with intelligent www/non-www handling.
-# Supports domain+path combinations from wp_blogs table structure.
+# ===============================================
 #
-# Arguments:
-#   $1 - old_domain (source domain)
-#   $2 - new_domain (destination domain)
-#   $3 - log_file (for operation logging)
-#   $4 - url_flag (--url=... or --network or empty)
-#   $5 - old_path (optional path from wp_blogs)
-#   $6 - new_path (optional new path)
+# Description: Executes the core WP-CLI search-replace command, automatically handling four critical passes:
+#              1. Non-WWW standard string replacement.
+#              2. WWW standard string replacement (if applicable).
+#              3. Non-WWW escaped string replacement (for serialized data).
+#              4. WWW escaped string replacement (for serialized data, if applicable).
+#
+# Parameters:
+#   - $1: old_domain (source domain, e.g., example.com)
+#   - $2: new_domain (destination domain, e.g., local.test)
+#   - $3: log_file (full path to the log file)
+#   - $4: url_flag (--url=... or --network or empty)
+#   - $5: old_path (optional path component, e.g., /subsite/)
+#   - $6: new_path (optional new path component, currently unused in logic, retained for signature)
 #
 # Returns:
-#   0 on success, 1 on failure
+#   - 0 on success (all passes completed).
+#   - 1 on failure (if any WP-CLI command fails).
+#
+# Behavior:
+#   - Constructs search and replace strings carefully, including path components for multisite subsites.
+#   - Automatically handles `http://` vs `https://` by searching/replacing the protocol-relative form `//domain`.
+#   - Skips the `guid` column and non-essential tables/plugins/themes to speed up execution.
+#   - Requires `execute_wp_cli`.
 #
 run_search_replace() {
     local old_domain="$1"
@@ -264,21 +290,30 @@ run_search_replace() {
     return 0
 }
 
-# -----------------------------------------------
-# Multisite Search-Replace Processing
-# -----------------------------------------------
-# Handles domain mappings and executes search-replace operations
-# for WordPress multisite installations. Compatible with Bash 3.2+.
+# ===============================================
+# Process Multisite Mappings
+# ===============================================
 #
-# Arguments:
-#   $1 - main_site_id
-#   $2-$5 - array names (not used, arrays accessed globally)
+# Description: Iterates through configured multisite mappings (subsites and main site) and executes the search-replace operation for each one.
+#
+# Parameters:
+#   - $1: main_site_id (Blog ID of the primary network site, usually '1').
+#   - $2-$5: Array names (Signature includes placeholders, but arrays are accessed globally).
+#
+# Returns:
+#   - Implicitly calls `run_search_replace` for each mapped site.
+#   - Prints status and verbose output.
 #
 # Global Arrays Used:
-#   domain_keys[] - source domains
-#   domain_values[] - target domains
-#   domain_blog_ids[] - blog IDs
-#   domain_paths[] - site paths
+#   - domain_keys[]: Source domains/paths.
+#   - domain_values[]: Target domains/paths.
+#   - domain_blog_ids[]: Blog IDs.
+#   - domain_paths[]: Site path components.
+#
+# Behavior:
+#   - Skips the main site (ID $1) on the first pass, processing subsites first.
+#   - Processes the main site last using its special mapping.
+#   - Requires `detect_bash_version`, `start_site_processing`, and `update_step_status`.
 #
 process_multisite_mappings() {
     local main_site_id="$1"
@@ -380,11 +415,24 @@ process_multisite_mappings() {
     fi
 }
 
-# -----------------------------------------------
-# Visual Processing Functions
-# -----------------------------------------------
-# Provides consistent visual feedback for search-replace operations
-
+# ===============================================
+# Start Site Processing
+# ===============================================
+#
+# Description: Prints a clear header indicating the start of search-replace for a specific site, showing the old and new domains.
+#
+# Parameters:
+#   - $1: site_id (Blog ID).
+#   - $2: from_domain (Source domain/path for display).
+#   - $3: to_domain (Target domain/path for display).
+#   - $4: is_main ("true" if this is the main network site, "false" otherwise).
+#
+# Returns:
+#   - Prints formatted output to stdout.
+#
+# Behavior:
+#   - Uses different visual cues (🏠 vs 🌍) for the main site and subsites.
+#
 start_site_processing() {
     local site_id="$1"
     local from_domain="$2"
@@ -402,6 +450,23 @@ start_site_processing() {
     printf "\n"
 }
 
+# ===============================================
+# Update Step Status
+# ===============================================
+#
+# Description: Prints a single step's status (e.g., replacement pass) with a color-coded indicator.
+#
+# Parameters:
+#   - $1: step_num (Step number, e.g., '1').
+#   - $2: description (Description of the step).
+#   - $3: status ("complete", "processing", or "failed").
+#
+# Returns:
+#   - Prints color-coded status line to stdout.
+#
+# Behavior:
+#   - Uses specific emojis (✅, 🔄, ❌) for visual feedback.
+#
 update_step_status() {
     local step_num="$1"
     local description="$2"

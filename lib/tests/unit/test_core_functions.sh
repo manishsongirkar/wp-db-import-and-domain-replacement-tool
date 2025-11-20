@@ -1,19 +1,65 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # Unit Tests for Core Functions
-# ===============================================
+# ================================================================
 #
-# Unit tests for individual functions and modules
-# in the WordPress database import tool.
+# Description:
+#   A modular test suite dedicated to performing unit tests on individual
+#   core functions and fundamental components of the WordPress database
+#   import tool. This ensures that utility functions, module loading,
+#   configuration system, string manipulation, and file handling operations
+#   function correctly in isolation before integration testing.
 #
-# ===============================================
+# Key Components Tested:
+# - Core Utility functions (`sanitize_domain`, `find_wp_root`).
+# - Version management and file existence (`VERSION`).
+# - Module loading system (`module_loader.sh`).
+# - Configuration parsing and variable setting.
+# - Basic error handling mechanisms.
+# - File I/O and temporary file handling.
+#
+# Functions provided:
+# - test_utility_functions
+# - test_version_management
+# - test_module_loading
+# - test_configuration_system
+# - test_error_handling
+# - test_string_utilities
+# - test_file_handling
+# - run_unit_tests
+#
+# Dependencies:
+# - test_framework.sh (Must be sourced for test session management)
+# - External functions from the main script (e.g., `sanitize_domain`, `find_wp_root`, `load_config`, `validate_config`).
+# - Color constants (e.g., ${CYAN}, ${BOLD}, ${RESET}, ${DIM})
+#
+# Usage:
+#   ./test/unit_tests.sh
+#
+# ================================================================
 
 # Source the test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_framework.sh"
 
+# ===============================================
 # Test utility functions
+# ===============================================
+#
+# Description: Unit tests for foundational utility functions such as domain
+#              sanitization and WordPress root directory detection.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Tests `sanitize_domain` by cleaning up a URL with protocol and trailing slash.
+#   - Tests `find_wp_root` by creating a mock `wp-config.php` file in a temporary directory.
+#
 test_utility_functions() {
     start_test "Utility Functions" "Test core utility functions"
 
@@ -56,7 +102,22 @@ test_utility_functions() {
     fi
 }
 
+# ===============================================
 # Test version management
+# ===============================================
+#
+# Description: Verifies that the project's version file (`VERSION`) exists, is readable,
+#              and contains content, ensuring that version tracking is functional.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks the file path `$PROJECT_ROOT_DIR/VERSION`.
+#
 test_version_management() {
     start_test "Version Management" "Test version detection and management"
 
@@ -74,7 +135,24 @@ test_version_management() {
     fi
 }
 
+# ===============================================
 # Test module loading
+# ===============================================
+#
+# Description: Verifies that the `module_loader.sh` script can be sourced and that
+#              the primary module loading function, `load_modules`, is available
+#              in the current shell environment.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks the file path `$PROJECT_ROOT_DIR/lib/module_loader.sh`.
+#   - Uses `declare -F` to check for the exported function `load_modules`.
+#
 test_module_loading() {
     start_test "Module Loading" "Test module loading system"
 
@@ -99,7 +177,25 @@ test_module_loading() {
     fi
 }
 
+# ===============================================
 # Test configuration system
+# ===============================================
+#
+# Description: Performs a unit test on the configuration loading mechanism,
+#              verifying that variables are correctly parsed from a test `.conf`
+#              file and set in the current shell environment.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Creates a temporary test config file (`test.conf`).
+#   - Calls the external function `load_config`.
+#   - Checks if the `$OLD_DOMAIN` variable is set correctly after loading.
+#
 test_configuration_system() {
     start_test "Configuration System" "Test configuration loading and validation"
 
@@ -136,7 +232,23 @@ EOF
     cd / && cleanup_temp_test_dir "$temp_dir"
 }
 
+# ===============================================
 # Test error handling
+# ===============================================
+#
+# Description: Tests the script's basic error handling capability by executing a
+#              function with known invalid parameters and verifying that the
+#              function fails gracefully (exits with non-zero status).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test`, `fail_test`, or `skip_test`.
+#
+# Behavior:
+#   - Calls the external function `validate_config` with a path to a non-existent file.
+#
 test_error_handling() {
     start_test "Error Handling" "Test error handling mechanisms"
 
@@ -158,7 +270,23 @@ test_error_handling() {
     fi
 }
 
+# ===============================================
 # Test string manipulation utilities
+# ===============================================
+#
+# Description: Unit tests for core Bash parameter expansion operations used for
+#              string cleaning, specifically trimming whitespace and cleaning URLs.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Uses native Bash string substitution (`// /`) to test whitespace trimming.
+#   - Uses prefix removal (`#`) and suffix removal (`%`) to test cleaning URL protocols and slashes.
+#
 test_string_utilities() {
     start_test "String Utilities" "Test string manipulation functions"
 
@@ -196,7 +324,23 @@ test_string_utilities() {
     fi
 }
 
+# ===============================================
 # Test file handling
+# ===============================================
+#
+# Description: Unit tests for basic file system interactions, ensuring file creation,
+#              reading, backing up, and temporary file management function as expected.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Uses `mktemp` to test temporary file creation and ensures it's cleaned up.
+#   - Verifies standard I/O redirection (`>`) and file existence (`-f`).
+#
 test_file_handling() {
     start_test "File Handling" "Test file operations and safety checks"
 
@@ -244,7 +388,24 @@ test_file_handling() {
     fi
 }
 
+# ===============================================
 # Run all unit tests
+# ===============================================
+#
+# Description: The primary entry point function that initializes the test session
+#              and executes all individual unit test functions sequentially.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - The exit code of the final `finalize_test_session` call (0 on success, non-zero on failure).
+#
+# Behavior:
+#   - Calls `init_test_session`.
+#   - Executes all `test_*` functions grouped by core and supporting functionality.
+#   - Calls `finalize_test_session`.
+#
 run_unit_tests() {
     init_test_session "unit_tests"
 

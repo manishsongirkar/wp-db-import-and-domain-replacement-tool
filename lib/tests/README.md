@@ -350,7 +350,7 @@ pipeline {
 ### Test Structure
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Source the test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

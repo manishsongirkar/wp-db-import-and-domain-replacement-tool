@@ -1,19 +1,67 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # WordPress Specific Tests
-# ===============================================
+# ================================================================
 #
-# Tests for WordPress-specific functionality including
-# single-site, multisite, and various configuration scenarios.
+# Description:
+#   A comprehensive test suite focusing on verifying the correct operation and
+#   robustness of the WordPress-specific functionality within the import tool.
+#   This includes testing WordPress installation detection (single-site and multisite),
+#   WP-CLI integration, configuration file parsing, domain sanitization, search/replace
+#   logic, and various error handling scenarios.
 #
-# ===============================================
+# Key Features Tested:
+# - WordPress root detection.
+# - Single-site vs. Multisite configuration type detection.
+# - WP-CLI availability and essential command validation.
+# - Configuration file loading, variable setting, and syntax validation.
+# - Domain and URL cleaning/sanitization routines.
+# - Error handling for missing files, invalid config, and permissions.
+#
+# Functions provided:
+# - test_wordpress_detection
+# - test_wp_cli_integration
+# - test_config_file_handling
+# - test_domain_sanitization
+# - test_search_replace
+# - test_multisite_handling
+# - test_error_handling
+# - test_cleanup_functions
+# - run_wordpress_tests
+#
+# Dependencies:
+# - test_framework.sh (Must be sourced for test session management)
+# - External functions from the main script (e.g., `find_wp_root`, `detect_wp_type`, `load_config`, `sanitize_domain`, etc.).
+# - Color constants (e.g., ${CYAN}, ${BOLD}, ${RESET}, ${DIM})
+#
+# Usage:
+#   ./test/wordpress_tests.sh
+#
+# ================================================================
 
 # Source the test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_framework.sh"
 
+# ===============================================
 # Test WordPress detection functionality
+# ===============================================
+#
+# Description: Verifies the ability of the script's core functions to correctly
+#              locate a WordPress installation directory and identify its type (single vs. multisite).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Creates temporary test directories and mock `wp-config.php` files for testing.
+#   - Tests detection in a non-WP directory, a fake single-site, and a fake multisite environment.
+#   - Requires external functions like `find_wp_root` and `detect_wp_type`.
+#
 test_wordpress_detection() {
     start_test "WordPress Detection" "Test WordPress installation detection capabilities"
 
@@ -98,7 +146,24 @@ test_wordpress_detection() {
     fi
 }
 
+# ===============================================
 # Test WP-CLI integration
+# ===============================================
+#
+# Description: Verifies that the WP-CLI tool is available in the environment,
+#              is a sufficiently recent version, and that essential WP-CLI commands
+#              required by the import tool (e.g., search-replace, core, db) are available.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`. Returns 0 if `wp` command is not found.
+#
+# Behavior:
+#   - Uses `require_command "wp"` to skip if not available.
+#   - Checks `wp --info` and `wp --version`.
+#
 test_wp_cli_integration() {
     if ! require_command "wp"; then
         return 0
@@ -158,7 +223,23 @@ test_wp_cli_integration() {
     fi
 }
 
+# ===============================================
 # Test configuration file handling
+# ===============================================
+#
+# Description: Tests the ability of the script to correctly load, parse, and validate
+#              variables from an external configuration file (e.g., `config.conf`).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Creates a temporary test configuration file with valid and invalid entries.
+#   - Requires external functions like `load_config` and `validate_config`.
+#
 test_config_file_handling() {
     start_test "Config File Handling" "Test configuration file reading and validation"
 
@@ -257,7 +338,24 @@ EOF
     fi
 }
 
+# ===============================================
 # Test domain sanitization
+# ===============================================
+#
+# Description: Verifies that the domain and URL sanitization functions correctly
+#              clean up user input, removing protocols (`http://`, `https://`) and
+#              trailing slashes, while preserving essential components like ports or subdomains.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Uses an array of inputs and expected outputs to test edge cases.
+#   - Requires the external function `sanitize_domain`.
+#
 test_domain_sanitization() {
     start_test "Domain Sanitization" "Test domain and URL sanitization functionality"
 
@@ -311,7 +409,25 @@ test_domain_sanitization() {
     fi
 }
 
+# ===============================================
 # Test search and replace functionality
+# ===============================================
+#
+# Description: Validates the readiness and logic of the database search and replace
+#              functions, particularly checking for the ability to handle serialized data
+#              and different URL patterns.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks for the availability of `perform_search_replace` and `dry_run_search_replace`.
+#   - Validates the test serialized string against the expected result.
+#   - Note: Actual execution of WP-CLI commands is simulated or skipped in favor of logic checks.
+#
 test_search_replace() {
     start_test "Search Replace Functionality" "Test database search and replace operations"
 
@@ -361,7 +477,24 @@ test_search_replace() {
     fi
 }
 
+# ===============================================
 # Test multisite handling
+# ===============================================
+#
+# Description: Verifies the ability to correctly detect and differentiate between
+#              subdirectory and subdomain WordPress Multisite installations.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Creates a mock Multisite `wp-config.php` file.
+#   - Tests subdirectory detection, then modifies the config to test subdomain detection.
+#   - Requires external functions like `detect_wp_type` and `get_multisite_type`.
+#
 test_multisite_handling() {
     start_test "Multisite Handling" "Test WordPress multisite functionality"
 
@@ -436,7 +569,25 @@ EOF
     fi
 }
 
+# ===============================================
 # Test error handling and edge cases
+# ===============================================
+#
+# Description: Verifies the script's robustness in handling common failure scenarios,
+#              including missing files, invalid configuration syntax, unreadable files,
+#              and incorrect directory structure.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Explicitly tests `import_sql_file` with a non-existent file.
+#   - Tests `find_wp_root` in a directory lacking a valid config.
+#   - Tests `validate_wp_config` and `read_wp_config` with corrupted or permission-restricted files.
+#
 test_error_handling() {
     start_test "Error Handling" "Test error handling and edge case scenarios"
 
@@ -514,7 +665,23 @@ test_error_handling() {
     fi
 }
 
+# ===============================================
 # Test cleanup and maintenance functions
+# ===============================================
+#
+# Description: Verifies the availability of post-import maintenance and cleanup
+#              functions, such as clearing cache, optimizing the database (revisions),
+#              and cleaning up temporary files.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks for the availability of `show_revision_cleanup_commands`, `clear_wp_cache`, and `cleanup_temp_files`.
+#
 test_cleanup_functions() {
     start_test "Cleanup Functions" "Test cleanup and maintenance functionality"
 
@@ -554,7 +721,24 @@ test_cleanup_functions() {
     fi
 }
 
+# ===============================================
 # Run all WordPress specific tests
+# ===============================================
+#
+# Description: The primary entry point function that initializes the test session
+#              and executes all individual WordPress functionality test functions.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - The exit code of the final `finalize_test_session` call (0 on success, non-zero on failure).
+#
+# Behavior:
+#   - Calls `init_test_session`.
+#   - Executes all `test_*` functions in logical order by dependency and feature group.
+#   - Calls `finalize_test_session`.
+#
 run_wordpress_tests() {
     init_test_session "wordpress_functionality"
 
