@@ -131,8 +131,8 @@ config_file_exists() {
 create_config_file() {
     local config_path="$1"
     local sql_file="${2:-vip-db.sql}"
-    local old_domain="${3:-}"
-    local new_domain="${4:-}"
+    local old_domain="$(sanitize_domain "${3:-}")"
+    local new_domain="$(sanitize_domain "${4:-}")"
 
     cat > "$config_path" << EOF
 # ===============================================
@@ -405,6 +405,11 @@ update_config_general() {
     local config_path="$1"
     local key="$2"
     local value="$3"
+
+    # Sanitize domains if the key is old_domain or new_domain
+    if [[ "$key" == "old_domain" || "$key" == "new_domain" ]]; then
+        value="$(sanitize_domain "$value")"
+    fi
 
     if [[ ! -f "$config_path" ]]; then
         return 1
