@@ -1025,6 +1025,16 @@ create_temp_file() {
     echo "$temp_file"
 }
 
+# Global bash version variables (set once, used throughout)
+# Using compatible syntax for Bash 3.2+ (no -g flag)
+BASH_VERSION_MAJOR=""
+BASH_VERSION_MINOR=""
+BASH_FEATURE_ASSOCIATIVE_ARRAYS=""
+BASH_FEATURE_NAMEREF=""
+BASH_FEATURE_LOWERCASE=""
+BASH_FEATURE_MAPFILE=""
+BASH_VERSION_DETECTED=""
+
 # ===============================================
 # Detect Bash Version
 # ===============================================
