@@ -297,16 +297,18 @@ handle_missing_mappings() {
     for missing_site in "${missing_sites[@]}"; do
         IFS=',' read -r blog_id domain path <<< "$missing_site"
 
-        printf "  ┌─ Processing Site %s ──────────────────────────────────────\n" "$blog_id"
-        printf "  │ Domain: %s\n" "$domain"
-        printf "  │ Path:   %s\n" "$path"
+        printf "  ${CYAN}📍 Site %s${RESET} \n" "$blog_id"
+        printf "     🌐 Domain: %s\n" "$domain"
+        printf "     📁 Path:   %s\n" "$path"
 
         local default_url=""
         # Use the NEW domain from user input, fall back to config, then local.test
         local base_domain="${new_base_domain:-${CONFIG_NEW_DOMAIN:-local.test}}"
 
         if [[ "$blog_id" == "1" ]]; then
-            printf "  │ Enter local URL for Main Site (default: %s): " "$base_domain"
+            echo ""
+            printf "     💡 Suggested URL: %s \n" "$base_domain"
+            printf "     🔗 Local URL: "
             default_url="$base_domain"
         else
             # Remove protocol if present from base domain
@@ -324,7 +326,9 @@ handle_missing_mappings() {
                 local subdomain=$(echo "$domain" | cut -d'.' -f1)
                 default_url="${base_domain}/${subdomain}"
             fi
-            printf "  │ Enter local URL for Blog ID %s (default: %s): " "$blog_id" "$default_url"
+            echo ""
+            printf "     💡 Suggested URL: %s \n" "$default_url"
+            printf "     🔗 Local URL: "
         fi
 
         local new_domain_input
@@ -334,15 +338,38 @@ handle_missing_mappings() {
 
         # Clean the URL (remove protocols and trailing slashes)
         if [[ "$new_domain_input" =~ ^https?:// ]]; then
-            printf "  │ 🧹 Cleaned: '%s' → '%s'\n" "$new_domain_input" "${new_domain_input#http*://}"
+            printf "     🧹 Cleaned: '%s' → '%s'\n" "$new_domain_input" "${new_domain_input#http*://}"
             new_domain_input="${new_domain_input#http*://}"
         fi
         new_domain_input="${new_domain_input%/}"
 
-        printf "  └──────────────────────────────────────────────────────────\n"
-        printf "  ✅ Mapping confirmed:\n"
+        local local_site_path="$path"
+        if [[ "$installation_type" == "multisite" ]]; then
+            if [[ "$multisite_type" == "subdirectory" ]]; then
+                if [[ "$blog_id" != "1" ]]; then
+                    if [[ -n "$path" && "$path" != "/" ]]; then
+                        local local_clean_path="${path#/}"
+                        local_site_path="/${local_clean_path%/}"
+                    else
+                        local local_subdomain=$(echo "$domain" | cut -d'.' -f1)
+                        local_site_path="/${local_subdomain}"
+                    fi
+
+                    # Override path if user specified a path in the new domain.
+                    if [[ -n $new_domain_input ]]; then
+                        local new_domain_path=$(echo "$new_domain_input" | cut -d'/' -f2)
+                        local_site_path="/${new_domain_path}"
+                    fi
+                fi # ! Blog ID 1
+            fi # if Subdirectory
+        fi # if Multisite
+
+        echo ""
+        # printf "  └──────────────────────────────────────────────────────────\n"
+        printf "   ${GREEN}✔ Mapping confirmed:${RESET}\n"
         printf "     ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$domain" "$new_domain_input"
-        printf "     (Blog ID: %s, Path: %s)\n\n" "$blog_id" "$path"
+        printf "     (Blog ID: %s, Path: %s)\n\n" "$blog_id" "$local_site_path"
+        echo ""
 
         # Construct old domain with path for config storage when path is meaningful
         local config_old_domain="$domain"

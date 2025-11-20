@@ -551,7 +551,7 @@ case "${1:-}" in
         ;;
     test)
         # Public command to run test suite - can be executed from any directory
-        printf "${CYAN}🧪 Running WordPress Database Import Tool Test Suite${RESET}\n\n"
+        # printf "${CYAN}🧪 Running WordPress Database Import Tool Test Suite${RESET}\n\n"
 
         # Shift to remove 'test' from arguments
         shift
@@ -577,8 +577,8 @@ case "${1:-}" in
             test_args="all"
         fi
 
-        printf "${DIM}Running from: $SCRIPT_DIR${RESET}\n"
-        printf "${DIM}Arguments: $test_args${RESET}\n\n"
+        # printf "${DIM}Running from: $SCRIPT_DIR${RESET}\n"
+        # printf "${DIM}Arguments: $test_args${RESET}\n\n"
 
         # Execute the test runner
         if ./run_tests.sh $test_args; then
