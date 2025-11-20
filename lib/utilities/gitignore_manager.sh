@@ -4,26 +4,49 @@
 # GitIgnore Manager Utilities Module
 # ================================================================
 #
-# This module provides functions for managing .gitignore entries
-# specifically for WordPress development environments.
+# Description:
+#   This module provides functions for managing .gitignore entries
+#   specifically for WordPress development environments, ensuring
+#   that files like the 'stage-file-proxy' plugin are safely excluded
+#   from Git tracking.
 #
 # Key Features:
-# - Cross-platform Unix compatibility (macOS, Linux, Flywheel)
-# - Robust error handling and validation
+# - Cross-platform Unix compatibility (macOS, Linux)
+# - Robust error handling and file permission validation
 # - WordPress root directory auto-detection
-# - Safe file operations with proper permission checks
-# - Integration with existing project color/messaging standards
+# - Semantic duplicate checking for .gitignore entries
 #
 # Functions provided:
 # - add_stage_file_proxy_to_gitignore    Main function to prevent accidental commits
+# - remove_stage_file_proxy_from_gitignore Removal utility
+# - show_stage_file_proxy_gitignore_status Status check utility
 # - find_wordpress_root_gitignore        WordPress root detection helper
 # - validate_wp_content_access           Permission validation helper
 # - add_gitignore_entry_safe             Generic safe gitignore entry addition
+# - check_gitignore_semantic_duplicate   Duplicate checking helper
+# - normalize_gitignore_entry            Entry normalization helper
 #
+# Dependencies:
+# - init_colors (or equivalent color constants)
+#
+# ================================================================
 
-# -----------------------------------------------
+# ===============================================
 # Enhanced WordPress root detection for gitignore operations
-# -----------------------------------------------
+# ===============================================
+#
+# Description: Searches up the directory tree to find the WordPress root directory.
+#
+# Parameters:
+#	- $1: Optional. Starting directory to search from (default: current directory).
+#
+# Returns:
+#	- WordPress root path (echoed) on success.
+#	- Returns 1 if wp-config.php or wp-content is not found.
+#
+# Behavior:
+#	- Uses Bash parameter expansion (`${wp_root%/*}`) for cross-version compatibility.
+#
 find_wordpress_root_gitignore() {
     local start_dir="${1:-$(pwd)}"
     local wp_root="$start_dir"
@@ -44,9 +67,19 @@ find_wordpress_root_gitignore() {
     return 1
 }
 
-# -----------------------------------------------
+# ===============================================
 # Validate wp-content directory access and permissions
-# -----------------------------------------------
+# ===============================================
+#
+# Description: Checks if the `wp-content` directory exists and is writable.
+#
+# Parameters:
+#	- $1: The WordPress root directory path.
+#
+# Returns:
+#	- 0 (Success) if directory is found and writable.
+#	- 1 (Failure) otherwise (prints error message).
+#
 validate_wp_content_access() {
     local wp_root="$1"
     local wp_content_dir="$wp_root/wp-content"
@@ -69,10 +102,24 @@ validate_wp_content_access() {
     return 0
 }
 
-# -----------------------------------------------
+# ===============================================
 # Check for semantic duplicate gitignore entries
-# Handles variations like ./plugins vs /plugins vs plugins
-# -----------------------------------------------
+# ===============================================
+#
+# Description: Checks if a new entry is semantically equivalent to an existing entry in `.gitignore`
+#              (e.g., checking "plugins/my-plugin" against "/plugins/my-plugin").
+#
+# Parameters:
+#	- $1: Path to the .gitignore file.
+#	- $2: The new entry string to check.
+#
+# Returns:
+#	- 0 (Success) if a semantic duplicate is found.
+#	- 1 (Failure) if no duplicate is found or file doesn't exist.
+#
+# Behavior:
+#	- Requires `normalize_gitignore_entry` to be available.
+#
 check_gitignore_semantic_duplicate() {
     local gitignore_file="$1"
     local new_entry="$2"
@@ -85,6 +132,11 @@ check_gitignore_semantic_duplicate() {
     local normalized_new
     normalized_new=$(normalize_gitignore_entry "$new_entry")
 
+    # If normalization fails (e.g., empty entry), return 1
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
     # Check each line in gitignore for semantic matches
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip empty lines and comments
@@ -92,7 +144,9 @@ check_gitignore_semantic_duplicate() {
 
         # Normalize existing entry
         local normalized_existing
-        normalized_existing=$(normalize_gitignore_entry "$line")
+        if ! normalized_existing=$(normalize_gitignore_entry "$line"); then
+             continue
+        fi
 
         # Compare normalized entries
         if [[ "$normalized_new" == "$normalized_existing" ]]; then
@@ -103,10 +157,23 @@ check_gitignore_semantic_duplicate() {
     return 1  # No semantic duplicates found
 }
 
-# -----------------------------------------------
+# ===============================================
 # Normalize gitignore entry for semantic comparison
-# Handles ./plugins vs /plugins vs plugins variations
-# -----------------------------------------------
+# ===============================================
+#
+# Description: Standardizes a gitignore entry string for consistent comparison.
+#
+# Parameters:
+#	- $1: The input entry string.
+#
+# Returns:
+#	- The normalized entry (echoed) on success.
+#	- Returns 1 if the resulting entry is empty or invalid.
+#
+# Behavior:
+#	- Removes whitespace, leading `./`, and trailing slashes.
+#	- Adds a leading slash if none is present (making it relative to the repository root).
+#
 normalize_gitignore_entry() {
     local entry="$1"
 
@@ -141,9 +208,24 @@ normalize_gitignore_entry() {
     return 0
 }
 
-# -----------------------------------------------
-# Safely add entry to .gitignore with comprehensive validation
-# -----------------------------------------------
+# ===============================================
+# Add Gitignore Entry Safely
+# ===============================================
+#
+# Description: Safely adds a new entry to the `.gitignore` file, handling file creation, permission checks, and duplicate checks.
+#
+# Parameters:
+#	- $1: Path to the .gitignore file.
+#	- $2: The new entry string (e.g., "/plugins/stage-file-proxy/").
+#	- $3: Optional. Description of the entry (currently unused).
+#
+# Returns:
+#	- 0 (Success) if entry is added or already exists.
+#	- 1 (Failure) if permission/creation/write errors occur (prints error messages).
+#
+# Behavior:
+#	- Requires `check_gitignore_semantic_duplicate` to be available.
+#
 add_gitignore_entry_safe() {
     local gitignore_file="$1"
     local entry="$2"
@@ -227,10 +309,24 @@ add_gitignore_entry_safe() {
     return 0
 }
 
-# -----------------------------------------------
-# Main function: Add Stage File Proxy to .gitignore
-# Enhanced for maximum Unix compatibility and integration
-# -----------------------------------------------
+# ===============================================
+# Add Stage File Proxy To Gitignore
+# ===============================================
+#
+# Description: Main function to ensure the `stage-file-proxy` plugin is excluded in `wp-content/.gitignore`.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if the entry is added or already exists.
+#	- 1 (Failure) if WordPress root is not found or permissions are insufficient.
+#
+# Behavior:
+#	- Auto-detects WordPress root.
+#	- Validates `wp-content` writability.
+#	- Calls `add_gitignore_entry_safe` to perform the insertion.
+#
 add_stage_file_proxy_to_gitignore() {
     # Initialize colors if not already done
     if [[ -z "${GREEN:-}" ]]; then
@@ -246,8 +342,6 @@ add_stage_file_proxy_to_gitignore() {
             fi
         fi
     fi
-
-
 
     # Auto-detect WordPress root directory
     local wp_root
@@ -281,9 +375,22 @@ add_stage_file_proxy_to_gitignore() {
     fi
 }
 
-# -----------------------------------------------
-# Additional utility: Remove Stage File Proxy from .gitignore
-# -----------------------------------------------
+# ===============================================
+# Remove Stage File Proxy From Gitignore
+# ===============================================
+#
+# Description: Removes the `stage-file-proxy` exclusion entry from `wp-content/.gitignore`.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if removal is successful or the entry was already missing.
+#	- 1 (Failure) on error.
+#
+# Behavior:
+#	- Uses `grep -vxF` and `mv` with a temporary file for safe removal.
+#
 remove_stage_file_proxy_from_gitignore() {
     # Initialize colors if not already done
     if [[ -z "${GREEN:-}" ]] && command -v init_colors >/dev/null 2>&1; then
@@ -330,9 +437,21 @@ remove_stage_file_proxy_from_gitignore() {
     fi
 }
 
-# -----------------------------------------------
-# Additional utility: Show current gitignore status
-# -----------------------------------------------
+# ===============================================
+# Show Stage File Proxy Gitignore Status
+# ===============================================
+#
+# Description: Reports the current status of the `stage-file-proxy` exclusion in `.gitignore`.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Prints formatted status information (Success/Failure/Warning) to stdout.
+#
+# Behavior:
+#	- Checks if the specific entry exists in the `wp-content/.gitignore` file.
+#
 show_stage_file_proxy_gitignore_status() {
     # Initialize colors if not already done
     if [[ -z "${GREEN:-}" ]] && command -v init_colors >/dev/null 2>&1; then

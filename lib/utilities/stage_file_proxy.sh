@@ -1,36 +1,71 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ================================================================
 # Stage File Proxy Utilities Module (Unified)
 # ================================================================
 #
-# This module provides functions for setting up and configuring
-# the Stage File Proxy plugin for WordPress installations.
+# Description:
+#   This module provides a unified and robust set of functions for
+#   installing, activating, and configuring the Stage File Proxy
+#   WordPress plugin (v101+). It supports both single-site and
+#   multisite installations, automatically choosing between:
+#   1. Automatic configuration (using existing production domain mappings from a config file).
+#   2. Manual configuration (interactive prompting, saving new mappings to the config file).
 #
-# Compatible with Stage File Proxy plugin v101+
-# - Uses separate 'sfp_url' and 'sfp_mode' options instead of JSON format
-# - 'source_domain' → 'sfp_url'
-# - 'method' → 'sfp_mode' with default value 'header'
-# - All domains are stored with https:// protocol in the database for security
-# - Improved user input validation and sanitization
-# - Better user feedback about what gets stored in the database
-# - Automatic protocol conversion (http:// → https://, missing protocol → https://)
-# - UNIFIED: Automatic mode when domain mapping provided, manual when missing
-# - REUSES: Existing [site_mappings] section for configuration
+# Key Features:
+# - Unified setup function (`setup_stage_file_proxy_unified`) supporting automatic/manual modes.
+# - Plugin installation and activation with enhanced failure handling.
+# - Secure handling of domains, ensuring `https://` protocol is stored.
+# - Integration with external site mapping tools for persistent configuration.
+# - Utilities for checking current configuration and bulk setup for multisite.
 #
 # Functions provided:
-# - setup_stage_file_proxy_unified   Main unified setup function
-# - setup_stage_file_proxy           Legacy setup function (interactive)
-# - show_stage_file_proxy_config     Display current configuration
-# - bulk_configure_multisite         Set same domain for all sites (multisite only)
-# - configure_stage_file_proxy       Internal configuration function
-# - sanitize_stage_proxy_domain      Domain validation and sanitization
-# - get_validated_domain             Interactive domain input with validation
-# - get_stage_proxy_mappings         Extract domains from site_mappings
+# - get_stage_proxy_mappings                   Extracts mappings from [site_mappings].
+# - save_stage_proxy_mapping                   Placeholder/Info function.
+# - get_domain_mapping_for_site                Retrieves production domain for a blog ID.
+# - sanitize_stage_proxy_domain                Validates and standardizes domain input.
+# - get_validated_domain                       Interactive domain input validation.
+# - configure_stage_file_proxy                 Sets `sfp_url` and `sfp_mode` via WP-CLI.
+# - setup_stage_file_proxy                     Legacy interactive setup function.
+# - setup_single_site_stage_file_proxy         Legacy single site handler.
+# - setup_stage_file_proxy_unified             Main unified setup entry point.
+# - setup_multisite_stage_file_proxy           Legacy multisite handler.
+# - show_stage_file_proxy_config               Displays current plugin settings.
+# - bulk_configure_multisite                   Sets one domain for all subsites.
+# - setup_single_site_stage_file_proxy_automatic Single site setup using config mappings.
+# - setup_multisite_stage_file_proxy_automatic Multisite setup using config mappings.
+# - setup_multisite_from_config_mappings       Fallback multisite setup when WP-CLI fails.
+# - setup_single_site_stage_file_proxy_manual  Single site interactive setup (saves mapping).
+# - setup_multisite_stage_file_proxy_manual    Multisite interactive setup (saves mappings).
+# - get_validated_domain_with_input            Non-interactive domain validation helper.
+# - install_stage_file_proxy_plugin            Handles installation of the plugin.
 #
+# Dependencies:
+# - WP-CLI (`wp` command)
+# - External site mapping/detection utilities (e.g., `sanitize_domain`, `find_wordpress_root`, `detect_wordpress_installation_type`, `write_site_mapping`).
+# - Color constants (e.g., ${CYAN}, ${RED}, ${GREEN}).
+#
+# ================================================================
 
+# ===============================================
 # Function to get stage proxy mappings from existing site_mappings
-# Returns in format: blog_id:old_domain (production domain for sfp_url)
+# ===============================================
+#
+# Description: Extracts production domain mappings from the `[site_mappings]` section
+#              of a configuration file.
+#
+# Parameters:
+#   - $1: Path to the configuration file (e.g., `config/site-mappings.conf`).
+#
+# Returns:
+#   - Output (echoed) in the format `blog_id:old_domain` (production domain) for each mapping.
+#   - Returns 1 (Failure) if the config file does not exist.
+#   - Returns 0 (Success) otherwise (even if no mappings are found).
+#
+# Behavior:
+#   - Uses `awk` to parse the specified section and format the output.
+#   - Assumes mapping format is `blog_id:old_domain:new_domain`.
+#
 get_stage_proxy_mappings() {
     local config_path="$1"
 
@@ -54,13 +89,50 @@ get_stage_proxy_mappings() {
     ' "$config_path" 2>/dev/null
 }
 
-# Function to save stage proxy mapping (reuses existing site mapping infrastructure)
+# ===============================================
+# Function to save stage proxy mapping
+# ===============================================
+#
+# Description: Placeholder function to indicate that site mappings are saved
+#              via the existing site mapping infrastructure (e.g., by calling
+#              `write_site_mapping` or similar external functions).
+#
+# Parameters:
+#   - None (The actual saving is handled by other functions like `setup_multisite_stage_file_proxy_manual`).
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Prints a message to inform the user where mappings are stored.
+#
 save_stage_proxy_mapping() {
     echo "Mappings are automatically saved in [site_mappings] section"
     return 0
 }
 
-# Function to get domain mapping for a specific site (from site_mappings)
+# ===============================================
+# Function to get domain mapping for a specific site
+# ===============================================
+#
+# Description: Retrieves the production domain (old_domain) associated with a
+#              specific blog ID from the configuration file site mappings.
+#
+# Parameters:
+#   - $1: Path to the configuration file.
+#   - $2: The blog ID (e.g., '1' for the main site).
+#   - $3: (Optional) A fallback domain to return if no mapping is found.
+#
+# Returns:
+#   - The mapped production domain (echoed) on success.
+#   - The optional fallback domain (echoed) if no mapping is found but a fallback is provided.
+#   - Returns 0 (Success) if a domain is echoed.
+#   - Returns 1 (Failure) if no mapping is found and no fallback is provided.
+#
+# Behavior:
+#   - Prioritizes using the external function `read_production_domain` if available.
+#   - Falls back to using `get_stage_proxy_mappings` to manually search.
+#
 get_domain_mapping_for_site() {
     local config_path="$1"
     local blog_id="$2"
@@ -90,7 +162,24 @@ get_domain_mapping_for_site() {
     fi
 }
 
-# Function to sanitize and validate domain input (Updated for new plugin structure)
+# ===============================================
+# Function to sanitize and validate domain input
+# ===============================================
+#
+# Description: Standardizes and validates a domain input string for use as the
+#              Stage File Proxy source URL (`sfp_url`).
+#
+# Parameters:
+#   - $1: The input domain string (may contain protocol, slashes, or nothing).
+#
+# Returns:
+#   - The sanitized, valid domain string (echoed) on success (guaranteed to start with `https://`).
+#   - Returns 1 (Failure) if the domain is invalid or empty after processing.
+#
+# Behavior:
+#   - Relies on the external function `sanitize_domain` with "strict" mode for core validation.
+#   - Handles protocol conversion to ensure `https://` is used for security.
+#
 sanitize_stage_proxy_domain() {
     local input="$1"
 
@@ -107,7 +196,27 @@ sanitize_stage_proxy_domain() {
     fi
 }
 
+# ===============================================
 # Function to get and validate domain input interactively
+# ===============================================
+#
+# Description: Prompts the user for a domain, performs basic validation,
+#              and uses `sanitize_stage_proxy_domain` for final processing.
+#
+# Parameters:
+#   - $1: The prompt string to display to the user.
+#
+# Returns:
+#   - 0 (Success) if a valid domain is entered and the global variable `VALIDATED_DOMAIN` is set.
+#   - 1 (Failure) if input is empty (user chose to skip), invalid, or the user cancels a warning.
+#
+# Behavior:
+#   - Reads input from `/dev/tty`.
+#   - Performs checks for length, dangerous characters, and control characters.
+#   - Automatically converts `http://` to `https://` and adds `https://` if missing.
+#   - Warns the user if localhost patterns are detected.
+#   - Sets the global variable `VALIDATED_DOMAIN` to the final, sanitized domain.
+#
 get_validated_domain() {
     local prompt="$1"
     local domain
@@ -190,7 +299,25 @@ get_validated_domain() {
     done
 }
 
+# ===============================================
 # Function to configure Stage File Proxy plugin settings
+# ===============================================
+#
+# Description: Configures the Stage File Proxy WP-CLI options (`sfp_url` and `sfp_mode`)
+#              for a single site or a specific site in a multisite network.
+#
+# Parameters:
+#   - $1: The sanitized production domain (sfp_url). Must include protocol (https://).
+#   - $2: The Stage File Proxy mode (sfp_mode). Defaults to 'header'.
+#   - $3: (Optional) The site URL for multisite context (used with `--url=$3`).
+#
+# Returns:
+#   - 0 (Success) if both options are updated successfully via WP-CLI.
+#   - 1 (Failure) otherwise.
+#
+# Behavior:
+#   - Uses `wp option update` to set `sfp_url` and `sfp_mode`.
+#
 configure_stage_file_proxy() {
     local domain="$1"
     local mode="${2:-header}"  # Default mode is 'header' as per new plugin
@@ -216,7 +343,27 @@ configure_stage_file_proxy() {
     printf "${GREEN}✅ Configuration successful (URL: $domain, Mode: $mode)${RESET}\n"
 }
 
+# ===============================================
 # Main setup function for Stage File Proxy
+# ===============================================
+#
+# Description: Legacy, interactive setup function for Stage File Proxy. It installs
+#              and activates the plugin, and then prompts the user for the production
+#              domain(s) based on whether it detects a single site or multisite.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if setup completes for the detected installation type.
+#   - 1 (Failure) if WP-CLI is unavailable, WordPress is not installed, or plugin installation/activation fails.
+#
+# Behavior:
+#   - Installs the plugin if missing (via GitHub release or direct download).
+#   - Calls `add_stage_file_proxy_to_gitignore` if available.
+#   - Detects installation type using external functions.
+#   - Delegates to `setup_single_site_stage_file_proxy` or `setup_multisite_stage_file_proxy`.
+#
 setup_stage_file_proxy() {
     printf "${CYAN}${BOLD}=== Stage File Proxy Setup ===${RESET}\n"
     echo ""
@@ -358,7 +505,24 @@ setup_stage_file_proxy() {
     fi
 }
 
+# ===============================================
 # Single site setup function
+# ===============================================
+#
+# Description: Handles the interactive setup for a WordPress single site installation.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if the plugin is activated and configured.
+#   - 1 (Failure) if plugin activation fails or configuration is unsuccessful.
+#
+# Behavior:
+#   - Activates the Stage File Proxy plugin.
+#   - Prompts the user for the production domain via `get_validated_domain`.
+#   - Configures the site using `configure_stage_file_proxy` with 'header' mode.
+#
 setup_single_site_stage_file_proxy() {
     echo ""
     printf "${CYAN}${BOLD}=== Setting up for Single Site ===${RESET}\n"
@@ -399,8 +563,31 @@ setup_single_site_stage_file_proxy() {
     printf "${GREEN}Stage File Proxy is now active and configured!${RESET}\n"
 }
 
+# ===============================================
 # Unified Stage File Proxy Setup Function
-# Automatically detects mode based on available configuration
+# ===============================================
+#
+# Description: The main, robust setup function that automatically selects between
+#              automatic (using config mappings) and manual (interactive) modes
+#              based on the availability of configuration data and the WordPress
+#              installation type (single/multisite).
+#
+# Parameters:
+#   - $1: Path to the configuration file containing site mappings.
+#
+# Returns:
+#   - 0 (Success) if setup completes (either successfully configured or skipped).
+#   - 1 (Failure) if WP-CLI is unavailable, plugin installation fails, or installation type cannot be detected.
+#
+# Behavior:
+#   - Handles cases where WordPress is inaccessible (attempting config-based setup).
+#   - Calls `install_stage_file_proxy_plugin`.
+#   - Detects installation type and checks for existing site mappings.
+#   - Delegates to: `setup_multisite_stage_file_proxy_automatic`,
+#     `setup_multisite_stage_file_proxy_manual`,
+#     `setup_single_site_stage_file_proxy_automatic`, or
+#     `setup_single_site_stage_file_proxy_manual`.
+#
 setup_stage_file_proxy_unified() {
     local config_path="$1"
 
@@ -506,7 +693,26 @@ setup_stage_file_proxy_unified() {
     fi
 }
 
+# ===============================================
 # Multisite setup function
+# ===============================================
+#
+# Description: Handles the interactive setup for a WordPress multisite installation.
+#              It prompts the user for the production domain for each site in the network.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if the plugin is activated network-wide and all sites are processed.
+#   - 1 (Failure) if plugin activation fails or no sites are found in the network.
+#
+# Behavior:
+#   - Activates the Stage File Proxy plugin network-wide.
+#   - Uses `wp site list` to get all site IDs and URLs.
+#   - Iterates through each site, prompting for the production domain via `get_validated_domain`.
+#   - Configures each site using `configure_stage_file_proxy` with the site's URL flag.
+#
 setup_multisite_stage_file_proxy() {
     printf "\n"
     printf "${CYAN}=== Setting up for Multisite ===${RESET}\n"
@@ -570,7 +776,24 @@ setup_multisite_stage_file_proxy() {
     printf "${GREEN}Stage File Proxy is now active and configured for all sites!${RESET}\n"
 }
 
+# ===============================================
 # Function to display current configuration
+# ===============================================
+#
+# Description: Outputs the current `sfp_url` and `sfp_mode` settings for the
+#              WordPress installation. For multisite, it shows the configuration
+#              for every site in the network.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Detects installation type.
+#   - Uses `wp option get` to retrieve the current settings.
+#
 show_stage_file_proxy_config() {
     printf "${CYAN}=== Current Stage File Proxy Configuration ===${RESET}\n"
 
@@ -621,7 +844,25 @@ show_stage_file_proxy_config() {
     fi
 }
 
+# ===============================================
 # Function to quickly set all sites to the same domain (for multisite)
+# ===============================================
+#
+# Description: Prompts the user for a single production domain and applies it
+#              as the `sfp_url` for *all* sites in a WordPress multisite network.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if the configuration is applied successfully or cancelled.
+#   - 1 (Failure) if the installation is not multisite.
+#
+# Behavior:
+#   - Checks for multisite installation type.
+#   - Uses `get_validated_domain` to get a single source domain.
+#   - Iterates through all sites and calls `configure_stage_file_proxy`.
+#
 bulk_configure_multisite() {
     # Detect WordPress installation type using centralized function
     local wp_root
@@ -670,7 +911,26 @@ bulk_configure_multisite() {
     fi
 }
 
+# ===============================================
 # Single site automatic setup using site_mappings
+# ===============================================
+#
+# Description: Configures Stage File Proxy for a single site using an existing
+#              production domain mapping from the configuration file.
+#
+# Parameters:
+#   - $1: Path to the configuration file containing site mappings.
+#
+# Returns:
+#   - 0 (Success) if the site is configured automatically.
+#   - 1 (Failure) if no mapping is found, the domain is invalid, or configuration fails.
+#
+# Behavior:
+#   - Retrieves the production domain for blog ID 1 using `get_domain_mapping_for_site`.
+#   - Activates the plugin.
+#   - Sanitizes the domain with `sanitize_stage_proxy_domain`.
+#   - Configures the site using `configure_stage_file_proxy`.
+#
 setup_single_site_stage_file_proxy_automatic() {
     local config_path="$1"
 
@@ -713,7 +973,27 @@ setup_single_site_stage_file_proxy_automatic() {
     fi
 }
 
+# ===============================================
 # Multisite automatic setup using site_mappings
+# ===============================================
+#
+# Description: Configures Stage File Proxy for all sites in a multisite network
+#              using production domain mappings from the configuration file.
+#
+# Parameters:
+#   - $1: Path to the configuration file containing site mappings.
+#
+# Returns:
+#   - 0 (Success) always, even if some sites fail to configure.
+#   - 1 (Failure) if network activation fails.
+#
+# Behavior:
+#   - Activates the plugin network-wide.
+#   - Uses `wp site list` to get all sites.
+#   - For each site, finds the corresponding mapping using `get_stage_proxy_mappings`.
+#   - Sanitizes the domain and calls `configure_stage_file_proxy`.
+#   - Falls back to `setup_multisite_from_config_mappings` if WP-CLI site list fails.
+#
 setup_multisite_stage_file_proxy_automatic() {
     local config_path="$1"
 
@@ -793,7 +1073,28 @@ setup_multisite_stage_file_proxy_automatic() {
     return 0
 }
 
+# ===============================================
 # Fallback function when WP-CLI site list fails - works directly from config
+# ===============================================
+#
+# Description: A configuration fallback mechanism for multisite. When WP-CLI fails
+#              to list the sites (e.g., due to database issues), this function
+#              attempts to configure Stage File Proxy for sites based only on the
+#              mappings found in the configuration file.
+#
+# Parameters:
+#   - $1: Path to the configuration file.
+#   - $2: A string containing the site mappings in `blog_id:old_domain` format.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Activates the plugin network-wide (with suppressed errors).
+#   - Iterates through the provided mappings.
+#   - Attempts to determine the local site URL (using `read_local_domain` or simple fallback).
+#   - Configures the site options using the URL flag inferred from config.
+#
 setup_multisite_from_config_mappings() {
     local config_path="$1"
     local mappings="$2"
@@ -864,7 +1165,26 @@ setup_multisite_from_config_mappings() {
     return 0
 }
 
+# ===============================================
 # Single site manual setup
+# ===============================================
+#
+# Description: Handles the interactive, manual setup for a WordPress single site
+#              when no site mappings are found, including saving the new mapping.
+#
+# Parameters:
+#   - $1: Path to the configuration file (where the new mapping will be saved).
+#
+# Returns:
+#   - 0 (Success) if the site is configured and the mapping is saved.
+#   - 1 (Failure) otherwise.
+#
+# Behavior:
+#   - Activates the plugin.
+#   - Uses `get_validated_domain` to prompt for the source domain.
+#   - Calls `write_site_mapping` or `update_site_mapping` (if available) to save the mapping for blog ID 1.
+#   - Configures the site using `configure_stage_file_proxy`.
+#
 setup_single_site_stage_file_proxy_manual() {
     local config_path="$1"
 
@@ -911,7 +1231,28 @@ setup_single_site_stage_file_proxy_manual() {
     fi
 }
 
+# ===============================================
 # Multisite manual setup with config integration
+# ===============================================
+#
+# Description: Handles the interactive, manual setup for a WordPress multisite
+#              when no site mappings are found, integrating the configuration
+#              by saving new or updating existing site mappings in the config file.
+#
+# Parameters:
+#   - $1: Path to the configuration file (where the new mappings will be saved/updated).
+#
+# Returns:
+#   - 0 (Success) if the plugin is activated and all sites are processed.
+#   - 1 (Failure) if plugin activation fails.
+#
+# Behavior:
+#   - Activates the plugin network-wide.
+#   - Iterates through all sites retrieved via `wp site list`.
+#   - Checks for existing mappings and prompts the user to use the existing domain or provide a new one.
+#   - Calls `write_site_mapping` or `update_site_mapping` to save the production domain.
+#   - Configures the site using `configure_stage_file_proxy`.
+#
 setup_multisite_stage_file_proxy_manual() {
     local config_path="$1"
 
@@ -1033,7 +1374,24 @@ setup_multisite_stage_file_proxy_manual() {
     printf "${GREEN}Stage File Proxy is now active and configured for all sites!${RESET}\n"
 }
 
+# ===============================================
 # Helper function to validate domain from direct input
+# ===============================================
+#
+# Description: Validates a domain string provided directly as an argument, bypassing
+#              the interactive prompt of `get_validated_domain`.
+#
+# Parameters:
+#   - $1: The input domain string to validate and sanitize.
+#
+# Returns:
+#   - 0 (Success) if the domain is valid, and the global variable `VALIDATED_DOMAIN` is set.
+#   - 1 (Failure) otherwise.
+#
+# Behavior:
+#   - Calls `sanitize_stage_proxy_domain` for validation and standardization.
+#   - Sets the global variable `VALIDATED_DOMAIN`.
+#
 get_validated_domain_with_input() {
     local input="$1"
     local clean_domain
@@ -1047,7 +1405,25 @@ get_validated_domain_with_input() {
     fi
 }
 
+# ===============================================
 # Install Stage File Proxy plugin
+# ===============================================
+#
+# Description: Installs the Stage File Proxy plugin from a GitHub release
+#              using WP-CLI, falling back to direct download via curl/wget
+#              if WP-CLI installation fails.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if the plugin is already installed or installed successfully.
+#   - 1 (Failure) if all installation attempts fail.
+#
+# Behavior:
+#   - Checks for existing installation first.
+#   - Attempts download/install using `curl` or `wget` as fallback mechanisms.
+#
 install_stage_file_proxy_plugin() {
     local install_success=false
     local install_log="/tmp/sfp_install.log"

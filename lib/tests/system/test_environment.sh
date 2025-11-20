@@ -1,20 +1,66 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # System Environment Tests
-# ===============================================
+# ================================================================
 #
-# Tests for different user permissions, environment variables,
-# resource limits, and utility versions to ensure robust operation
-# across various system configurations.
+# Description:
+#   A comprehensive test suite designed to check the stability and compatibility
+#   of the script across various system configurations. It focuses on validating
+#   non-application-specific factors that can affect script execution, such as
+#   user permissions, environment variable integrity, resource limitations,
+#   availability and compatibility of essential utilities (e.g., sed, grep, find),
+#   filesystem access rights, and signal handling capabilities.
 #
-# ===============================================
+# Key Features Tested:
+# - User permissions (root vs. regular user) and directory access.
+# - Integrity and functionality of `$PATH`, `$HOME`, and variable substitution.
+# - System resource limits (open files, processes, memory, stack size).
+# - Version checking and basic functionality of required CLI utilities.
+# - Filesystem read/write access and disk space availability.
+# - Availability of external commands (mysql, wp, git, curl) and signal trapping.
+#
+# Functions provided:
+# - test_user_permissions
+# - test_environment_variables
+# - test_resource_limits
+# - test_utility_versions
+# - test_filesystem_access
+# - test_external_access
+# - test_signal_handling
+# - run_system_environment_tests
+#
+# Dependencies:
+# - test_framework.sh (Must be sourced for test session management)
+# - Color constants (e.g., ${CYAN}, ${BOLD}, ${RESET}, ${DIM})
+#
+# Usage:
+#   ./test/system_environment_tests.sh
+#
+# ================================================================
 
 # Source the test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_framework.sh"
 
+# ===============================================
 # Test user permissions and access rights
+# ===============================================
+#
+# Description: Checks the effective user ID (`EUID`) to determine if the script is
+#              running as root, and verifies essential read/write access to temporary
+#              directories and common system paths.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Differentiates tests based on whether the user is root (`EUID` is 0) or a regular user.
+#   - Checks for writability in `/tmp` and readability in `/etc`, `/usr`, and `/var`.
+#
 test_user_permissions() {
     start_test "User Permissions" "Test script behavior with different user permission levels"
 
@@ -78,7 +124,26 @@ test_user_permissions() {
     fi
 }
 
+# ===============================================
 # Test environment variables
+# ===============================================
+#
+# Description: Verifies the integrity and functionality of essential shell
+#              environment variables (`HOME`, `PATH`, `USER`, `SHELL`) and tests
+#              Bash's ability to handle unset variables and variables containing
+#              special characters.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks if essential environment variables are set (`-n` test).
+#   - Validates that the `bash` executable can be found via `$PATH`.
+#   - Tests variable substitution with unset variables (`${var:-}`).
+#
 test_environment_variables() {
     start_test "Environment Variables" "Test handling of various environment variable configurations"
 
@@ -134,7 +199,24 @@ test_environment_variables() {
     fi
 }
 
+# ===============================================
 # Test resource limits
+# ===============================================
+#
+# Description: Checks critical system limits using `ulimit` that could impact a
+#              long-running or complex script, such as the maximum number of
+#              open files, processes, and stack size.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks `ulimit -n` (open files), `ulimit -u` (processes), `ulimit -v` (memory), and `ulimit -s` (stack size).
+#   - Performs a rudimentary load test by creating multiple temporary files to ensure stability.
+#
 test_resource_limits() {
     start_test "Resource Limits" "Test system resource limit handling"
 
@@ -203,7 +285,25 @@ test_resource_limits() {
     fi
 }
 
+# ===============================================
 # Test utility versions and availability
+# ===============================================
+#
+# Description: Verifies that essential command-line utilities (`bash`, `grep`,
+#              `sed`, `awk`, `find`) are present, functional, and identifies
+#              whether GNU or BSD versions of key tools are in use.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Iterates through a list of required tools and checks for existence (`command -v`).
+#   - Runs a basic functional test (e.g., pipe data to `grep` and check output).
+#   - Detects GNU vs. BSD flavors for `sed` and `grep` which indicates potential syntax differences.
+#
 test_utility_versions() {
     start_test "Utility Versions" "Test compatibility with different utility versions"
 
@@ -290,7 +390,24 @@ test_utility_versions() {
     fi
 }
 
+# ===============================================
 # Test disk space and filesystem permissions
+# ===============================================
+#
+# Description: Checks the writability of the temporary directory and the current
+#              working directory, verifies file and directory creation/deletion,
+#              and ensures adequate free disk space in the temporary volume.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks `/tmp` for writability and available space using `df`.
+#   - Performs `touch`, `cat`, `rm`, `mkdir`, and `rmdir` operations for file system sanity check.
+#
 test_filesystem_access() {
     start_test "Filesystem Access" "Test filesystem access and disk space"
 
@@ -362,7 +479,24 @@ test_filesystem_access() {
     fi
 }
 
+# ===============================================
 # Test network and external command access
+# ===============================================
+#
+# Description: Verifies the presence and basic functionality of critical external
+#              commands required for database operations (`mysql`, `wp`) and system
+#              maintenance/updates (`git`, `curl`).
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Checks for `mysql`, `wp`, `git`, and `curl` using `command -v`.
+#   - Assesses the risk if `mysql` or `wp` are missing, as they are central to the tool's function.
+#
 test_external_access() {
     start_test "External Access" "Test access to external commands and network resources"
 
@@ -393,7 +527,7 @@ test_external_access() {
         printf "  ✅ WP-CLI available\n"
 
         # Test WP-CLI version
-        local wp_version=$(wp --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' || echo "unknown")
+        local wp_version=$(wp --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' | head -1 || echo "unknown")
         printf "    Version: $wp_version\n"
 
         # Test WP-CLI help (basic functionality)
@@ -440,7 +574,24 @@ test_external_access() {
     fi
 }
 
+# ===============================================
 # Test signal handling and process management
+# ===============================================
+#
+# Description: Verifies the integrity of Bash's signal handling mechanism (`trap`)
+#              and the ability to correctly manage background processes (`&`, `wait`).
+#              This is crucial for cleanup routines and robust execution under interruption.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Calls `pass_test` or `fail_test`.
+#
+# Behavior:
+#   - Sets an `EXIT` trap in a subshell to test if the trap fires correctly on termination.
+#   - Starts a simple `sleep` process in the background and uses `wait` to monitor its completion.
+#
 test_signal_handling() {
     start_test "Signal Handling" "Test signal handling and process management"
 
@@ -494,7 +645,24 @@ test_signal_handling() {
     fi
 }
 
+# ===============================================
 # Run all system environment tests
+# ===============================================
+#
+# Description: The primary entry point function that initializes the test session
+#              and executes all individual system environment test functions.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - The exit code of the final `finalize_test_session` call (0 on success, non-zero on failure).
+#
+# Behavior:
+#   - Calls `init_test_session`.
+#   - Executes all `test_*` functions in logical order by feature group.
+#   - Calls `finalize_test_session`.
+#
 run_system_environment_tests() {
     init_test_session "system_environment"
 

@@ -1,12 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ===============================================
 # Configuration Manager for WordPress Import Tool
 # ===============================================
 #
 # Description:
-#   Handles configuration file creation, reading, writing, validation, and merging
-#   for the WordPress database import tool. Supports project-specific configs.
+#   This module handles all aspects of the tool's INI-style configuration file,
+#   including location finding, creation, parsing, validation, and updating
+#   for both general settings and multisite mappings.
 #
 # Config File Location:
 #   - Searches for 'wpdb-import.conf' in the WordPress root directory
@@ -22,16 +23,33 @@
 #
 #   [site_mappings]
 #   # Format: blog_id:old_domain:new_domain
-#   1:mobility-admin.coxautoinc.com:coxautoinc-mobility.test
-#   2:fleetnetamerica.com:coxautoinc-mobility.test/fleetnetamerica
-#   3:trailers.coxautoinc.com:coxautoinc-mobility.test/trailers
+#   1:blog.example.com:example.test/blog
+#   2:news.example.com:example.test/news
+#   3:news.example.com:example.test/news
 #
 # ===============================================
 
 # Global config file name (constant)
 readonly CONFIG_FILE_NAME="wpdb-import.conf"
 
-# Function to find WordPress root directory
+# ===============================================
+# Find WP Root
+# ===============================================
+#
+# Description: Searches up the directory tree to find the WordPress root directory.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- WordPress root path (echoed) on success
+#	- Returns 1 if wp-config.php not found
+#
+# Behavior:
+#	- Starts from current directory and moves up
+#	- Looks for wp-config.php file
+#	- Returns the directory containing wp-config.php
+#
 find_wp_root() {
     local current_dir="$(pwd)"
     local wp_root="$current_dir"
@@ -49,7 +67,19 @@ find_wp_root() {
     fi
 }
 
-# Function to get the config file path
+# ===============================================
+# Get Config File Path
+# ===============================================
+#
+# Description: Determines the full, expected path of the configuration file.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Full config file path (echoed) on success
+#	- Returns 1 if the WordPress root directory cannot be found
+#
 get_config_file_path() {
     local wp_root
     if wp_root=$(find_wp_root); then
@@ -60,7 +90,19 @@ get_config_file_path() {
     fi
 }
 
-# Function to check if config file exists
+# ===============================================
+# Config File Exists
+# ===============================================
+#
+# Description: Checks if the configuration file is present at its expected location.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if the file exists
+#	- 1 (Failure) if the file does not exist or WP root is not found
+#
 config_file_exists() {
     local config_path
     if config_path=$(get_config_file_path); then
@@ -70,7 +112,22 @@ config_file_exists() {
     fi
 }
 
-# Function to create a new config file with basic structure
+# ===============================================
+# Create Config File
+# ===============================================
+#
+# Description: Creates a new configuration file with a basic structure and default settings.
+#
+# Parameters:
+#	- $1: Path where the config file should be created.
+#	- $2: Optional. Default SQL file name.
+#	- $3: Optional. Default old domain.
+#	- $4: Optional. Default new domain.
+#
+# Returns:
+#	- 0 (Success) on successful creation
+#	- 1 (Failure) on error
+#
 create_config_file() {
     local config_path="$1"
     local sql_file="${2:-vip-db.sql}"
@@ -114,7 +171,21 @@ EOF
     fi
 }
 
-# Function to parse config file and return values
+# ===============================================
+# Parse Config Section
+# ===============================================
+#
+# Description: Extracts the value of a specific key within a specific INI section.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The INI section name (e.g., "general"). Case-insensitive.
+#	- $3: The key name (e.g., "sql_file"). Case-insensitive.
+#
+# Returns:
+#	- The value of the key (echoed)
+#	- Returns 1 if the config file does not exist
+#
 parse_config_section() {
     local config_path="$1"
     local section="$2"
@@ -148,7 +219,19 @@ parse_config_section() {
     ' "$config_path"
 }
 
-# Function to get all site mappings from config
+# ===============================================
+# Get Site Mappings
+# ===============================================
+#
+# Description: Extracts all valid site mapping entries from the [site_mappings] section.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#
+# Returns:
+#	- A list of all site mapping lines (e.g., "1:old.com:new.test"), one per line (echoed)
+#	- Returns 1 if the config file does not exist
+#
 get_site_mappings() {
     local config_path="$1"
 
@@ -178,7 +261,20 @@ get_site_mappings() {
     ' "$config_path"
 }
 
-# Function to get a specific site mapping from config for a blog ID
+# ===============================================
+# Get Site Mapping
+# ===============================================
+#
+# Description: Retrieves the new domain for a specific blog ID from site mappings.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The Blog ID (e.g., "1").
+#
+# Returns:
+#	- The new domain string (echoed)
+#	- Returns 1 if the mapping or config file is not found
+#
 get_site_mapping() {
     local config_path="$1"
     local blog_id="$2"
@@ -198,7 +294,22 @@ get_site_mapping() {
     return 1
 }
 
-# Function to add or update a site mapping in config file
+# ===============================================
+# Update Site Mapping
+# ===============================================
+#
+# Description: Adds a new site mapping or updates an existing one for a given blog ID.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The Blog ID (key for the mapping).
+#	- $3: The old domain.
+#	- $4: The new domain.
+#
+# Returns:
+#	- 0 (Success) on successful update/add
+#	- 1 (Failure) on error or if the config file is not found
+#
 update_site_mapping() {
     local config_path="$1"
     local blog_id="$2"
@@ -275,7 +386,21 @@ update_site_mapping() {
     fi
 }
 
-# Function to update general config settings
+# ===============================================
+# Update Config General
+# ===============================================
+#
+# Description: Updates a single key-value pair within the [general] section.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The key name to update.
+#	- $3: The new value for the key.
+#
+# Returns:
+#	- 0 (Success) on successful update/add
+#	- 1 (Failure) on error or if the config file is not found
+#
 update_config_general() {
     local config_path="$1"
     local key="$2"
@@ -327,7 +452,19 @@ update_config_general() {
     fi
 }
 
-# Function to validate config file format
+# ===============================================
+# Validate Config File
+# ===============================================
+#
+# Description: Checks the config file for the presence of required sections and general settings.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#
+# Returns:
+#	- 0 (Success) if the config is valid
+#	- 1 (Failure) if validation fails (prints specific errors)
+#
 validate_config_file() {
     local config_path="$1"
     local errors=()
@@ -374,7 +511,19 @@ validate_config_file() {
     return 0
 }
 
-# Function to display config file contents in a user-friendly format
+# ===============================================
+# Show Config
+# ===============================================
+#
+# Description: Displays the config file contents in a colorized, user-friendly format.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#
+# Returns:
+#	- 0 (Success) on successful display
+#	- 1 (Failure) if the config file is not found
+#
 show_config() {
     local config_path="$1"
 
@@ -426,7 +575,21 @@ show_config() {
     printf "\n"
 }
 
-# Function to get config value with fallback
+# ===============================================
+# Get Config Value
+# ===============================================
+#
+# Description: Retrieves a config value, falling back to a default value if not found.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The section name.
+#	- $3: The key name.
+#	- $4: Optional. The default value to use if the key is missing or empty.
+#
+# Returns:
+#	- The config value or the default value (echoed)
+#
 get_config_value() {
     local config_path="$1"
     local section="$2"
@@ -441,7 +604,20 @@ get_config_value() {
     echo "${value:-$default_value}"
 }
 
-# Function to prompt for missing configuration and create/update config file
+# ===============================================
+# Prompt and Save Config
+# ===============================================
+#
+# Description: Prompts the user for missing required configuration values and saves them.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The WordPress root directory path.
+#
+# Returns:
+#	- 0 (Success) on successful configuration
+#	- 1 (Failure) on error creating/updating the config file
+#
 prompt_and_save_config() {
     local config_path="$1"
     local wp_root="$2"
@@ -511,7 +687,19 @@ prompt_and_save_config() {
     return 0
 }
 
-# Function to check if boolean config value is true
+# ===============================================
+# Is Config True
+# ===============================================
+#
+# Description: Checks if a configuration value represents a boolean 'true' state.
+#
+# Parameters:
+#	- $1: The value to check (case-insensitive: 'true', 'yes', '1', 'on').
+#
+# Returns:
+#	- 0 (Success) if the value is true
+#	- 1 (Failure) if the value is false
+#
 is_config_true() {
     local value="$1"
     # Convert to lowercase using tr for compatibility

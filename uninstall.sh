@@ -1,15 +1,30 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # WordPress Database Import Tool - Uninstaller
-# ===============================================
+# ================================================================
 #
-# This script removes the wp-db-import command
-# from your system.
+# Description:
+#   This script is designed to safely and completely remove all installation
+#   artifacts of the `wp-db-import` command from the system. It checks common
+#   user-local and system-wide binary paths for the executable, prompts for
+#   confirmation, and removes associated shell completion files for Bash and Zsh.
 #
-# Usage: ./uninstall.sh
+# Key Features:
+# - Searches multiple common installation locations ($HOME/.local/bin, /usr/local/bin, etc.).
+# - Prompts the user for confirmation before removing files.
+# - Attempts system-level removal using `sudo` if the executable is in a restricted path.
+# - Automatically removes symlinks for Bash and Zsh tab completion.
+# - Provides a clear summary of removed and failed installations.
 #
-# ===============================================
+# Usage:
+#   ./uninstall.sh
+#
+# Dependencies:
+# - rm, find (Standard utilities)
+# - lib/core/utils.sh (For colors and init_colors function)
+#
+# ================================================================
 
 # Load utilities for colors and common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,6 +84,24 @@ printf "\n${CYAN}🗑️  Removing wp-db-import installations...${RESET}\n"
 REMOVED_COUNT=0
 FAILED_COUNT=0
 
+# ===============================================
+# Removal Loop
+# ===============================================
+#
+# Description: Iterates through all found installation locations and attempts to
+#              remove the executable file. It includes fallback logic to use `sudo`
+#              if removal from a system directory (`/usr/local/bin`) fails.
+#
+# Parameters:
+#   - None (Operates on global array `FOUND_INSTALLATIONS`).
+#
+# Returns:
+#   - Updates global counters `REMOVED_COUNT` and `FAILED_COUNT`.
+#
+# Behavior:
+#   - Uses `rm -f` for removal.
+#   - Checks the installation path for `/usr/local/bin/` to determine if `sudo` might be needed.
+#
 for installation in "${FOUND_INSTALLATIONS[@]}"; do
     printf "   Removing: $installation... "
 

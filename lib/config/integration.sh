@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ===============================================
 # Config Integration for WordPress Import Tool
@@ -8,8 +8,33 @@
 #   Integrates the configuration system with the main import flow,
 #   handles multisite mapping, and manages config updates.
 #
+# Dependencies (Assumed to be sourced externally):
+#   - parse_config_section
+#   - get_site_mappings
+#   - get_site_mapping
+#   - update_site_mapping
+#   - update_config_general
+#   - is_config_true
+#
+# ===============================================
 
-# Function to load config settings for import
+# ===============================================
+# Load Import Config
+# ===============================================
+#
+# Description: Loads primary [general] config settings into global environment variables.
+#
+# Parameters:
+#	- $1: Path to the configuration file (wpdb-import.conf).
+#
+# Returns:
+#	- 0 (Success) if the config file is read and variables are populated.
+#	- 1 (Failure) if the config file is not found.
+#
+# Behavior:
+#	- Exports settings to global variables (CONFIG_SQL_FILE, CONFIG_OLD_DOMAIN, etc.).
+#	- Requires `parse_config_section` function to be available.
+#
 load_import_config() {
     local config_path="$1"
 
@@ -40,7 +65,23 @@ load_import_config() {
     return 0
 }
 
-# Function to get site mappings as associative arrays
+# ===============================================
+# Load Site Mappings
+# ===============================================
+#
+# Description: Loads all multisite mappings from config into associative arrays.
+#
+# Parameters:
+#	- $1: Path to the configuration file (wpdb-import.conf).
+#
+# Returns:
+#	- Implicitly populates global associative arrays (BLOG_ID_MAP, OLD_DOMAIN_MAP, NEW_DOMAIN_MAP).
+#
+# Behavior:
+#	- Attempts to use native Bash/Zsh associative arrays (Bash 4.0+ required).
+#	- Falls back to compatibility functions if available.
+#	- Requires `get_site_mappings` function to be available.
+#
 load_site_mappings() {
     local config_path="$1"
 
@@ -100,7 +141,23 @@ load_site_mappings() {
     fi
 }
 
-# Function to check if a site mapping exists
+# ===============================================
+# Has Site Mapping
+# ===============================================
+#
+# Description: Checks if a site mapping exists for a given blog ID in the config file.
+#
+# Parameters:
+#	- $1: The Blog ID to check.
+#	- $2: Optional. Path to the configuration file.
+#
+# Returns:
+#	- 0 (Success) if a non-empty mapping is found.
+#	- 1 (Failure) otherwise.
+#
+# Behavior:
+#	- Requires `get_site_mapping` function to be available.
+#
 has_site_mapping() {
     local blog_id="$1"
     local config_path="${2:-}"
@@ -116,7 +173,24 @@ has_site_mapping() {
     [[ -n "$mapping_result" ]]
 }
 
-# Function to get new domain for a blog ID
+# ===============================================
+# Get Mapped Domain
+# ===============================================
+#
+# Description: Retrieves the new (local) domain for a given blog ID.
+#
+# Parameters:
+#	- $1: The Blog ID.
+#	- $2: Optional. Path to the configuration file.
+#
+# Returns:
+#	- The new domain string (echoed) if found.
+#	- Empty string (echoed) if not found.
+#
+# Behavior:
+#	- Prefers reading from the loaded global associative arrays (if available).
+#	- Falls back to reading directly from the config file via `get_site_mapping`.
+#
 get_mapped_domain() {
     local blog_id="$1"
     local config_path="${2:-}"
@@ -135,7 +209,25 @@ get_mapped_domain() {
     fi
 }
 
-# Function to prompt for missing site mappings and update config
+# ===============================================
+# Handle Missing Mappings
+# ===============================================
+#
+# Description: Prompts the user to configure missing site mappings and updates the config file.
+#
+# Parameters:
+#	- $1: Path to the configuration file.
+#	- $2: CSV string of detected sites (format: blog_id,domain,path).
+#	- $3: Optional. The new base domain provided by the user (to suggest defaults).
+#
+# Returns:
+#	- 0 (Success) after attempting to update mappings.
+#	- Prints status updates to the user.
+#
+# Behavior:
+#	- Determines a default local URL based on the main site's new domain and the site's path/subdomain.
+#	- Requires `update_site_mapping` and `get_site_mappings` to be available.
+#
 handle_missing_mappings() {
     local config_path="$1"
     local detected_sites="$2"  # CSV format: blog_id,domain,path
@@ -283,7 +375,23 @@ handle_missing_mappings() {
     return 0
 }
 
-# Function to display all configured mappings in a nice format
+# ===============================================
+# Show Configured Mappings
+# ===============================================
+#
+# Description: Displays all currently configured site mappings in a clean, tabular format.
+#
+# Parameters:
+#	- None (relies on loaded global arrays or config file path via dependency).
+#
+# Returns:
+#	- Prints the formatted table of mappings to stdout.
+#	- 0 (Success) always.
+#
+# Behavior:
+#	- Prefers global arrays if loaded.
+#	- Falls back to reading directly from the config file via `get_site_mappings`.
+#
 show_configured_mappings() {
     printf "\n${CYAN}${BOLD}🗺️ Configured Site Mappings${RESET}\n"
     printf "============================\n"
@@ -323,7 +431,24 @@ show_configured_mappings() {
     printf "\n"
 }
 
-# Function to auto-populate prompts from config
+# ===============================================
+# Get Config Prompt Value
+# ===============================================
+#
+# Description: Displays a prompt, auto-populating the answer from global config variables if available.
+#
+# Parameters:
+#	- $1: The prompt text to display.
+#	- $2: The config key name (e.g., "sql_file").
+#	- $3: The default value to use if the user enters nothing and config is empty.
+#
+# Returns:
+#	- The final determined value (config value, user input, or default) (echoed).
+#
+# Behavior:
+#	- Automatically uses global CONFIG_* variables.
+#	- If config value is present, displays it and uses it without prompting for input.
+#
 get_config_prompt_value() {
     local prompt_text="$1"
     local config_key="$2"
@@ -355,7 +480,21 @@ get_config_prompt_value() {
     fi
 }
 
-# Function to build WP-CLI flags based on config
+# ===============================================
+# Build WP-CLI Flags
+# ===============================================
+#
+# Description: Constructs a string of WP-CLI flags (e.g., --all-tables) based on config settings.
+#
+# Parameters:
+#	- None (relies on global CONFIG_* variables).
+#
+# Returns:
+#	- A space-separated string of active WP-CLI flags (echoed).
+#
+# Behavior:
+#	- Requires `is_config_true` function to be available.
+#
 build_wp_cli_flags() {
     local flags=()
 
@@ -373,7 +512,27 @@ build_wp_cli_flags() {
     printf '%s ' "${flags[@]}"
 }
 
-# Function to update config with user-provided values during import
+# ===============================================
+# Save Import Values To Config
+# ===============================================
+#
+# Description: Updates general config settings with values provided during the import run if they differ from existing config.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: SQL file name.
+#	- $3: Old domain.
+#	- $4: New domain.
+#	- $5-9: Optional. Boolean flags (all_tables, dry_run, clear_revisions, setup_stage_proxy, auto_proceed).
+#
+# Returns:
+#	- Implicitly updates the config file.
+#	- 0 (Success) always.
+#
+# Behavior:
+#	- Requires `update_config_general` to be available.
+#	- Only updates if the provided value is non-empty AND differs from the global CONFIG_* variable.
+#
 save_import_values_to_config() {
     local config_path="$1"
     local sql_file="$2"
@@ -419,7 +578,25 @@ save_import_values_to_config() {
     fi
 }
 
-# Function to validate config domains against database
+# ===============================================
+# Validate Config Domains
+# ===============================================
+#
+# Description: Compares the old domain in the config file against the domain detected in the database/SQL file.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#	- $2: The 'old_domain' detected in the SQL file.
+#
+# Returns:
+#	- 0 (Success) if domains match or if the user chooses to update/keep the config domain.
+#	- The domain to use (echoed) if the user chooses option 2 (use config domain).
+#	- 1 (Failure) if the user cancels or editing fails.
+#
+# Behavior:
+#	- Prompts the user for action if a mismatch is detected.
+#	- Requires `parse_config_section`, `update_config_general`, and `sanitize_domain` (not defined here, assumed external) to be available.
+#
 validate_config_domains() {
     local config_path="$1"
     local old_domain="$2"
@@ -501,7 +678,23 @@ validate_config_domains() {
     return 0  # Domains match, continue
 }
 
-# Function to detect primary domain from database after import
+# ===============================================
+# Detect Database Domain
+# ===============================================
+#
+# Description: Attempts to detect the primary domain from the database using WP-CLI after an import.
+#
+# Parameters:
+#	- $1: WordPress root path.
+#
+# Returns:
+#	- The detected domain (e.g., "example.com") (echoed) if successful.
+#	- Returns 1 (Failure) if WP-CLI is not available or domain cannot be read.
+#
+# Behavior:
+#	- Relies on external functions like `execute_wp_cli` (not defined here, assumed external).
+#	- Tries to read 'siteurl' first, then 'home'.
+#
 detect_database_domain() {
     local wp_root="$1"
 

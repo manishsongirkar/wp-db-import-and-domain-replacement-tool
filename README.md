@@ -4,31 +4,17 @@ A robust bash utility for performing WordPress database imports and domain/URL r
 
 ## ✨ Features
 
-- 🌍 **Global Command Access** - Available anywhere after installation with `wp-db-import`
-- 🔧 **Universal Bash Compatibility** - Works seamlessly across Bash 3.2, 4.x, and 5.x versions ([View Compatibility Guide](docs/BASH_COMPATIBILITY.md))
-- 📋 **Project-Specific Configuration System** - Auto-saves settings in `wpdb-import.conf` file
-- 🔄 **Automatic WordPress installation detection** (single-site or multisite)
-- 🗺️ **Smart Multisite Mapping** - Remembers site mappings and prompts only for new sites
-- ⚡ **High-Speed Bulk Post Revision Cleanup** (via WP-CLI)
-- 🧹 **Smart MySQL Commands for Manual Revision Cleanup** (when automatic cleanup is skipped)
-  - ✅ **Auto-detects multisite** using WP-CLI site functions
-  - ✅ **Generates clean commands** without problematic OPTIMIZE TABLE statements
-  - ✅ **Works from any directory** with WordPress path detection
-- 🔄 **Auto-Update System** - Git-based installations update with `wp-db-import update`
-- 🛠️ **Modular Architecture** - Clean separation of utilities and core functions
-- 🔗 **Clickable Site Links** - Terminal links to quickly access local sites
-- 🧹 **Intelligent domain sanitization** (removes protocols, trailing slashes)
-- 🌐 **Robust Multi-Domain/Per-Site Mapping** for Multisite
-- 🔁 **Enhanced search-replace** (2-4 passes based on source domain type)
-- 🗑️ **Cache and transient clearing** via WP-CLI
-- 🧪 **Dry-run mode** for testing replacements
-- 📦 **MySQL command generation** for network domain tables
-- 🛡️ **Comprehensive error handling** and logging
-- 🎨 **Colored terminal output** with clear progress indicators
-- 📸 **Stage File Proxy Plugin** automatic installation and configuration
-- 🔒 **GitIgnore Protection** - Automatically prevents stage-file-proxy plugin commits
-- 📦 **User-Local Installation** - Installs to ~/.local/bin
-- 📋 **Centralized Version Management** - Single VERSION file with automated tracking
+- 🌍 **Global Command Access** — Install once and run `wp-db-import` from any project directory.
+- 🔧 **Cross-shell Compatibility** — Designed for macOS/Linux and supports a wide range of Bash versions with fallbacks.
+- 📋 **Project-scoped Configuration** — Stores settings and per-site mappings in `wpdb-import.conf` within the WP root.
+- 🔄 **Automatic WP Detection** — Finds WordPress root and detects single-site vs multisite installations.
+- 🗺️ **Multisite-aware Mapping** — Persisted per-site mappings; prompts only for missing sites.
+- ⚡ **Fast Revision Cleanup** — High-speed bulk deletion of post revisions to speed up search-replace.
+- 🔁 **Reliable Search & Replace** — WP-CLI powered search-replace with dry-run support and serialized data handling.
+- 📦 **Safe Multisite Updates** — Attempts wp_blogs/wp_site updates and emits MySQL commands when manual intervention is needed.
+- 🧹 **Post-Import Cleanup** — Flushes caches, rewrite rules, and transients after operations.
+- 📸 **Stage File Proxy Integration** — Optional setup for serving media from production in local environments.
+- 🧪 **Dry-run & Safety** — Preview changes before applying them; comprehensive logging for troubleshooting.
 
 ## 🧰 Requirements
 
@@ -124,31 +110,37 @@ wp-db-import update  # Automatic git pull
 
 ### 📋 Available Commands
 ```bash
-# Main database import wizard
+# Run main interactive import wizard
 wp-db-import
 
 # Configuration management
-wp-db-import config-show          # Show unified configuration status
-wp-db-import config-create        # Create configuration with site mappings
-wp-db-import config-validate      # Validate configuration structure
-wp-db-import config-edit          # Open configuration in editor
+wp-db-import config-show        # Show unified configuration status
+wp-db-import config-create      # Create configuration with site mappings
+wp-db-import config-validate    # Validate configuration structure
+wp-db-import config-edit        # Open configuration in editor
 
 # Show local site links
 wp-db-import show-links
 
-# Auto-setup stage file proxy (detects config)
+# Generate revision cleanup commands
+wp-db-import show-cleanup [<path|options>]
+
+# Stage File Proxy setup
 wp-db-import setup-proxy
 
-# Generate database revision cleanup commands
-wp-db-import show-cleanup
+# Detect WordPress installation type
+wp-db-import detect [<path>] [--verbose]
 
-# Update to latest version (git only)
+# Run the test suite
+wp-db-import test [all|unit|integration]
+
+# Update (git installations)
 wp-db-import update
 
-# Show version info
+# Version and update info
 wp-db-import version
 
-# Get help
+# Help
 wp-db-import --help
 ```
 
@@ -181,9 +173,8 @@ Tests generate comprehensive reports in multiple formats:
 Reports are saved to `reports/` directory and automatically cleaned up between runs.
 
 ## 🔧 Configuration System
-```
 
-## � Configuration System
+### 🔧 Configuration System
 
 The tool now features a **project-specific configuration system** that remembers your settings and site mappings, making subsequent imports much faster and more convenient.
 
@@ -278,7 +269,7 @@ cp wpdb-import-example-single.conf ~/path/to/wordpress/wpdb-import.conf
 nano ~/path/to/wordpress/wpdb-import.conf
 ```
 
-## �🚀 Usage
+## 🚀 Usage
 
 ### Basic Usage
 
@@ -1082,19 +1073,22 @@ Shows all available commands, setup instructions, and usage examples.
 ### Modular Library Architecture
 ```bash
 lib/
-├── version.sh              # Version management utilities and git integration
-├── module_loader.sh        # Automatic module discovery and loading system
-├── core/                   # Core functionality modules
-│   └── utils.sh           # Utility functions, domain sanitization, file operations
-├── config/                # Configuration management system
-│   ├── config_manager.sh  # Config file operations, parsing, validation, creation
-│   └── integration.sh     # Config integration with import flow, smart prompting
-├── database/              # Database operation modules (NEW)
-│   └── search_replace.sh  # Advanced search-replace with multisite support
-└── utilities/             # Standalone utility modules
-    ├── site_links.sh      # Show local site links with clickable URLs
-    ├── stage_file_proxy.sh # Media proxy setup with automatic plugin management
-    └── revision_cleanup.sh # Revision cleanup commands with multisite detection
+├── version.sh                 # Version management utilities and git integration
+├── module_loader.sh           # Automatic module discovery and loading system
+├── core/                      # Core functionality modules
+│   ├── utils.sh               # Utility functions, domain sanitization, file operations
+│   ├── validation.sh          # Validation helpers and test hooks
+│   └── wp_detection.sh        # WordPress installation detection helpers
+├── config/                    # Configuration management system
+│   ├── config_manager.sh      # Config file operations, parsing, creation
+│   ├── config_reader.sh       # Unified config reader utilities
+│   └── integration.sh         # Config integration with import flow and prompts
+├── database/                  # Database operation modules
+│   └── search_replace.sh      # Advanced search-replace with multisite support
+└── utilities/                 # Standalone utility modules
+   ├── site_links.sh           # Show local site links with clickable URLs
+   ├── stage_file_proxy.sh     # Media proxy setup with automatic plugin management
+   └── revision_cleanup.sh     # Revision cleanup commands with multisite detection
 ```
 
 ### Configuration Features

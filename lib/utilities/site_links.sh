@@ -1,27 +1,54 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ================================================================
 # WordPress Site Links Utilities Module
 # ================================================================
 #
-# This module provides functions for displaying clickable terminal links
-# for WordPress sites, supporting both single-site and multisite installations.
+# Description:
+#   This module provides functions for displaying clickable terminal links
+#   for WordPress sites, supporting both single-site and multisite installations.
+#   It enhances user experience by providing quick access to the frontend and admin interfaces.
 #
 # Features:
 #   - Automatic WordPress installation detection (single-site or multisite)
 #   - Intelligent WordPress root directory detection via wp-config.php
-#   - WP-CLI integration with robust error handling
-#   - Colored terminal output with clickable links
-#   - Support for subdomain and subdirectory multisite configurations
-#   - Network admin link generation for multisite installations
+#   - WP-CLI integration for robust site discovery
+#   - Colored terminal output with clickable links (using ANSI escape codes for linking)
 #
 # Functions provided:
 # - show_local_site_links    Display clickable terminal links for WordPress sites
 #
+# Dependencies:
+# - find_wordpress_root (from core/utils.sh)
+# - check_wpcli_availability (from core/utils.sh)
+# - validate_wordpress_installation (from core/utils.sh)
+# - detect_wordpress_installation_type (from core/detection.sh)
+# - detect_main_site (from core/utils.sh)
+# - detect_protocol (from core/utils.sh)
+# - execute_wp_cli (from core/utils.sh)
+# - Color variables (RED, GREEN, CYAN, YELLOW, BOLD, RESET)
+#
+# ================================================================
 
-# 🌐 Function to display local site access links
-# This function displays clickable terminal links for WordPress sites
-# It automatically detects single site vs multisite and shows appropriate links
+# ===============================================
+# Show Local Site Links
+# ===============================================
+#
+# Description: Displays clickable terminal links for the WordPress installation.
+#
+# Parameters:
+#	- None (relies on current directory being within the WordPress installation).
+#
+# Returns:
+#	- Prints formatted, clickable URLs for the frontend and admin interfaces (or all subsites for multisite).
+#	- Returns 1 if WordPress root is not found or WP-CLI checks fail.
+#
+# Behavior:
+#	- Detects installation type (single vs multisite).
+#	- For single sites, provides Frontend and Admin links.
+#	- For multisite, iterates over all sites discovered via `wp site list`, providing links for each subsite and the main site.
+#	- Uses ANSI OSC 8 escape codes (\033]8;;) for clickable links.
+#
 show_local_site_links() {
   # 🔍 Locate WordPress root by searching for wp-config.php
   local wp_root
@@ -66,9 +93,11 @@ show_local_site_links() {
     # Store current shell options
     local shell_options="$-"
 
+    # Disable command tracing temporarily to prevent cluttering output with WP-CLI calls
+    # Note: Using explicit set +x +v requires careful restoration below
     set +x +v
 
-    printf "${GREEN}✅ Your WordPress Multisite is ready:${RESET}\n\n"
+    printf "${GREEN}✅ Your WordPress Multisite is ready (${blog_count} sites):${RESET}\n\n"
 
     # Get the current site URL to determine the local domain pattern
     local current_site_url
@@ -115,19 +144,25 @@ show_local_site_links() {
 
           local clickable_url="${protocol}${clean_site_url}"
 
+          # Use ANSI OSC 8 escape codes for clickable links
+          local link_start='\033]8;;'
+          local link_end='\033\\'
+
           # Mark main site
           if [[ "$blog_id" == "$main_site_id" ]]; then
-            printf "  🏠 ${BOLD}Main Site (ID: %s):${RESET} \033]8;;%s\033\\%s\033]8;;\033\\" "$blog_id" "$clickable_url" "$clickable_url"
+            printf "  🏠 ${BOLD}Main Site (ID: %s):${RESET} ${link_start}%s${link_end}%s${link_start}${link_end}" "$blog_id" "$clickable_url" "$clickable_url"
             printf "\n"
           else
-            printf "  🌍 ${BOLD}Subsite   (ID: %s):${RESET} \033]8;;%s\033\\%s\033]8;;\033\\" "$blog_id" "$clickable_url" "$clickable_url"
+            printf "  🌍 ${BOLD}Subsite   (ID: %s):${RESET} ${link_start}%s${link_end}%s${link_start}${link_end}" "$blog_id" "$clickable_url" "$clickable_url"
             printf "\n"
           fi
         done <<< "$sites_data"
       else
         # Fallback if site list fails
         local fallback_url="$current_site_url"
-        printf "  🏠 ${BOLD}Main Site:${RESET} \033]8;;%s\033\\%s\033]8;;\033\\\n" "$fallback_url" "$fallback_url"
+        local link_start='\033]8;;'
+        local link_end='\033\\'
+        printf "  🏠 ${BOLD}Main Site:${RESET} ${link_start}%s${link_end}%s${link_start}${link_end}\n" "$fallback_url" "$fallback_url"
       fi
 
       printf "\n${CYAN}💡 Network Admin:${RESET} Add ${YELLOW}/wp-admin/network/${RESET} to any of the above URLs\n"
@@ -135,6 +170,7 @@ show_local_site_links() {
       printf "${YELLOW}⚠️  Could not detect site URLs. Please check your WordPress configuration.${RESET}\n"
     fi
 
+    # Restore shell options if they were originally set
     if [[ "$shell_options" == *x* ]]; then set -x; fi
     if [[ "$shell_options" == *v* ]]; then set -v; fi
 
@@ -158,9 +194,11 @@ show_local_site_links() {
       local frontend_url="${protocol}${clean_site_url}"
       local admin_url="${protocol}${clean_site_url}/wp-admin"
 
-      printf "  🏠 ${BOLD}Frontend:${RESET} \033]8;;%s\033\\%s\033]8;;\033\\" "$frontend_url" "$frontend_url"
-      printf "\n"
-      printf "  ⚙️  ${BOLD}Admin:${RESET}    \033]8;;%s\033\\%s\033]8;;\033\\" "$admin_url" "$admin_url"
+      local link_start='\033]8;;'
+      local link_end='\033\\'
+
+      printf "  🏠 ${BOLD}Frontend:${RESET} ${link_start}%s${link_end}%s${link_start}${link_end}\n" "$frontend_url" "$frontend_url"
+      printf "  ⚙️  ${BOLD}Admin:${RESET}    ${link_start}%s${link_end}%s${link_start}${link_end}\n" "$admin_url" "$admin_url"
       printf "\n"
     else
       printf "${YELLOW}⚠️  Could not detect site URL. Please check your WordPress configuration.${RESET}\n"

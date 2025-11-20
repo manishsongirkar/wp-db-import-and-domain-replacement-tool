@@ -1,16 +1,40 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ===============================================
 # WordPress Database Import Tool - Validation Module
 # ===============================================
 #
-# This module provides validation functions for testing the tool's
-# functionality and environment compatibility. It's used by the
-# private 'wp-db-import validate' command for automated testing.
+# Description:
+#   This module provides validation functions for testing the tool's
+#   functionality and environment compatibility. It's used by the
+#   private 'wp-db-import validate' command for automated testing.
+#
+# Dependencies (Assumed to be sourced externally):
+#   - init_colors (or equivalent color constants)
+#   - Global SCRIPT_DIR variable
+#   - Core functions (import_wp_db, setup_stage_file_proxy, etc.)
+#   - Config functions (get_config_file_path, validate_config_file)
 #
 # ===============================================
 
-# Validate tool functionality for testing purposes
+# ===============================================
+# Validate Tool Functionality
+# ===============================================
+#
+# Description: The main entry point for running validations based on the specified mode.
+#
+# Parameters:
+#	- $1: Validation mode ("basic", "environment", "dependencies", "modules", "config", "all"). Defaults to "basic".
+#	- $2: Optional. Test type (e.g., "testing"), used for context.
+#
+# Returns:
+#	- 0 (Success) if all selected validations pass.
+#	- 1 (Failure) if any validation fails.
+#
+# Behavior:
+#	- Calls dedicated sub-functions based on the mode.
+#	- Tracks passed/total tests using global `validation_passed` and `validation_total` variables.
+#
 validate_tool_functionality() {
     local validation_mode="${1:-basic}"
     local test_type="${2:-}"
@@ -18,6 +42,8 @@ validate_tool_functionality() {
     printf "${CYAN}🔍 Validating tool functionality...${RESET}\n"
     printf "${DIM}Mode: $validation_mode${RESET}\n\n"
 
+    # NOTE: These must be declared as locals within the calling function to correctly
+    # accumulate results across sub-function calls, relying on scope behavior.
     local validation_passed=0
     local validation_total=0
 
@@ -60,7 +86,19 @@ validate_tool_functionality() {
     fi
 }
 
-# Validate basic tool functionality
+# ===============================================
+# Validate Basic Functionality
+# ===============================================
+#
+# Description: Checks for the existence of core script files, the VERSION file, and primary function definitions.
+#
+# Parameters:
+#	- None (relies on global SCRIPT_DIR and global counters).
+#
+# Returns:
+#	- Implicitly updates global `validation_passed` and `validation_total` variables.
+#	- Prints status per check.
+#
 validate_basic_functionality() {
     printf "${BOLD}🔧 Basic Functionality Validation${RESET}\n"
 
@@ -123,7 +161,19 @@ validate_basic_functionality() {
     printf "\n"
 }
 
-# Validate environment compatibility
+# ===============================================
+# Validate Environment Compatibility
+# ===============================================
+#
+# Description: Checks the operating system and shell version for compatibility with the script's requirements.
+#
+# Parameters:
+#	- None (relies on system utilities and global counters).
+#
+# Returns:
+#	- Implicitly updates global `validation_passed` and `validation_total` variables.
+#	- Prints status per check.
+#
 validate_environment_compatibility() {
     printf "${BOLD}🌍 Environment Compatibility Validation${RESET}\n"
 
@@ -150,6 +200,7 @@ validate_environment_compatibility() {
             ((validation_passed++))
         elif [[ $bash_major -eq 3 ]]; then
             printf "${YELLOW}⚠️ Old Bash version: $BASH_VERSION${RESET}\n"
+            # Considered passable for basic functionality
             ((validation_passed++))
         else
             printf "${RED}❌ Very old Bash version: $BASH_VERSION${RESET}\n"
@@ -177,7 +228,19 @@ validate_environment_compatibility() {
     printf "\n"
 }
 
-# Validate dependencies
+# ===============================================
+# Validate Dependencies
+# ===============================================
+#
+# Description: Checks for the presence of all required and optional external command-line utilities.
+#
+# Parameters:
+#	- None (relies on `command -v` and global counters).
+#
+# Returns:
+#	- Implicitly updates global `validation_passed` and `validation_total` variables.
+#	- Prints status and version info per command.
+#
 validate_dependencies() {
     printf "${BOLD}📦 Dependencies Validation${RESET}\n"
 
@@ -197,6 +260,7 @@ validate_dependencies() {
                     version=$(mysql --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' | head -1 || echo "unknown")
                     ;;
                 *)
+                    # Attempt to get version by filtering the first line of output
                     version=$($cmd --version 2>/dev/null | head -1 | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' | head -1 || echo "found")
                     ;;
             esac
@@ -221,7 +285,19 @@ validate_dependencies() {
     printf "\n"
 }
 
-# Validate modules
+# ===============================================
+# Validate Modules
+# ===============================================
+#
+# Description: Checks for the existence and integrity of key module directories and files.
+#
+# Parameters:
+#	- None (relies on global SCRIPT_DIR and global counters).
+#
+# Returns:
+#	- Implicitly updates global `validation_passed` and `validation_total` variables.
+#	- Prints status per check.
+#
 validate_modules() {
     printf "${BOLD}🧩 Modules Validation${RESET}\n"
 
@@ -262,7 +338,19 @@ validate_modules() {
     printf "\n"
 }
 
-# Validate configuration system
+# ===============================================
+# Validate Configuration System
+# ===============================================
+#
+# Description: Checks for required configuration example files and essential config utility functions.
+#
+# Parameters:
+#	- None (relies on global SCRIPT_DIR and global counters).
+#
+# Returns:
+#	- Implicitly updates global `validation_passed` and `validation_total` variables.
+#	- Prints status per check.
+#
 validate_configuration_system() {
     printf "${BOLD}⚙️ Configuration System Validation${RESET}\n"
 
@@ -312,7 +400,23 @@ validate_configuration_system() {
     printf "\n"
 }
 
-# Test-specific validation function
+# ===============================================
+# Validate For Testing
+# ===============================================
+#
+# Description: Runs a comprehensive validation sequence specifically for testing environments (e.g., local development).
+#
+# Parameters:
+#	- $1: Optional. Test environment name (e.g., "development").
+#
+# Returns:
+#	- 0 (Success) if all prerequisites and full functionality validations pass.
+#	- 1 (Failure) otherwise.
+#
+# Behavior:
+#	- Checks for the test framework file and directory access.
+#	- Calls `validate_tool_functionality "all"`.
+#
 validate_for_testing() {
     local test_environment="${1:-development}"
 
@@ -345,7 +449,22 @@ validate_for_testing() {
     return $?
 }
 
-# Quick validation for CI/CD environments
+# ===============================================
+# Validate CI Environment
+# ===============================================
+#
+# Description: Runs basic validations and detects common CI/CD environment indicators.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) always (primarily informational).
+#
+# Behavior:
+#	- Runs core dependency and module checks.
+#	- Checks for non-interactive status and specific CI environment variables (e.g., GITHUB_ACTIONS).
+#
 validate_ci_environment() {
     printf "${CYAN}🚀 CI/CD Environment Validation${RESET}\n\n"
 

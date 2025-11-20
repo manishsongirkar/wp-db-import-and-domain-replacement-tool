@@ -6,12 +6,34 @@
 #
 # Description:
 #   Essential utility functions for the WordPress database import tool.
-#   Contains only the core functions needed for basic operation.
+#   Contains core functions for terminal output, execution, file handling,
+#   WordPress detection, and robust Bash version compatibility.
 #
+# Features:
+#   - Dynamic color initialization.
+#   - Cross-platform execution helpers (spinner, timeout, timing).
+#   - Bash version detection and feature compatibility fallbacks (associative arrays, case conversion).
+#   - WordPress environment detection (root, multisite, table prefix).
+#
+# ===============================================
 
-# -----------------------------------------------
-# Initialize color constants for terminal output
-# -----------------------------------------------
+# ===============================================
+# Init Colors
+# ===============================================
+#
+# Description: Initializes global variables with ANSI color codes if the terminal supports them.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Implicitly exports global color variables (RED, GREEN, RESET, etc.).
+#	- Returns 0 (Success) always.
+#
+# Behavior:
+#	- Checks TERM variable and redirection status to intelligently decide whether to use colors.
+#	- Sets all color variables to empty strings if colors are disabled.
+#
 init_colors() {
     # Skip if colors already initialized
     [[ -n "${_COLORS_INITIALIZED:-}" ]] && return 0
@@ -74,9 +96,18 @@ init_colors() {
 # Automatically initialize colors when sourced
 init_colors
 
-# -----------------------------------------------
-# Clean strings (remove CR/LF and trim whitespace)
-# -----------------------------------------------
+# ===============================================
+# Clean String
+# ===============================================
+#
+# Description: Removes carriage returns and newlines, and trims leading/trailing whitespace from a string.
+#
+# Parameters:
+#	- $1: The input string.
+#
+# Returns:
+#	- The cleaned string (echoed).
+#
 clean_string() {
     local s="$1"
 
@@ -93,9 +124,23 @@ clean_string() {
     printf "%s" "$s"
 }
 
-# -----------------------------------------------
-# Spinner with elapsed time (BSD-safe)
-# -----------------------------------------------
+# ===============================================
+# Show Spinner
+# ===============================================
+#
+# Description: Displays a running terminal spinner with elapsed time next to a message until the given PID terminates.
+#
+# Parameters:
+#	- $1: The Process ID (PID) of the background task to monitor.
+#	- $2: The message to display alongside the spinner.
+#
+# Returns:
+#	- Prints the spinner and elapsed time directly to the terminal.
+#
+# Behavior:
+#	- Uses `ps -p` to monitor the PID.
+#	- Works on both Linux and BSD-based systems (like macOS).
+#
 show_spinner() {
     local pid=$1
     local message=$2
@@ -120,9 +165,22 @@ show_spinner() {
     printf "\r"
 }
 
-# -----------------------------------------------
-# Execute a command with optional timeout
-# -----------------------------------------------
+# ===============================================
+# Execute With Timeout
+# ===============================================
+#
+# Description: Executes a command, applying a timeout if the 'timeout' utility is available.
+#
+# Parameters:
+#	- $1: Timeout duration (e.g., "10s").
+#	- $@: The command and its arguments to execute.
+#
+# Returns:
+#	- The exit code and output of the executed command.
+#
+# Behavior:
+#	- Gracefully falls back to running the command directly if `timeout` is not found.
+#
 execute_with_timeout() {
     local timeout_duration="$1"
     shift
@@ -133,9 +191,19 @@ execute_with_timeout() {
     fi
 }
 
-# -----------------------------------------------
-# Calculate elapsed time
-# -----------------------------------------------
+# ===============================================
+# Calculate Elapsed Time
+# ===============================================
+#
+# Description: Calculates the difference between two Unix timestamps and formats it as MM:SS.
+#
+# Parameters:
+#	- $1: The start time (Unix timestamp).
+#	- $2: Optional. The end time (Unix timestamp). Defaults to current time.
+#
+# Returns:
+#	- The elapsed time formatted as MM:SS (echoed).
+#
 calculate_elapsed_time() {
     local start_time="$1"
     local end_time="${2:-$(date +%s)}"
@@ -145,9 +213,19 @@ calculate_elapsed_time() {
     printf "%02d:%02d" "$minutes" "$seconds"
 }
 
-# -----------------------------------------------
-# Display execution time (requires start_time variable or parameter)
-# -----------------------------------------------
+# ===============================================
+# Display Execution Time
+# ===============================================
+#
+# Description: Calculates and displays the total execution time since a specified start time.
+#
+# Parameters:
+#	- $1: Optional. The start time (Unix timestamp). Uses global `start_time` if omitted.
+#
+# Returns:
+#	- Prints the formatted execution time (MM:SS) to stdout.
+#	- Returns 1 if no start time is provided.
+#
 display_execution_time() {
     local start_time_param="$1"
     # If parameter provided, use it; otherwise use local/global start_time variable
@@ -165,11 +243,23 @@ display_execution_time() {
     printf "\n${CYAN}${BOLD}⏱️ Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
 }
 
-# -----------------------------------------------
-# 📊 Display file size in human-readable format (enhanced)
-# Usage: show_file_size "/path/to/file"
-# Returns: Prints formatted file size (TB, GB, MB, KB)
-# -----------------------------------------------
+# ===============================================
+# Show File Size
+# ===============================================
+#
+# Description: Calculates the size of a file and prints it in human-readable format (e.g., 1.5 GB).
+#
+# Parameters:
+#	- $1: The path to the file.
+#
+# Returns:
+#	- Prints the formatted file size to stdout.
+#	- Returns 1 on error (file not found/unreadable).
+#
+# Behavior:
+#	- Prefers the `numfmt` utility if available for accurate IEC (1024-based) conversion.
+#	- Falls back to `awk` and `stat` for cross-platform support.
+#
 show_file_size() {
     local file_path="$1"
 
@@ -207,9 +297,25 @@ show_file_size() {
     fi
 }
 
-# -----------------------------------------------
-# Detect main site ID and URL for WordPress multisite
-# -----------------------------------------------
+# ===============================================
+# Detect Main Site
+# ===============================================
+#
+# Description: Detects the blog ID and URL of the primary site (Blog ID 1 or the root site) in a WordPress installation.
+#
+# Parameters:
+#	- $1: Is it multisite? ("yes" or "no").
+#	- $2: A fallback domain/URL to use for WP-CLI commands and final URL fallback.
+#
+# Returns:
+#	- Primary site info in the format: "blog_id|site_url" (echoed).
+#	- Prints debug and status messages to stderr.
+#
+# Behavior:
+#	- For single sites, simply returns blog ID 1 and the site URL.
+#	- For multisite, attempts multiple detection methods (database query, WP-CLI site list, network admin URL, WordPress functions) with timeouts.
+#	- Requires `execute_wp_cli` and `execute_with_timeout` to be available.
+#
 detect_main_site() {
     local is_multisite="$1"
     local fallback_domain="$2"  # Used for WP-CLI --url parameter
@@ -247,7 +353,6 @@ detect_main_site() {
     fi
 
     # === METHOD 1: Direct database queries (works on most environments) ===
-    printf "${CYAN}🔍 Trying database query method...${RESET}\n" >&2
     main_site_blog_id=$(execute_with_timeout 10 execute_wp_cli db query "SELECT blog_id FROM wp_site WHERE id = 1 LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
 
     if [[ -n "$main_site_blog_id" && "$main_site_blog_id" != "0" ]]; then
@@ -264,7 +369,6 @@ detect_main_site() {
 
     # === METHOD 2: WP-CLI site list (Flywheel-friendly) ===
     if [[ -z "$main_site_blog_id" ]]; then
-        printf "${YELLOW}⚠️  Database queries blocked, trying WP-CLI site commands...${RESET}\n" >&2
 
         # Get site list and find main site by path
         local site_data
@@ -392,9 +496,6 @@ detect_main_site() {
         printf "${YELLOW}⚠️  Using hardcoded blog ID 1 as final fallback${RESET}\n" >&2
     fi
 
-    # === Get main site URL ===
-    printf "${CYAN}🔍 Getting main site URL (Blog ID: $main_site_blog_id)...${RESET}\n" >&2
-
     # Try multiple methods to get the URL
     if [[ -n "$main_site_blog_id" && "$main_site_blog_id" != "0" ]]; then
         # Method 1: Direct option get with blog ID switching
@@ -457,9 +558,18 @@ detect_main_site() {
     echo
 }
 
-# -----------------------------------------------
-# Detect preferred protocol for a URL (http or https)
-# -----------------------------------------------
+# ===============================================
+# Detect Protocol
+# ===============================================
+#
+# Description: Detects the protocol (http:// or https://) used in a URL, or defaults to https:// if none is present.
+#
+# Parameters:
+#	- $1: The URL string.
+#
+# Returns:
+#	- The detected or default protocol string (echoed).
+#
 detect_protocol() {
     local url="$1"
 
@@ -474,9 +584,23 @@ detect_protocol() {
     fi
 }
 
-# -----------------------------------------------
-# Execute WP-CLI commands safely
-# -----------------------------------------------
+# ===============================================
+# Execute WP-CLI
+# ===============================================
+#
+# Description: Executes a WP-CLI command within a safe, enhanced environment.
+#
+# Parameters:
+#	- $@: The WP-CLI command and its arguments (e.g., "option get siteurl").
+#
+# Returns:
+#	- The output and exit code of the WP-CLI command.
+#	- Prints an error and returns 1 if WP-CLI is not found.
+#
+# Behavior:
+#	- Checks for and exports the WP_COMMAND binary path.
+#	- Executes the command in a subshell with an enhanced PATH to find WP-CLI (Homebrew, /usr/local).
+#
 execute_wp_cli() {
     # Check if WP_COMMAND is set
     if [[ -z "${WP_COMMAND:-}" ]]; then
@@ -502,9 +626,19 @@ execute_wp_cli() {
     )
 }
 
-# -----------------------------------------------
-# Get version from VERSION file
-# -----------------------------------------------
+# ===============================================
+# Get Tool Version
+# ===============================================
+#
+# Description: Reads the version string from the project's 'VERSION' file.
+#
+# Parameters:
+#	- None (relies on SCRIPT_DIR to locate the file).
+#
+# Returns:
+#	- The version string (echoed).
+#	- Echoes "unknown" if the file is not found or empty.
+#
 get_tool_version() {
     local script_dir="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
     local version="unknown"
@@ -520,9 +654,19 @@ get_tool_version() {
     echo "$version"
 }
 
-# -----------------------------------------------
-# Check if script is sourced
-# -----------------------------------------------
+# ===============================================
+# Is Sourced
+# ===============================================
+#
+# Description: Checks if the current script file was sourced (loaded) or executed directly.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if sourced.
+#	- 1 (Failure) if executed directly.
+#
 is_sourced() {
     [[ "${BASH_SOURCE[0]}" != "${0}" ]]
 }
@@ -556,9 +700,22 @@ if is_sourced; then
     } 2>/dev/null
 fi
 
-# -----------------------------------------------
-# WordPress root directory detection
-# -----------------------------------------------
+# ===============================================
+# Find WordPress Root
+# ===============================================
+#
+# Description: Searches up the directory tree to find the WordPress root directory.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- WordPress root path (echoed) on success.
+#	- Returns 1 if wp-config.php not found.
+#
+# Behavior:
+#	- Starts from current directory and moves up, looking for `wp-config.php`.
+#
 find_wordpress_root() {
     local wp_root
     wp_root=$(pwd)
@@ -579,10 +736,21 @@ find_wordpress_root() {
     return 0
 }
 
-# -----------------------------------------------
-# Check if a constant in wp-config.php matches expected value
-# Usage: check_wp_config_constant CONSTANT_NAME EXPECTED_VALUE [wp_config_path]
-# Returns: "true" if found, "false" otherwise
+# ===============================================
+# Check WP Config Constant
+# ===============================================
+#
+# Description: Checks if a `define()` constant in `wp-config.php` matches a specific value.
+#
+# Parameters:
+#	- $1: CONSTANT_NAME (e.g., "WP_DEBUG").
+#	- $2: EXPECTED_VALUE (e.g., "true" or "false").
+#	- $3: Optional. Path to `wp-config.php`. Defaults to `wp-config.php` in current dir.
+#
+# Returns:
+#	- "true" or "false" (echoed).
+#	- Returns 1 if the config file is not found.
+#
 check_wp_config_constant() {
     local constant="$1"
     local expected="$2"
@@ -602,10 +770,19 @@ check_wp_config_constant() {
     fi
 }
 
-# -----------------------------------------------
-# Detect multisite-related filesystem indicators
-# Usage: detect_multisite_filesystem_indicators WP_ROOT
-# Returns: Comma-separated list of indicators found
+# ===============================================
+# Detect Multisite Filesystem Indicators
+# ===============================================
+#
+# Description: Checks for common files/directories that indicate a WordPress multisite installation.
+#
+# Parameters:
+#	- $1: WordPress root path.
+#
+# Returns:
+#	- Comma-separated list of indicators found (e.g., "blogs.dir,uploads/sites,mu-plugins") (echoed).
+#	- Echoes an empty string if none are found.
+#
 detect_multisite_filesystem_indicators() {
     local wp_root="$1"
     local indicators=()
@@ -618,9 +795,19 @@ detect_multisite_filesystem_indicators() {
     ((${#indicators[@]})) && echo "${indicators[*]}" || echo ""
 }
 
-# -----------------------------------------------
-# Get table prefix from wp-config.php
-# -----------------------------------------------
+# ===============================================
+# Get WP Table Prefix
+# ===============================================
+#
+# Description: Extracts the database table prefix (`$table_prefix`) from `wp-config.php`.
+#
+# Parameters:
+#	- $1: Optional. Path to `wp-config.php`. Defaults to `wp-config.php` in current dir.
+#
+# Returns:
+#	- The detected table prefix (e.g., "wp_", "my_") (echoed).
+#	- Echoes "wp_" and returns 1 if the file/prefix is not found.
+#
 get_wp_table_prefix() {
     local wp_config_path="${1:-wp-config.php}"
 
@@ -639,9 +826,20 @@ get_wp_table_prefix() {
     echo "$table_prefix"
 }
 
-# -----------------------------------------------
-# Domain sanitization and validation
-# -----------------------------------------------
+# ===============================================
+# Sanitize Domain
+# ===============================================
+#
+# Description: Cleans a domain string by removing protocols, trailing slashes, and optional whitespace.
+#
+# Parameters:
+#	- $1: The input domain/URL string.
+#	- $2: Optional. Mode ("basic" or "strict"). Strict mode performs extensive validation for security.
+#
+# Returns:
+#	- The sanitized domain (echoed).
+#	- Returns 1 if validation fails in "strict" mode.
+#
 sanitize_domain() {
     local domain="$1"
     local mode="${2:-basic}"  # basic (default) or strict (for stage-file-proxy)
@@ -716,11 +914,20 @@ sanitize_domain() {
     echo "$domain"
 }
 
-# -----------------------------------------------
-# Common validation functions
-# -----------------------------------------------
-
-# Validate if file exists and is readable
+# ===============================================
+# Validate File Exists
+# ===============================================
+#
+# Description: Checks if a file exists and is readable.
+#
+# Parameters:
+#	- $1: The path to the file.
+#	- $2: Optional. Custom error message prefix.
+#
+# Returns:
+#	- 0 (Success) if file exists and is readable.
+#	- 1 (Failure) otherwise (prints specific error message).
+#
 validate_file_exists() {
     local file_path="$1"
     local error_message="${2:-File not found}"
@@ -738,7 +945,22 @@ validate_file_exists() {
     return 0
 }
 
-# Validate WordPress installation using WP-CLI
+# ===============================================
+# Validate WordPress Installation
+# ===============================================
+#
+# Description: Checks if a valid WordPress installation exists in the current directory using WP-CLI.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if WordPress is installed.
+#	- 1 (Failure) otherwise (prints error).
+#
+# Behavior:
+#	- Relies on `execute_wp_cli` to run `core is-installed`.
+#
 validate_wordpress_installation() {
     if ! execute_wp_cli core is-installed &>/dev/null; then
         printf "${RED}❌ No WordPress installation detected in this directory.${RESET}\n"
@@ -747,7 +969,22 @@ validate_wordpress_installation() {
     return 0
 }
 
-# Check if WP-CLI is available with enhanced PATH
+# ===============================================
+# Check WP-CLI Availability
+# ===============================================
+#
+# Description: Checks if the `wp` command is available and sets the global WP_COMMAND variable.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- 0 (Success) if WP-CLI is found.
+#	- 1 (Failure) otherwise (prints error).
+#
+# Behavior:
+#	- Searches common paths (Homebrew, /usr/local) if not found in default PATH.
+#
 check_wpcli_availability() {
     # Use global WP_COMMAND if available, otherwise detect it
     if [[ -z "${WP_COMMAND:-}" ]]; then
@@ -763,7 +1000,19 @@ check_wpcli_availability() {
     return 0
 }
 
-# Create temporary file with proper permissions
+# ===============================================
+# Create Temp File
+# ===============================================
+#
+# Description: Creates a secure temporary file with restricted permissions (600).
+#
+# Parameters:
+#	- $1: Optional. Prefix for the filename (default: `wp_import`).
+#	- $2: Optional. Extension for the filename (default: `log`).
+#
+# Returns:
+#	- The full path to the created temporary file (echoed).
+#
 create_temp_file() {
     local prefix="${1:-wp_import}"
     local extension="${2:-log}"
@@ -776,12 +1025,6 @@ create_temp_file() {
     echo "$temp_file"
 }
 
-# ===============================================
-# Bash Version Compatibility System
-# ===============================================
-# Comprehensive bash version detection and fallback utilities
-# Supports Bash 3.2, 4.x, and 5.x with intelligent feature detection
-
 # Global bash version variables (set once, used throughout)
 # Using compatible syntax for Bash 3.2+ (no -g flag)
 BASH_VERSION_MAJOR=""
@@ -792,10 +1035,22 @@ BASH_FEATURE_LOWERCASE=""
 BASH_FEATURE_MAPFILE=""
 BASH_VERSION_DETECTED=""
 
-# -----------------------------------------------
-# Bash Version Detection and Feature Analysis
-# -----------------------------------------------
-# Detects bash version and available features for compatibility
+# ===============================================
+# Detect Bash Version
+# ===============================================
+#
+# Description: Detects the major/minor Bash version and sets flags for available features (AA, NR, LC, MF).
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Implicitly sets global BASH_VERSION_* and BASH_FEATURE_* variables.
+#	- Returns 0 (Success) always.
+#
+# Behavior:
+#	- Caches detection result in BASH_VERSION_DETECTED.
+#
 detect_bash_version() {
     # Skip if already detected
     [[ -n "$BASH_VERSION_DETECTED" ]] && return 0
@@ -841,13 +1096,21 @@ detect_bash_version() {
     fi
 }
 
-# -----------------------------------------------
-# Associative Array Compatibility
-# -----------------------------------------------
-# Provides associative array functionality across bash versions
-
-# Initialize associative array with fallback
-# Usage: init_associative_array "array_name"
+# ===============================================
+# Init Associative Array
+# ===============================================
+#
+# Description: Initializes a structure to simulate an associative array (AA) compatible across Bash versions.
+#
+# Parameters:
+#	- $1: The name of the array/structure (e.g., "MY_MAP").
+#
+# Returns:
+#	- Implicitly creates the necessary global variables (native AA for Bash 4.0+, or parallel arrays for Bash 3.2).
+#
+# Behavior:
+#	- Requires `detect_bash_version` to run first.
+#
 init_associative_array() {
     local array_name="$1"
 
@@ -870,8 +1133,23 @@ init_associative_array() {
     fi
 }
 
-# Set associative array value with fallback
-# Usage: set_associative_value "array_name" "key" "value"
+# ===============================================
+# Set Associative Value
+# ===============================================
+#
+# Description: Sets a key-value pair in the version-compatible associative array structure.
+#
+# Parameters:
+#	- $1: The name of the array/structure.
+#	- $2: The key.
+#	- $3: The value.
+#
+# Returns:
+#	- Implicitly updates the global array/structure.
+#
+# Behavior:
+#	- Requires `detect_bash_version` to run first.
+#
 set_associative_value() {
     local array_name="$1"
     local key="$2"
@@ -911,8 +1189,22 @@ set_associative_value() {
     fi
 }
 
-# Get associative array value with fallback
-# Usage: get_associative_value "array_name" "key"
+# ===============================================
+# Get Associative Value
+# ===============================================
+#
+# Description: Retrieves the value for a given key from the version-compatible associative array structure.
+#
+# Parameters:
+#	- $1: The name of the array/structure.
+#	- $2: The key.
+#
+# Returns:
+#	- The value (echoed), or an empty string if the key is not found.
+#
+# Behavior:
+#	- Requires `detect_bash_version` to run first.
+#
 get_associative_value() {
     local array_name="$1"
     local key="$2"
@@ -941,8 +1233,21 @@ get_associative_value() {
     fi
 }
 
-# List all keys in associative array
-# Usage: get_associative_keys "array_name"
+# ===============================================
+# Get Associative Keys
+# ===============================================
+#
+# Description: Lists all keys stored in the version-compatible associative array structure.
+#
+# Parameters:
+#	- $1: The name of the array/structure.
+#
+# Returns:
+#	- Keys, one per line (echoed).
+#
+# Behavior:
+#	- Requires `detect_bash_version` to run first.
+#
 get_associative_keys() {
     local array_name="$1"
 
@@ -959,13 +1264,22 @@ get_associative_keys() {
     fi
 }
 
-# -----------------------------------------------
-# String Case Conversion Compatibility
-# -----------------------------------------------
-# Provides string case conversion across bash versions
-
-# Convert string to lowercase
-# Usage: to_lowercase "string"
+# ===============================================
+# To Lowercase
+# ===============================================
+#
+# Description: Converts a string to lowercase using the best available method.
+#
+# Parameters:
+#	- $1: The input string.
+#
+# Returns:
+#	- The lowercase string (echoed).
+#
+# Behavior:
+#	- Uses Bash 4.0+ parameter expansion (`${input,,}`).
+#	- Falls back to the `tr` command for Bash 3.2.
+#
 to_lowercase() {
     local input="$1"
 
@@ -980,8 +1294,22 @@ to_lowercase() {
     fi
 }
 
-# Convert string to uppercase
-# Usage: to_uppercase "string"
+# ===============================================
+# To Uppercase
+# ===============================================
+#
+# Description: Converts a string to uppercase using the best available method.
+#
+# Parameters:
+#	- $1: The input string.
+#
+# Returns:
+#	- The uppercase string (echoed).
+#
+# Behavior:
+#	- Uses Bash 4.0+ parameter expansion (`${input^^}`).
+#	- Falls back to the `tr` command for Bash 3.2.
+#
 to_uppercase() {
     local input="$1"
 
@@ -996,14 +1324,22 @@ to_uppercase() {
     fi
 }
 
-# -----------------------------------------------
-# Array Reading Compatibility
-# -----------------------------------------------
-# Provides mapfile/readarray functionality across bash versions
-
-# Read lines into array with fallback
-# Usage: read_lines_into_array "array_name" < file
-# or: echo "data" | read_lines_into_array "array_name"
+# ===============================================
+# Read Lines Into Array
+# ===============================================
+#
+# Description: Reads stdin (lines) into a named array, compatible across Bash versions.
+#
+# Parameters:
+#	- $1: The name of the destination array variable.
+#
+# Returns:
+#	- Implicitly populates the named array.
+#
+# Behavior:
+#	- Uses Bash 4.0+ `mapfile -t`.
+#	- Falls back to manual `while IFS= read -r line` loop for Bash 3.2.
+#
 read_lines_into_array() {
     local array_name="$1"
 
@@ -1022,16 +1358,21 @@ read_lines_into_array() {
     fi
 }
 
-# -----------------------------------------------
-# Array Passing Compatibility
-# -----------------------------------------------
-# Safe array passing for functions across bash versions
-
-# Pass array by name to function (Bash 3.2 compatible)
-# Usage in function:
-#   process_array_by_name "array_name"
-#   # Access with: ${ARRAY_ELEMENTS[i]}
-#   # Length with: ${#ARRAY_ELEMENTS[@]}
+# ===============================================
+# Process Array By Name
+# ===============================================
+#
+# Description: Copies the contents of a source array (passed by name) into a global array named `ARRAY_ELEMENTS`.
+#
+# Parameters:
+#	- $1: The name of the source array variable.
+#
+# Returns:
+#	- Implicitly populates the global `ARRAY_ELEMENTS` array.
+#
+# Behavior:
+#	- Required for Bash 3.2 which lacks nameref. Global name must be used carefully.
+#
 process_array_by_name() {
     local array_name="$1"
 
@@ -1039,8 +1380,19 @@ process_array_by_name() {
     eval "ARRAY_ELEMENTS=(\"\${${array_name}[@]}\")"
 }
 
-# Alternative: Copy array contents to local variables
-# Usage: copy_array_to_local "source_array" "dest_array"
+# ===============================================
+# Copy Array To Local
+# ===============================================
+#
+# Description: Copies the contents of one array to a local array within the calling function's scope.
+#
+# Parameters:
+#	- $1: The name of the source array variable.
+#	- $2: The name of the destination array variable (which is declared locally).
+#
+# Returns:
+#	- Implicitly populates the local destination array.
+#
 copy_array_to_local() {
     local source_name="$1"
     local dest_name="$2"
@@ -1049,12 +1401,19 @@ copy_array_to_local() {
     eval "$dest_name=(\"\${temp_array[@]}\")"
 }
 
-# -----------------------------------------------
-# Version-Specific Feature Detection
-# -----------------------------------------------
-
-# Check if specific bash feature is available
-# Usage: has_bash_feature "associative_arrays|nameref|lowercase|mapfile"
+# ===============================================
+# Has Bash Feature
+# ===============================================
+#
+# Description: Checks if a specific advanced Bash feature is available in the current shell version.
+#
+# Parameters:
+#	- $1: Feature name (e.g., "associative_arrays", "nameref", "lowercase", "mapfile").
+#
+# Returns:
+#	- 0 (Success) if the feature is available.
+#	- 1 (Failure) otherwise.
+#
 has_bash_feature() {
     local feature="$1"
 
@@ -1080,8 +1439,18 @@ has_bash_feature() {
     esac
 }
 
-# Get bash version info
-# Usage: get_bash_version_info
+# ===============================================
+# Get Bash Version Info
+# ===============================================
+#
+# Description: Prints diagnostic information about the current Bash version and detected features.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Prints formatted version and feature information to stdout.
+#
 get_bash_version_info() {
     detect_bash_version
 
@@ -1098,11 +1467,22 @@ get_bash_version_info() {
 # Enhanced Configuration Compatibility
 # ===============================================
 
-# Safe configuration array access
-# Handles associative arrays with fallbacks for older bash
-CONFIG_STORAGE_METHOD=""
-
-# Initialize configuration storage
+# ===============================================
+# Init Config Storage
+# ===============================================
+#
+# Description: Initializes the global configuration storage structure (`WP_IMPORT_CONFIG`) using the best version-compatible method.
+#
+# Parameters:
+#	- None
+#
+# Returns:
+#	- Implicitly sets the global `CONFIG_STORAGE_METHOD` variable.
+#
+# Behavior:
+#	- Prefers native associative arrays (`associative`).
+#	- Falls back to parallel arrays (`arrays`) via `init_associative_array`.
+#
 init_config_storage() {
     detect_bash_version
 
@@ -1122,7 +1502,23 @@ init_config_storage() {
     fi
 }
 
-# Set configuration value with version compatibility
+# ===============================================
+# Set Config Value
+# ===============================================
+#
+# Description: Sets a key-value pair in the global configuration storage.
+#
+# Parameters:
+#	- $1: The key.
+#	- $2: The value.
+#
+# Returns:
+#	- Implicitly updates the global `WP_IMPORT_CONFIG` storage.
+#
+# Behavior:
+#	- Automatically calls `init_config_storage` if needed.
+#	- Uses native array assignment or `set_associative_value` based on detected method.
+#
 set_config_value() {
     local key="$1"
     local value="$2"
@@ -1136,7 +1532,22 @@ set_config_value() {
     fi
 }
 
-# Get configuration value with version compatibility
+# ===============================================
+# Get Config Value
+# ===============================================
+#
+# Description: Retrieves the value for a given key from the global configuration storage.
+#
+# Parameters:
+#	- $1: The key.
+#
+# Returns:
+#	- The value (echoed), or an empty string if the key is not found.
+#
+# Behavior:
+#	- Automatically calls `init_config_storage` if needed.
+#	- Uses native array access or `get_associative_value` based on detected method.
+#
 get_config_value() {
     local key="$1"
 

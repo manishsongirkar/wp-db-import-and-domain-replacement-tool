@@ -1,17 +1,40 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # Module Loader for WordPress Import Tool
-# ===============================================
+# ================================================================
 #
 # Description:
-#   Central module loading system that provides core utilities.
-#   Enhanced with bash version compatibility for 3.2, 4.x, and 5.x.
+#   This script serves as the central orchestration system for loading all
+#   library modules required by the WordPress Import Tool. It robustly
+#   auto-detects the project's root directory (SCRIPT_DIR) and library directory (LIB_DIR)
+#   using multiple fallback strategies to ensure cross-shell and cross-platform
+#   compatibility (Bash 3.2, 4.x, 5.x).
+#
+# Key Responsibilities:
+# - Directory Auto-Detection: Safely determines SCRIPT_DIR and LIB_DIR with multiple fallbacks.
+# - Core Dependency Management: Loads core utilities first to establish Bash
+#   compatibility (`detect_bash_version`).
+# - Hierarchical Loading: Loads modules in a logical order (core, config, database, utilities).
+# - Protection: Prevents double-loading via the `WP_IMPORT_MODULES_LOADED` flag.
+#
+# Variables Exported:
+# - SCRIPT_DIR: The absolute path to the main project directory.
+# - LIB_DIR: The absolute path to the library directory ($SCRIPT_DIR/lib).
+# - WP_IMPORT_MODULES_LOADED: Flag set to "true" after initialization.
+#
+# Functions provided:
+# - load_core_modules
+# - load_config_modules
+# - load_database_modules
+# - load_utilities_modules
+# - load_modules
 #
 # Usage:
 #   source lib/module_loader.sh
 #   load_modules
 #
+# ================================================================
 
 # Initialize bash compatibility detection early
 BASH_COMPAT_INITIALIZED=""
@@ -109,7 +132,26 @@ if [[ ! -d "$LIB_DIR" ]] || [[ ! -f "$LIB_DIR/module_loader.sh" ]]; then
     fi
 fi
 
+# ===============================================
 # Load core modules with bash compatibility
+# ===============================================
+#
+# Description: Loads foundational scripts from the `$LIB_DIR/core` directory.
+#              This is critical as it loads `utils.sh` first to detect and
+#              initialize Bash version compatibility before other modules run.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Loads `utils.sh` (must contain `detect_bash_version`).
+#   - Loads `validation.sh`.
+#   - Loads `wp_detection.sh`.
+#   - Sets `BASH_COMPAT_INITIALIZED` to "true".
+#
 load_core_modules() {
     local core_dir="$LIB_DIR/core"
 
@@ -134,14 +176,30 @@ load_core_modules() {
     if [[ -f "$core_dir/validation.sh" ]]; then
         source "$core_dir/validation.sh" 2>/dev/null
     fi
-    
+
     # Load WordPress detection module
     if [[ -f "$core_dir/wp_detection.sh" ]]; then
         source "$core_dir/wp_detection.sh" 2>/dev/null
     fi
 }
 
+# ===============================================
 # Load configuration modules
+# ===============================================
+#
+# Description: Loads scripts related to configuration management and integration
+#              from the `$LIB_DIR/config` directory.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Loads `config_manager.sh` (for handling configuration files).
+#   - Loads `integration.sh` (for utilities integrating with configuration settings).
+#
 load_config_modules() {
     local config_dir="$LIB_DIR/config"
 
@@ -156,7 +214,22 @@ load_config_modules() {
     fi
 }
 
+# ===============================================
 # Load database modules
+# ===============================================
+#
+# Description: Loads scripts focused on database operations, primarily utilities
+#              for search and replace functionality.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Loads `search_replace.sh` (for handling database search/replace operations).
+#
 load_database_modules() {
     local database_dir="$LIB_DIR/database"
 
@@ -166,7 +239,26 @@ load_database_modules() {
     fi
 }
 
+# ===============================================
 # Load utilities modules
+# ===============================================
+#
+# Description: Loads various utility scripts that support advanced features
+#              like gitignore management, Stage File Proxy setup, and site link
+#              cleanup. Modules are loaded in a specific order to manage dependencies.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Loads `gitignore_manager.sh` (potential dependency for other utilities).
+#   - Loads `stage_file_proxy.sh`.
+#   - Loads `site_links.sh`.
+#   - Loads `revision_cleanup.sh`.
+#
 load_utilities_modules() {
     local utilities_dir="$LIB_DIR/utilities"
 
@@ -191,7 +283,25 @@ load_utilities_modules() {
     fi
 }
 
+# ===============================================
 # Main function to load all modules
+# ===============================================
+#
+# Description: Orchestrates the loading of all necessary module groups in a defined
+#              sequence: core, configuration, database, and finally utilities.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) always.
+#
+# Behavior:
+#   - Calls `load_core_modules`.
+#   - Calls `load_config_modules`.
+#   - Calls `load_database_modules`.
+#   - Calls `load_utilities_modules`.
+#
 load_modules() {
     # Load core modules (includes utils)
     load_core_modules

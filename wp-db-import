@@ -1,24 +1,32 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# ===============================================
+# ================================================================
 # WordPress Database Import & Domain Replacement Tool
 # Global Command Wrapper
-# ===============================================
+# ================================================================
 #
-# This script allows the tool to be used as a global command
-# without requiring manual sourcing each time.
+# Description:
+#   This script acts as the global command-line wrapper for the entire WordPress
+#   Database Import Tool. It resolves the executable's path, loads the main
+#   script (`import_wp_db.sh`), and directs command-line arguments to the correct
+#   internal functions (e.g., `show-links`, `update`, `import_wp_db`). It allows
+#   the tool to be executed globally after symbolic linking.
 #
 # Version: See VERSION file
 #
 # Usage:
 #   wp-db-import                    # Run the main import function
+#   wp-db-import config-show        # Show unified configuration status
+#   wp-db-import config-create      # Create configuration with site mappings
+#   wp-db-import config-validate    # Validate configuration structure
+#   wp-db-import config-edit        # Open configuration in editor
 #   wp-db-import show-links         # Show local site links
+#   wp-db-import setup-proxy        # Auto-setup Stage File Proxy (uses config)
 #   wp-db-import show-cleanup       # Show revision cleanup commands
-#   wp-db-import setup-proxy        # Auto-detect config and setup stage file proxy
-#   wp-db-import detect             # Detect WordPress installation type
-#   wp-db-import update             # Update to latest version (git pull)
-#   wp-db-import version            # Show current version and git info
-#   wp-db-import --help             # Show help
+#   wp-db-import update             # Update to latest version
+#   wp-db-import version            # Show version and git info
+#   wp-db-import test               # Run test suite to validate tool functionality
+#   wp-db-import --help             # Show this help message
 #
 # Installation:
 #   Run: ./install.sh
@@ -28,7 +36,7 @@
 #   Since installation uses symlinks, running 'git pull' in the repo
 #   directory automatically makes updates available globally.
 #
-# ===============================================
+# ================================================================
 
 # Get the directory where this script is located
 # Handle both direct execution and symlinked installation
@@ -48,24 +56,34 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
+# ===============================================
 # Function to show help
+# ===============================================
+#
+# Description: Displays the full list of available `wp-db-import` commands,
+#              along with information about updates and usage tips.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Prints the formatted help message to stdout.
+#
 show_help() {
     printf "${CYAN}${BOLD}WordPress Database Import & Domain Replacement Tool${RESET}\n"
     printf "================================================================\n\n"
     printf "${BOLD}USAGE:${RESET}\n"
     printf "  wp-db-import                    Run the main import function\n"
-    printf "  wp-db-import show-links         Show local site links\n"
-    printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
-    printf "  wp-db-import setup-proxy        Setup stage file proxy plugin\n"
-    printf "  wp-db-import detect             Detect WordPress installation type\n"
-    printf "  wp-db-import setup-proxy        Auto-setup stage file proxy (uses config)\n"
     printf "  wp-db-import config-show        Show unified configuration status\n"
     printf "  wp-db-import config-create      Create configuration with site mappings\n"
     printf "  wp-db-import config-validate    Validate configuration structure\n"
     printf "  wp-db-import config-edit        Open configuration in editor\n"
-    printf "  wp-db-import test               Run test suite to validate tool functionality\n"
+    printf "  wp-db-import show-links         Show local site links\n"
+    printf "  wp-db-import setup-proxy        Auto-setup Stage File Proxy (uses config)\n"
+    printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
+    printf "  wp-db-import test               Run test suite to validate tool functionality\n"
     printf "  wp-db-import --help             Show this help message\n\n"
 
     printf "${BOLD}UPDATES:${RESET}\n"
@@ -76,7 +94,20 @@ show_help() {
     printf "${YELLOW}💡 TIP:${RESET} Place your SQL file in the WordPress root directory before running.\n"
 }
 
+# ===============================================
 # Function to check if we're in a WordPress directory
+# ===============================================
+#
+# Description: Checks the current directory and its ancestors for a `wp-config.php`
+#              file to confirm the user is executing the command within a WordPress installation.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if `wp-config.php` is found.
+#   - 1 (Failure) otherwise, printing an error message.
+#
 check_wordpress_directory() {
     local current_dir="$(pwd)"
     local wp_root="$current_dir"
@@ -97,7 +128,20 @@ check_wordpress_directory() {
     return 0
 }
 
+# ===============================================
 # Function to load the main script and modules
+# ===============================================
+#
+# Description: Sources the core `import_wp_db.sh` file, which in turn loads the
+#              entire modular system, making all required functions globally available.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if the main script and modules load.
+#   - 1 (Failure) otherwise.
+#
 load_main_script() {
     if [[ ! -f "$MAIN_SCRIPT" ]]; then
         printf "${RED}❌ Error: Main script not found at: $MAIN_SCRIPT${RESET}\n"
@@ -115,7 +159,18 @@ load_main_script() {
     return 0
 }
 
+# ===============================================
 # Function to get the current version
+# ===============================================
+#
+# Description: Reads the project version string from the `VERSION` file.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - The version string (echoed) or "unknown" on failure.
+#
 get_version() {
     local version="unknown"
     if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
@@ -128,7 +183,19 @@ get_version() {
     echo "$version"
 }
 
+# ===============================================
 # Function to show version information
+# ===============================================
+#
+# Description: Displays the current tool version, associated Git repository
+#              information (branch, commit, updates available), and installation status.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - Prints formatted version and status information to stdout.
+#
 show_version() {
     local version=$(get_version)
 
@@ -155,7 +222,7 @@ show_version() {
         if git -C "$SCRIPT_DIR" fetch >/dev/null 2>&1; then
             local behind_count=$(git -C "$SCRIPT_DIR" rev-list HEAD..origin/"${current_branch}" --count 2>/dev/null || echo "0")
             if [[ "$behind_count" -gt 0 ]]; then
-                printf "${YELLOW}� ${behind_count} update(s) available. Run: wp-db-import update${RESET}\n"
+                printf "${YELLOW}➤ ${behind_count} update(s) available. Run: wp-db-import update${RESET}\n"
             fi
         fi
     else
@@ -187,7 +254,24 @@ show_version() {
     fi
 }
 
+# ===============================================
 # Function to update the tool to latest version
+# ===============================================
+#
+# Description: Performs a `git pull` operation within the tool's installation directory
+#              to fetch and apply the latest changes from the remote repository.
+#
+# Parameters:
+#   - None.
+#
+# Returns:
+#   - 0 (Success) if the tool is successfully updated or already up-to-date.
+#   - 1 (Failure) if the installation is not a Git repository or the update fails.
+#
+# Behavior:
+#   - Checks for uncommitted local changes and prompts the user before proceeding.
+#   - Uses `git -C "$SCRIPT_DIR" pull` to perform the update.
+#
 update_tool() {
     printf "${CYAN}🔄 Updating WordPress Database Import Tool...${RESET}\n\n"
 
