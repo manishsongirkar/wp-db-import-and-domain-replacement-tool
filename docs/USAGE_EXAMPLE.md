@@ -4,6 +4,18 @@
 
 This document showcases real-world terminal output examples from the WordPress Database Import & Domain Replacement Tool. Each example demonstrates the step-by-step process of importing a WordPress database, replacing domains, cleaning up revisions, mapping multisite domains, and setting up the Stage File Proxy plugin. Outputs reflect both single-site and multisite scenarios, including configuration prompts, automatic detection, and final site access links. Use these examples to preview the tool's workflow, understand expected prompts, and verify successful operations in your own environment.
 
+**Table of Contents**
+
+- [Single Site Example (First-Time Run)](#single-site-example-first-time-run)
+- [Single Site Example (Subsequent Run with Config)](#single-site-example-subsequent-run-with-config)
+- [Multisite Example (First-Time Setup)](#multisite-example-first-time-setup)
+- [Multisite Example (Subsequent Run with Existing Config)](#multisite-example-subsequent-run-with-existing-config)
+- [Revision Cleanup (Single)](#revision-cleanup-single)
+- [Revision Cleanup (Multisite)](#revision-cleanup-multisite)
+- [Show Links (Single)](#show-links-single)
+- [Show Links (Multisite)](#show-links-multisite)
+
+
 ## Single Site Example (First-Time Run)
 
 **Terminal Input/Output:**
@@ -74,7 +86,7 @@ Proceed with search-replace now? (Y/n): y
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
-  ⚠️  Failed to flush rewrite rule (Not always necessary/available).
+  ✅ Rewrite rule flushed.
   ✅ All transients deleted.
 
 🎉 All done! Database import and replacements completed successfully.
@@ -805,7 +817,7 @@ Proceed with search-replace for all sites? (Y/n):
 
 🧹 Flushing WordPress and WP-CLI caches & transients...
   ✅ Object cache flushed.
-  ⚠️  Failed to flush rewrite rule (Not always necessary/available).
+  ✅ Rewrite rule flushed.
   ✅ All transients deleted.
 
 🎉 All done! Database import and replacements completed successfully.
@@ -901,4 +913,131 @@ Configured 6 out of 6 sites
 ================================================================
 
 ⏱️  Total Execution Time: 01:15 (mm:ss)
+```
+
+## Revision Cleanup (Single)
+
+```bash
+$ wp-db-import show-cleanup
+
+🗑️ Generating revision cleanup commands...
+
+✅ WordPress installation found: /Users/john/Sites/example-site/app/public
+
+================================================================
+🧹 MYSQL COMMANDS FOR REVISION CLEANUP
+================================================================
+
+💡 These commands will permanently delete ALL post revisions from your database.
+💡 Copy and paste these commands into phpMyAdmin → SQL tab or MySQL console.
+
+✅ WordPress Single Site detected
+
+📊 Site Information:
+   Blog ID: 1 (Main Site) - Tables: wp_posts, wp_postmeta
+
+🗂️  MySQL Commands for Single Site:
+
+DELETE FROM `wp_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_posts` WHERE `post_type` = 'revision';
+
+================================================================
+```
+
+## Revision Cleanup (Multisite)
+
+```bash
+$ wp-db-import show-cleanup
+
+🗑️ Generating revision cleanup commands...
+
+✅ WordPress installation found: /Users/john/Sites/example-multisite/app/public
+
+================================================================
+🧹 MYSQL COMMANDS FOR REVISION CLEANUP
+================================================================
+
+💡 These commands will permanently delete ALL post revisions from your database.
+💡 Copy and paste these commands into phpMyAdmin → SQL tab or MySQL console.
+
+✅ WordPress Multisite detected (6 sites)
+
+🗂️  MySQL Commands for Multisite:
+
+-- Blog ID 1 (Main Site) - Tables: wp_posts, wp_postmeta
+DELETE FROM `wp_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_posts` WHERE `post_type` = 'revision';
+
+-- Blog ID 2 (Subsite) - Tables: wp_2_posts, wp_2_postmeta
+DELETE FROM `wp_2_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_2_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_2_posts` WHERE `post_type` = 'revision';
+
+-- Blog ID 3 (Subsite) - Tables: wp_3_posts, wp_3_postmeta
+DELETE FROM `wp_3_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_3_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_3_posts` WHERE `post_type` = 'revision';
+
+-- Blog ID 4 (Subsite) - Tables: wp_4_posts, wp_4_postmeta
+DELETE FROM `wp_4_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_4_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_4_posts` WHERE `post_type` = 'revision';
+
+-- Blog ID 6 (Subsite) - Tables: wp_6_posts, wp_6_postmeta
+DELETE FROM `wp_6_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_6_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_6_posts` WHERE `post_type` = 'revision';
+
+-- Blog ID 7 (Subsite) - Tables: wp_7_posts, wp_7_postmeta
+DELETE FROM `wp_7_postmeta` WHERE `post_id` in (SELECT ID FROM `wp_7_posts` WHERE `post_type` = 'revision');
+DELETE FROM `wp_7_posts` WHERE `post_type` = 'revision';
+
+================================================================
+```
+
+## Show Links (Single)
+
+```bash
+$ wp-db-import show-links
+🔗 Displaying local site links...
+
+✅ WordPress installation found: /Users/john/Sites/example-site/app/public
+
+================================================================
+🌐 LOCAL SITE ACCESS LINKS
+================================================================
+
+✅ Your WordPress Single Site is ready:
+
+  🏠 Frontend: https://example.test
+  ⚙️ Admin:    https://example.test/wp-admin
+
+
+================================================================
+```
+
+## Show Links (Multisite)
+
+```bash
+$ wp-db-import show-links
+
+🔗 Displaying local site links...
+
+✅ WordPress installation found: /Users/john/Sites/example-multisite/app/public
+
+================================================================
+🌐 LOCAL SITE ACCESS LINKS
+================================================================
+
+✅ Your WordPress Multisite is ready (6 sites):
+
+✅ Found main site via WP-CLI site list
+✅ Main site detection complete: Blog ID 1 via wp-cli-site-list
+
+  🏠 Main Site (ID: 1): https://example.test
+  🌍 Subsite   (ID: 2): https://example.test/shop
+  🌍 Subsite   (ID: 3): https://example.test/blog
+  🌍 Subsite   (ID: 4): https://example.test/news
+  🌍 Subsite   (ID: 6): https://example.test/support
+  🌍 Subsite   (ID: 7): https://example.test/docs
+
+💡 Network Admin: Add /wp-admin/network/ to any of the above URLs
+
+================================================================
 ```

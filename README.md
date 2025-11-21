@@ -454,7 +454,7 @@ UPDATE wp_blogs SET domain = "docs.example.test", path = "/" WHERE blog_id = 7;
 UPDATE wp_site SET domain = 'example.test' WHERE id = 1;
 
 -- Update blog domains (shared domain with individual paths)
-UPDATE wp_blogs SET domain = "example.test", path = "/" WHERE blog_id = 1;      -- Main site
+UPDATE wp_blogs SET domain = "example.test", path = "/" WHERE blog_id = 1;
 UPDATE wp_blogs SET domain = "example.test", path = "/blog/" WHERE blog_id = 2;
 UPDATE wp_blogs SET domain = "example.test", path = "/shop/" WHERE blog_id = 3;
 UPDATE wp_blogs SET domain = "example.test", path = "/news/" WHERE blog_id = 4;
