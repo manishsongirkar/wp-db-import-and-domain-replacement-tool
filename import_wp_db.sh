@@ -1615,9 +1615,9 @@ ${subsite_line}"
 
         # Call unified function with config path - it auto-detects automatic vs manual mode
         if setup_stage_file_proxy_unified "$config_path"; then
-          printf "${GREEN}🎉 Stage File Proxy setup completed successfully!${RESET}\n"
+          printf " ${GREEN}🎉 Stage File Proxy setup completed successfully!${RESET}\n"
         else
-          printf "${YELLOW}⚠️  Stage File Proxy setup encountered some issues, but continuing...${RESET}\n"
+          printf " ${YELLOW}⚠️  Stage File Proxy setup encountered some issues, but continuing...${RESET}\n"
         fi
       else
         printf "${RED}❌ Stage File Proxy unified module not found${RESET}\n"

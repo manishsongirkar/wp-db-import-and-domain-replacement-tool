@@ -340,7 +340,7 @@ configure_stage_file_proxy() {
         return 1
     fi
 
-    printf "${GREEN}✅ Configuration successful (URL: $domain, Mode: $mode)${RESET}\n"
+    printf " ${GREEN}✅ Configuration successful${RESET}\n"
 }
 
 # ===============================================
@@ -946,8 +946,6 @@ setup_single_site_stage_file_proxy_automatic() {
         return 1
     fi
 
-    printf "${GREEN}✓ Using production domain: $production_domain${RESET}\n"
-
     # Activate the plugin
     if wp plugin activate stage-file-proxy --quiet 2>/dev/null; then
         printf "${GREEN}✓ Plugin activated successfully${RESET}\n"
@@ -963,9 +961,15 @@ setup_single_site_stage_file_proxy_automatic() {
         return 1
     fi
 
+    printf "\n"
+    printf "${CYAN} Site Configuration ${RESET}\n"
+    printf " Source:      %s\n" "$(wp option get siteurl --quiet 2>/dev/null)"
+    printf " Destination: %s\n" "$sanitized_domain"
+    printf " Mode:        header\n"
+    printf "\n"
+
     # Configure using the sanitized domain
     if configure_stage_file_proxy "$sanitized_domain" "header"; then
-        printf "${GREEN}✅ Single site configured automatically${RESET}\n"
         return 0
     else
         printf "${RED}❌ Failed to configure single site${RESET}\n"
@@ -1052,13 +1056,17 @@ setup_multisite_stage_file_proxy_automatic() {
             local sanitized_domain
             sanitized_domain=$(sanitize_stage_proxy_domain "$production_domain")
             if [[ $? -eq 0 && -n "$sanitized_domain" ]]; then
-                printf "${CYAN}Configuring site $blog_id ($site_url) → $sanitized_domain${RESET}\n"
+                printf "${CYAN} Site Configuration (ID: $blog_id)${RESET}\n"
+                printf " Source:      %s\n" "${site_url%/}"
+                printf " Destination: %s\n" "$sanitized_domain"
+                printf " Mode:        header\n"
+                printf "\n"
                 if configure_stage_file_proxy "$sanitized_domain" "header" "$site_url"; then
-                    printf "${GREEN}✅ $site_url configured${RESET}\n"
                     configured_count=$((configured_count + 1))
                 else
                     printf "${RED}❌ Failed to configure $site_url${RESET}\n"
                 fi
+                printf "\n\n"
             else
                 printf "${RED}❌ Invalid domain format for site $blog_id: $production_domain${RESET}\n"
             fi
