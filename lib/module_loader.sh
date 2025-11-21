@@ -181,6 +181,21 @@ load_core_modules() {
     if [[ -f "$core_dir/wp_detection.sh" ]]; then
         source "$core_dir/wp_detection.sh" 2>/dev/null
     fi
+
+    # Load cleanup module
+    if [[ -f "$core_dir/cleanup.sh" ]]; then
+        source "$core_dir/cleanup.sh" 2>/dev/null
+    fi
+
+    # Load domain manager module
+    if [[ -f "$core_dir/domain_manager.sh" ]]; then
+        source "$core_dir/domain_manager.sh" 2>/dev/null
+    fi
+
+    # Load multisite manager module
+    if [[ -f "$core_dir/multisite_manager.sh" ]]; then
+        source "$core_dir/multisite_manager.sh" 2>/dev/null
+    fi
 }
 
 # ===============================================
@@ -236,6 +251,11 @@ load_database_modules() {
     # Load search and replace utilities
     if [[ -f "$database_dir/search_replace.sh" ]]; then
         source "$database_dir/search_replace.sh" 2>/dev/null
+    fi
+
+    # Load database import module
+    if [[ -f "$database_dir/db_import.sh" ]]; then
+        source "$database_dir/db_import.sh" 2>/dev/null
     fi
 }
 
