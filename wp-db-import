@@ -34,7 +34,7 @@
 #
 # Auto-Updates:
 #   Since installation uses symlinks, running 'git pull' in the repo
-#   directory automatically makes updates available globally.
+#   directory automatically applies updates globally.
 #
 # ================================================================
 
@@ -238,17 +238,17 @@ show_version() {
 
         # Check if it's a git repository for auto-updates
         if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-            printf "  Auto-updates: ${GREEN}Available (git repository)${RESET}\n"
+            printf "  Update Method: ${GREEN}Git Pull (Manual)${RESET}\n"
         else
-            printf "  Auto-updates: ${YELLOW}Limited (not a git repository)${RESET}\n"
+            printf "  Update Method: ${YELLOW}Manual Re-installation${RESET}\n"
         fi
     else
         printf "  Running directly from: ${BASH_SOURCE[0]}\n"
         if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-            printf "  Auto-updates: ${GREEN}Available (git repository)${RESET}\n"
+            printf "  Update Method: ${GREEN}Git Pull (Manual)${RESET}\n"
             printf "  ${CYAN}💡 Tip: Run ./install.sh to make this command globally available${RESET}\n"
         else
-            printf "  Auto-updates: ${YELLOW}Not available (downloaded as archive)${RESET}\n"
+            printf "  Update Method: ${YELLOW}Manual Download (Archive)${RESET}\n"
             printf "  ${CYAN}💡 Tip: Clone from git repository for auto-updates${RESET}\n"
         fi
     fi
