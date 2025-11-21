@@ -165,10 +165,12 @@ read_general_config() {
         awk -v key="$key" '
             /^\[general\]/ { in_section=1; next }
             /^\[/ && in_section { in_section=0 }
-            in_section && $0 ~ "^" key "=" {
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-                sub("^" key "=", "")
-                print
+            in_section && $0 ~ key "[[:space:]]*=" {
+                match($0, /=/)
+                val = substr($0, RSTART + 1)
+                sub(/^[[:space:]]+/, "", val)
+                sub(/[[:space:]]+$/, "", val)
+                print val
                 exit
             }
         ' "$config_path" 2>/dev/null
@@ -399,7 +401,7 @@ EOF
                 if (!found) print key "=" value
                 in_section=0; found=0; print; next
             }
-            in_section && $0 ~ "^" key "=" {
+            in_section && $0 ~ "^[[:space:]]*" key "=" {
                 print key "=" value; found=1; next
             }
             { print }
@@ -476,7 +478,7 @@ EOF
                 echo "$line"
             elif [[ "$in_site_section" == true ]]; then
                 # Check if this is the mapping we want to update
-                if [[ "$line" =~ ^$blog_id: ]]; then
+                if [[ "$line" =~ ^[[:space:]]*$blog_id: ]]; then
                     echo "$blog_id:$old_domain:$new_domain"
                     mapping_found=true
                 else
