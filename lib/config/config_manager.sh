@@ -15,7 +15,7 @@
 #
 # Config File Format:
 #   [general]
-#   sql_file=vip-db.sql
+#   sql_file=production-database.sql
 #   old_domain=mobility-admin.coxautoinc.com
 #   new_domain=coxautoinc-mobility.test
 #   all_tables=true

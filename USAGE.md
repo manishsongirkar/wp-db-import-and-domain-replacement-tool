@@ -49,7 +49,7 @@ wp-db-import
 ### Example Configuration File
 ```ini
 [general]
-sql_file=vip-db.sql
+sql_file=production-database.sql
 old_domain=production-site.com
 new_domain=local-site.test
 all_tables=true
