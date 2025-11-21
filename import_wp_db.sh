@@ -212,19 +212,36 @@ show_revision_cleanup_at_end() {
 #
 import_wp_db() {
 
-  # ⏱️ Start timer for total execution tracking
-  local start_time=$(date +%s)
+  # ⏱️ Initialize timers
+  local total_start_time=$(date +%s)
+  local script_execution_duration=0
+  local segment_start_time=$(date +%s)
 
   # 📊 Track revision cleanup status for end-of-process reporting
   local revision_cleanup_declined=false
   local revisions_remain_after_cleanup=false
+
+  # ===============================================
+  # Timer Control Functions
+  # ===============================================
+  # Pauses the script execution timer before waiting for user input
+  pause_script_timer() {
+    local now
+    now=$(date +%s)
+    local segment_duration=$((now - segment_start_time))
+    script_execution_duration=$((script_execution_duration + segment_duration))
+  }
+
+  # Resumes the script execution timer after user input is received
+  resume_script_timer() {
+    segment_start_time=$(date +%s)
+  }
 
   # Determine absolute path to WP-CLI for robust execution in subshells
   WP_COMMAND=$(command -v wp)
 
   if [[ -z "$WP_COMMAND" ]]; then
     printf "${RED}❌ WP-CLI not found in PATH. Exiting.${RESET}\n"
-    display_execution_time "$start_time"
     return 1
   fi
 
@@ -299,7 +316,6 @@ import_wp_db() {
 
   if [[ ! -f "$wp_root/wp-config.php" ]]; then
     printf "${RED}❌ WordPress root not found (wp-config.php missing).${RESET}\n"
-    display_execution_time "$start_time"
     return 1
   fi
 
@@ -374,8 +390,10 @@ import_wp_db() {
     sql_file="$CONFIG_SQL_FILE"
     printf "📦 SQL file: ${GREEN}%s${RESET} (from config)\n" "$sql_file"
   else
+    pause_script_timer
     printf "📦 Enter SQL file name (default: vip-db.sql): "
     read -r sql_file
+    resume_script_timer
     sql_file=${sql_file:-vip-db.sql}
   fi
 
@@ -412,8 +430,10 @@ import_wp_db() {
     if [[ -n "$CONFIG_OLD_DOMAIN" ]]; then
       search_domain="$CONFIG_OLD_DOMAIN"
       printf "🌍 OLD (production) domain: ${GREEN}%s${RESET} (from config)\n" "$search_domain"
+      pause_script_timer
       printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
       read -r domain_override
+      resume_script_timer
 
       if [[ -n "$domain_override" ]]; then
         search_domain="$domain_override"
@@ -423,8 +443,10 @@ import_wp_db() {
       fi
       break
     else
+      pause_script_timer
       printf "🌍 Enter the OLD (production) domain to search for: "
       read -r search_domain
+      resume_script_timer
 
       if [[ -n "$search_domain" ]]; then
         break
@@ -439,8 +461,10 @@ import_wp_db() {
     if [[ -n "$CONFIG_NEW_DOMAIN" ]]; then
       replace_domain="$CONFIG_NEW_DOMAIN"
       printf "🏠 NEW (local) domain: ${GREEN}%s${RESET} (from config)\n" "$replace_domain"
+      pause_script_timer
       printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
       read -r domain_override
+      resume_script_timer
 
       if [[ -n "$domain_override" ]]; then
         replace_domain="$domain_override"
@@ -450,8 +474,10 @@ import_wp_db() {
       fi
       break
     else
+      pause_script_timer
       printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
       read -r replace_domain
+      resume_script_timer
 
       if [[ -n "$replace_domain" ]]; then
         break
@@ -510,8 +536,10 @@ import_wp_db() {
     printf "${GREEN}✅ Auto-proceeding with database import (from config)${RESET}\n"
     local confirm="y"
   else
+    pause_script_timer
     printf "Proceed with database import? (Y/n): "
     read -r confirm
+    resume_script_timer
     confirm="${confirm:-y}"
     [[ "$confirm" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
   fi
@@ -543,7 +571,6 @@ import_wp_db() {
   # Check if import was successful
   if [[ "$import_success" = false ]]; then
     printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$DB_LOG"
-    display_execution_time "$start_time"
     return 1
   fi
 
@@ -573,7 +600,6 @@ import_wp_db() {
       else
         # Validation failed, user cancelled or needs to fix config
         printf "${RED}❌ Domain validation failed. Please resolve the issue and try again.${RESET}\n"
-        display_execution_time "$start_time"
         return 1
       fi
     fi
@@ -606,8 +632,10 @@ import_wp_db() {
   if [[ -n "$CONFIG_CLEAR_REVISIONS" ]]; then
     if is_config_true "$CONFIG_CLEAR_REVISIONS"; then
       printf "Clear ALL post revisions: ${GREEN}enabled${RESET} (from config)\n"
+      pause_script_timer
       printf "   ${CYAN}Press Enter to confirm, or 'n' to skip revision cleanup:${RESET} "
       read -r revision_override
+      resume_script_timer
 
       if [[ "$revision_override" == [Nn]* ]]; then
         cleanup_revisions="n"
@@ -620,8 +648,10 @@ import_wp_db() {
       fi
     else
       printf "Clear ALL post revisions: ${YELLOW}disabled${RESET} (from config)\n"
+      pause_script_timer
       printf "   ${CYAN}Press Enter to keep disabled, or 'y' to enable revision cleanup:${RESET} "
       read -r revision_override
+      resume_script_timer
 
       if [[ "$revision_override" == [Yy]* ]]; then
         cleanup_revisions="y"
@@ -634,8 +664,10 @@ import_wp_db() {
       fi
     fi
   else
+    pause_script_timer
     printf "Clear ALL post revisions? (improves search-replace speed) (Y/n): "
     read -r cleanup_revisions
+    resume_script_timer
     cleanup_revisions="${cleanup_revisions:-y}"
 
     # Save to config for future use
@@ -816,8 +848,10 @@ import_wp_db() {
       printf "Include ${BOLD}--all-tables${RESET}: ${YELLOW}disabled${RESET} (from config)\n"
     fi
   else
+    pause_script_timer
     printf "Include ${BOLD}--all-tables${RESET} (recommended for full DB imports)? (Y/n): "
     read -r include_all
+    resume_script_timer
     include_all="${include_all:-y}"
     all_tables_flag=""
     if [[ "$include_all" =~ ^[Yy]$ ]]; then
@@ -844,8 +878,10 @@ import_wp_db() {
       printf "Run in ${BOLD}dry-run mode${RESET}: ${GREEN}live mode${RESET} (from config)\n\n"
     fi
   else
+    pause_script_timer
     printf "Run in ${BOLD}dry-run mode${RESET} (no data will be changed)? (y/N): "
     read -r dry_run
+    resume_script_timer
     dry_run="${dry_run:-n}"
     dry_run_flag=""
     if [[ "$dry_run" =~ ^[Yy]$ ]]; then
@@ -1048,8 +1084,10 @@ ${subsite_line}"
         printf "${GREEN}✅ Auto-proceeding with search-replace for all sites (from config)${RESET}\n"
         local confirm_replace="y"
       else
+        pause_script_timer
         printf "Proceed with search-replace for all sites? (Y/n): "
         read -r confirm_replace
+        resume_script_timer
         confirm_replace="${confirm_replace:-y}"
         [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
       fi
@@ -1350,8 +1388,10 @@ ${subsite_line}"
       printf "${GREEN}✅ Auto-proceeding with search-replace (from config)${RESET}\n"
       local confirm_replace="y"
     else
+      pause_script_timer
       printf "Proceed with search-replace now? (Y/n): "
       read -r confirm_replace
+      resume_script_timer
       confirm_replace="${confirm_replace:-y}"
       [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
     fi
@@ -1562,8 +1602,10 @@ ${subsite_line}"
   local sql_executed="y"
   if [[ "$is_multisite" == "yes" && ${#domain_keys[@]} -gt 0 && "${auto_updates_successful:-yes}" == "no" ]]; then
     printf "${CYAN}${BOLD}📋 MySQL Commands Confirmation${RESET}\n"
+    pause_script_timer
     printf "Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): "
     read -r sql_executed
+    resume_script_timer
     sql_executed="${sql_executed:-y}"
 
     if [[ "$sql_executed" != [Yy]* ]]; then
@@ -1595,8 +1637,10 @@ ${subsite_line}"
       fi
     else
       printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
+      pause_script_timer
       printf "Do you want to setup the stage file proxy plugin for media management? (Y/n): "
       read -r setup_stage_proxy
+      resume_script_timer
       setup_stage_proxy="${setup_stage_proxy:-y}"
 
       # Save to config for future use
@@ -1656,12 +1700,20 @@ ${subsite_line}"
   fi
 
   # ⏱️ Calculate and display total execution time
-  local end_time=$(date +%s)
-  local total_elapsed=$((end_time - start_time))
+  pause_script_timer # Final pause to capture the last segment
+  local total_end_time=$(date +%s)
+  local total_elapsed=$((total_end_time - total_start_time))
+
+  # Format total elapsed time
   local total_minutes=$((total_elapsed / 60))
   local total_seconds=$((total_elapsed % 60))
 
-  printf "\n${CYAN}${BOLD}⏱️  Total Execution Time:${RESET} ${GREEN}%02d:%02d${RESET} (mm:ss)\n" "$total_minutes" "$total_seconds"
+  # Format script execution time
+  local script_minutes=$((script_execution_duration / 60))
+  local script_seconds=$((script_execution_duration % 60))
+
+  printf "\n${BOLD}⏱️  ${CYAN}Execution${RESET} ${GREEN}%02d:%02d${RESET}${RESET}" "$script_minutes" "$script_seconds"
+  printf "${CYAN}${BOLD} | Total${RESET} ${GREEN}%02d:%02d${RESET}${RESET}\n\n" "$total_minutes" "$total_seconds"
 
   printf "\n"
 

@@ -332,8 +332,12 @@ handle_missing_mappings() {
         fi
 
         local new_domain_input
+        # Pause timer for user input
+        pause_script_timer
         # Read from stdin (terminal) explicitly to avoid CSV input conflicts
         read -r new_domain_input < /dev/tty
+        # Resume timer after user input
+        resume_script_timer
         new_domain_input="${new_domain_input:-$default_url}"
 
         # Clean the URL (remove protocols and trailing slashes)
