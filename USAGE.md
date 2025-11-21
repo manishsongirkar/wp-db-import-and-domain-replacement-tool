@@ -39,6 +39,8 @@ cp ~/Downloads/production-db.sql ./
 wp-db-import
 ```
 
+> 📖 **See detailed demo outputs:** [Usage Example Output](docs/USAGE_EXAMPLE.md)
+
 ## 🗂️ Configuration System
 
 - First run prompts for SQL file, domains, and creates `wpdb-import.conf`
