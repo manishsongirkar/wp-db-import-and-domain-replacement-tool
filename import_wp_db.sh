@@ -684,15 +684,10 @@ import_wp_db() {
     local delete_success=0
 
     # 1. --- Revision ID Retrieval ---
-    # Construct the base command to list all revision IDs.
     if [[ -n "$url_param" ]]; then
       wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
     else
       wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
-      # Only add network flag if it's not empty (i.e., for multisite)
-      if [[ -n "$network_flag" ]]; then
-        wp_cli_args+=("$network_flag")
-      fi
     fi
 
     # Execute the command and capture IDs.
@@ -702,7 +697,7 @@ import_wp_db() {
     trimmed_output=$(echo "$revision_ids_output" | tr -d '\r\n')
 
     if [[ -z "$trimmed_output" ]]; then
-        printf "${YELLOW}ℹ️ No revisions found${RESET}\n"
+        printf "${YELLOW}ℹ️  No revisions found for site: %s${RESET}\n" "${url_param:-main site}"
         return 0
     fi
 
@@ -711,26 +706,13 @@ import_wp_db() {
 
     printf "${CYAN}   Revisions found: %s${RESET}\n" "$revision_count_before"
 
-    local xargs_command_output
-    local xargs_exit_code
-
-    # 2. --- Bulk Deletion via xargs ---
-    # Construct arguments specific to the delete command.
     local wp_args=("--force")
     if [[ -n "$url_param" ]]; then
         wp_args+=("--url=$url_param")
-    else
-        # Only add network flag if it's not empty (i.e., for multisite)
-        if [[ -n "$network_flag" ]]; then
-          wp_args+=("$network_flag")
-        fi
     fi
 
     # Use xargs to pipeline the list of IDs, calling 'wp post delete' in batches of 500.
-    # This bypasses Bash array splitting issues and is highly performant.
-    xargs_command_output=$(
-        echo "$trimmed_output" | xargs -r -n 500 "$WP_COMMAND" post delete "${wp_args[@]}" 2>&1
-    )
+    xargs_command_output=$(echo "$trimmed_output" | xargs -r -n 500 "$WP_COMMAND" post delete "${wp_args[@]}" 2>&1)
     xargs_exit_code=$?
 
     # Check for execution success. WP-CLI may report success even if not all rows were deleted,
@@ -740,22 +722,17 @@ import_wp_db() {
         delete_success=1
     else
         printf "  ${RED}❌ Failed to execute BULK deletion (xargs Exit Code %s)${RESET}\n" "$xargs_exit_code"
+        printf "  ${RED}WP-CLI output:${RESET}\n%s\n" "$xargs_command_output"
         return 1
     fi
 
     # 3. --- Verification Step ---
     local revisions_after
-    # Check the remaining revision count by executing wp post list again.
-    # Use the same command structure as the initial revision retrieval for consistency
     local verify_wp_cli_args
     if [[ -n "$url_param" ]]; then
       verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
     else
       verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
-      # Only add network flag if it's not empty (i.e., for multisite)
-      if [[ -n "$network_flag" ]]; then
-        verify_wp_cli_args+=("$network_flag")
-      fi
     fi
 
     local verify_output
@@ -768,6 +745,7 @@ import_wp_db() {
         return 0
     else
         printf "${RED}⚠️  WARNING: %s revisions remain in the database after bulk attempt.${RESET}\n" "$revisions_after"
+        printf "${RED}WP-CLI output after deletion:${RESET}\n%s\n" "$verify_output"
         return 1
     fi
   }
