@@ -213,29 +213,11 @@ show_revision_cleanup_at_end() {
 import_wp_db() {
 
   # ⏱️ Initialize timers
-  local total_start_time=$(date +%s)
-  local script_execution_duration=0
-  local segment_start_time=$(date +%s)
+  init_script_timer
 
   # 📊 Track revision cleanup status for end-of-process reporting
   local revision_cleanup_declined=false
   local revisions_remain_after_cleanup=false
-
-  # ===============================================
-  # Timer Control Functions
-  # ===============================================
-  # Pauses the script execution timer before waiting for user input
-  pause_script_timer() {
-    local now
-    now=$(date +%s)
-    local segment_duration=$((now - segment_start_time))
-    script_execution_duration=$((script_execution_duration + segment_duration))
-  }
-
-  # Resumes the script execution timer after user input is received
-  resume_script_timer() {
-    segment_start_time=$(date +%s)
-  }
 
   # Determine absolute path to WP-CLI for robust execution in subshells
   WP_COMMAND=$(command -v wp)
@@ -254,54 +236,6 @@ import_wp_db() {
   local REVISION_LOG="/tmp/wp_revision_delete_$$.log"
   local SUBSITE_DATA="/tmp/wp_subsite_data_$$.csv" # Temporary file to store subsite CSV data from WP-CLI
 
-  # ===============================================
-  # Comprehensive Cleanup Function
-  # ===============================================
-  #
-  # Description: This function executes a comprehensive cleanup routine designed to safely
-  #              remove all temporary files generated during the script's execution.
-  #              It is primarily intended to be executed via a Bash `trap cleanup EXIT`
-  #              command to ensure cleanup happens even if the script is interrupted or fails.
-  #
-  # Parameters:
-  #   - None (Operates on globally defined variables).
-  #
-  # Returns:
-  #   - 0 (Success) always.
-  #
-  # Behavior:
-  #   - Explicitly removes defined temporary files ($DB_LOG, $SR_LOG_SINGLE, etc.) using their PID ($$) in the filename for uniqueness.
-  #   - Uses `find` with the `delete` action to locate and remove any remaining temporary files or logs associated with the script's PID in `/tmp`.
-  #   - Safely cleans up stale WP-CLI cache files (older than 1 day) to maintain system hygiene.
-  #   - Uses `2>/dev/null` throughout to suppress errors for files that may already be gone or permissions issues.
-  #
-  cleanup() {
-    # 🧹 Comprehensive cleanup of all temporary files created by this script (using PID $$)
-    local files_to_remove=(
-      "$DB_LOG"
-      "$SR_LOG_SINGLE"
-      "$REVISION_LOG"
-      "$SUBSITE_DATA"
-    )
-
-    # Remove explicitly defined log files
-    for file in "${files_to_remove[@]}"; do
-      if [[ -n "$file" && -f "$file" ]]; then
-        rm -f "$file" 2>/dev/null
-      fi
-    done
-
-    # Clean up multisite logs (any log files starting with /tmp/wp_replace_ that contain the script's PID)
-    find /tmp -type f -name "wp_replace_*_$$.log" -delete 2>/dev/null
-
-    # Additional safety: Remove any other temp files that might have been created with this script's PID
-    find /tmp -type f -name "*_$$.log" -delete 2>/dev/null
-    find /tmp -type f -name "*_$$.csv" -delete 2>/dev/null
-    find /tmp -type f -name "*_$$.tmp" -delete 2>/dev/null
-
-    # Clean up any WordPress CLI cache files older than 1 day
-    find /tmp -type f -name "wp-cli-*" -mtime +1 -delete 2>/dev/null
-  }
   trap cleanup EXIT
 
   printf "\n${CYAN}${BOLD}🔧 WordPress Database Import & Domain Replace Tool${RESET}\n"
@@ -423,69 +357,7 @@ import_wp_db() {
   printf "\n"
 
   # 🌐 Get the main domain mapping (Source/Search and Destination/Replace)
-  local search_domain replace_domain confirm
-
-  # Get OLD (production/source) domain - from config or prompt with override option
-  while true; do
-    if [[ -n "$CONFIG_OLD_DOMAIN" ]]; then
-      search_domain="$CONFIG_OLD_DOMAIN"
-      printf "🌍 OLD (production) domain: ${GREEN}%s${RESET} (from config)\n" "$search_domain"
-      pause_script_timer
-      printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
-      read -r domain_override
-      resume_script_timer
-
-      if [[ -n "$domain_override" ]]; then
-        search_domain="$domain_override"
-        printf "   ${YELLOW}✏️  Using override domain: %s${RESET}\n" "$search_domain"
-        # Update config with the new domain for future use
-        update_config_general "$config_path" "old_domain" "$search_domain" 2>/dev/null || true
-      fi
-      break
-    else
-      pause_script_timer
-      printf "🌍 Enter the OLD (production) domain to search for: "
-      read -r search_domain
-      resume_script_timer
-
-      if [[ -n "$search_domain" ]]; then
-        break
-      else
-        printf "${YELLOW}⚠️  Production domain is required. Please enter a value.${RESET}\n"
-      fi
-    fi
-  done
-
-  # Get NEW (local/destination) domain - from config or prompt with override option
-  while true; do
-    if [[ -n "$CONFIG_NEW_DOMAIN" ]]; then
-      replace_domain="$CONFIG_NEW_DOMAIN"
-      printf "🏠 NEW (local) domain: ${GREEN}%s${RESET} (from config)\n" "$replace_domain"
-      pause_script_timer
-      printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
-      read -r domain_override
-      resume_script_timer
-
-      if [[ -n "$domain_override" ]]; then
-        replace_domain="$domain_override"
-        printf "   ${YELLOW}✏️  Using override domain: %s${RESET}\n" "$replace_domain"
-        # Update config with the new domain for future use
-        update_config_general "$config_path" "new_domain" "$replace_domain" 2>/dev/null || true
-      fi
-      break
-    else
-      pause_script_timer
-      printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
-      read -r replace_domain
-      resume_script_timer
-
-      if [[ -n "$replace_domain" ]]; then
-        break
-      else
-        printf "${YELLOW}⚠️  Local domain is required. Please enter a value.${RESET}\n"
-      fi
-    fi
-  done
+  get_domains "$config_path"
 
   # Create config file if it doesn't exist, then save user-provided values
   if ! config_file_exists; then
@@ -511,21 +383,6 @@ import_wp_db() {
 
   printf "\n"
 
-  # 🧹 Sanitize domain inputs (remove protocols and trailing slashes)
-  # Apply sanitization to both domains using centralized function
-  local original_search_domain="$search_domain"
-  local original_replace_domain="$replace_domain"
-  search_domain=$(sanitize_domain "$search_domain")
-  replace_domain=$(sanitize_domain "$replace_domain")
-
-  # Show what was cleaned up if changes were made
-  if [[ "$original_search_domain" != "$search_domain" ]]; then
-    printf "${YELLOW}🧹 Cleaned search domain: '%s' → '%s'${RESET}\n" "$original_search_domain" "$search_domain"
-  fi
-  if [[ "$original_replace_domain" != "$replace_domain" ]]; then
-    printf "${YELLOW}🧹 Cleaned replace domain: '%s' → '%s'${RESET}\n" "$original_replace_domain" "$replace_domain"
-  fi
-
   printf "🧾 ${BOLD}Summary:${RESET}\n"
   printf "    🔍 Search for:   ${YELLOW}%s${RESET}\n" "$search_domain"
   printf "    🔄 Replace with: ${GREEN}%s${RESET}\n" "$replace_domain"
@@ -545,66 +402,15 @@ import_wp_db() {
   fi
 
   # 📥 Import the database using WP-CLI (with a spinner)
-  printf "\n${CYAN}⏳ Importing database...${RESET}\n"
-  local import_start_time=$(date +%s)
-
-  # Try robust command execution with fallbacks for restricted environments
-  local import_success=false
-
-  # Method 1: Try with enhanced PATH in subshell (most compatible)
-  if command -v sh >/dev/null 2>&1; then
-    if /bin/sh -c "(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; \"$WP_COMMAND\" db import \"$sql_file\") &> \"$DB_LOG\"" & then
-      local spinner_pid=$!
-      show_spinner $spinner_pid "Importing"
-      wait $spinner_pid && import_success=true
-    fi
+  # Uses db_import.sh
+  if ! perform_db_import "$sql_file" "$DB_LOG"; then
+      return 1
   fi
-
-  # Method 2: Fallback for restricted environments - direct execution
-  if [[ "$import_success" = false ]]; then
-    printf "${YELLOW}Fallback: Direct WP-CLI execution...${RESET}\n"
-    if execute_wp_cli db import "$sql_file" &> "$DB_LOG"; then
-      import_success=true
-    fi
-  fi
-
-  # Check if import was successful
-  if [[ "$import_success" = false ]]; then
-    printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$DB_LOG"
-    return 1
-  fi
-
-  # Calculate elapsed time
-  local import_end_time=$(date +%s)
-  local import_elapsed=$((import_end_time - import_start_time))
-  local import_minutes=$((import_elapsed / 60))
-  local import_seconds=$((import_elapsed % 60))
-
-  printf "${GREEN}✅ Database import successful! ${CYAN}[Completed in %02d:%02d]${RESET}\n\n" "$import_minutes" "$import_seconds"
 
   # 🔍 Domain validation against database (if config exists)
-  printf "${CYAN}🔍 Validating domain configuration...${RESET}\n"
-  local detected_domain
-  if detected_domain=$(detect_database_domain "$wp_root"); then
-    printf "${GREEN}✅ Detected domain in database: ${YELLOW}%s${RESET}\n" "$detected_domain"
-
-    # Validate against config if it exists
-    if config_file_exists; then
-      local validated_domain
-      if validated_domain=$(validate_config_domains "$config_path" "$detected_domain"); then
-        if [[ -n "$validated_domain" && "$validated_domain" != "$detected_domain" ]]; then
-          # User chose to use config domain instead
-          search_domain="$validated_domain"
-          printf "${CYAN}🔄 Updated search domain to: ${YELLOW}%s${RESET}\n" "$search_domain"
-        fi
-      else
-        # Validation failed, user cancelled or needs to fix config
-        printf "${RED}❌ Domain validation failed. Please resolve the issue and try again.${RESET}\n"
-        return 1
-      fi
-    fi
-  else
-    printf "${YELLOW}⚠️  Could not detect domain from database. Proceeding with provided domain.${RESET}\n"
+  # Uses domain_manager.sh
+  if ! validate_domains "$wp_root" "$config_path"; then
+      return 1
   fi
 
   # 🧩 Enhanced multisite detection logic.
@@ -685,102 +491,6 @@ import_wp_db() {
 
   if [[ "$cleanup_revisions" =~ ^[Yy]$ ]]; then
     printf "${CYAN}🗑️ Clearing ALL Post Revisions (improves search-replace speed)...${RESET}\n"
-
-  # ===============================================
-  # Function to perform revision cleanup silently and quickly
-  # ===============================================
-  #
-  # Description: Deletes all WordPress post revisions for the current site or a specified subsite
-  #              in a multisite network. It leverages the high-speed bulk operation capability
-  #              of 'wp post list' piped to 'xargs wp post delete', which efficiently handles
-  #              a large number of post IDs while bypassing Bash array splitting limits.
-  #
-  # Parameters:
-  #   - $1 (optional, string): The `--url` parameter (e.g., `subsite.example.com`) to target a specific multisite subsite.
-  #
-  # Returns:
-  #   - 0 (Success) if all revisions were successfully deleted or if no revisions were found initially.
-  #   - 1 (Failure) if the bulk deletion fails or if revisions still remain in the database after the cleanup attempt.
-  #
-  # Behavior:
-  #   - Step 1: Retrieves all post revision IDs (`post_type=revision`) using WP-CLI.
-  #   - Step 2: Pipes the list of IDs to `xargs` to execute `wp post delete --force` in batches of 500.
-  #   - Step 3: Verifies the remaining revision count after deletion.
-  #   - Relies on the external functions `execute_wp_cli` and the global variable `$network_flag`.
-  #
-  clean_revisions_silent() {
-    local url_param="$1"
-    local wp_cli_args
-    local revision_ids_output
-    local revision_count_before
-    local delete_success=0
-
-    # 1. --- Revision ID Retrieval ---
-    if [[ -n "$url_param" ]]; then
-      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
-    else
-      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
-    fi
-
-    # Execute the command and capture IDs.
-    revision_ids_output=$(execute_wp_cli "${wp_cli_args[@]}" 2>/dev/null)
-    local trimmed_output
-    # Remove all carriage returns and newlines to get a single space-separated string of IDs.
-    trimmed_output=$(echo "$revision_ids_output" | tr -d '\r\n')
-
-    if [[ -z "$trimmed_output" ]]; then
-        printf "${YELLOW}ℹ️  No revisions found for site: %s${RESET}\n" "${url_param:-main site}"
-        return 0
-    fi
-
-    # Count IDs for verification and logging.
-    revision_count_before=$(echo "$trimmed_output" | wc -w | tr -d ' ')
-
-    printf "${CYAN}   Revisions found: %s${RESET}\n" "$revision_count_before"
-
-    local wp_args=("--force")
-    if [[ -n "$url_param" ]]; then
-        wp_args+=("--url=$url_param")
-    fi
-
-    # Use xargs to pipeline the list of IDs, calling 'wp post delete' in batches of 500.
-    xargs_command_output=$(echo "$trimmed_output" | xargs -r -n 500 "$WP_COMMAND" post delete "${wp_args[@]}" 2>&1)
-    xargs_exit_code=$?
-
-    # Check for execution success. WP-CLI may report success even if not all rows were deleted,
-    # so we rely on the verification step.
-    if [[ $xargs_exit_code -eq 0 ]]; then
-        printf "  ${GREEN}✅ Revisions deleted (WP-CLI reported success)${RESET}\n"
-        delete_success=1
-    else
-        printf "  ${RED}❌ Failed to execute BULK deletion (xargs Exit Code %s)${RESET}\n" "$xargs_exit_code"
-        printf "  ${RED}WP-CLI output:${RESET}\n%s\n" "$xargs_command_output"
-        return 1
-    fi
-
-    # 3. --- Verification Step ---
-    local revisions_after
-    local verify_wp_cli_args
-    if [[ -n "$url_param" ]]; then
-      verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
-    else
-      verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
-    fi
-
-    local verify_output
-    verify_output=$(execute_wp_cli "${verify_wp_cli_args[@]}" 2>/dev/null)
-    revisions_after=$(echo "$verify_output" | wc -w | tr -d ' ')
-    revisions_after="${revisions_after:-0}"
-
-    # Final check for total success
-    if [[ "$revisions_after" -eq 0 ]]; then
-        return 0
-    else
-        printf "${RED}⚠️  WARNING: %s revisions remain in the database after bulk attempt.${RESET}\n" "$revisions_after"
-        printf "${RED}WP-CLI output after deletion:${RESET}\n%s\n" "$verify_output"
-        return 1
-    fi
-  }
 
   # Clear revisions based on site type (Multisite or Single-site)
   printf "${CYAN}🗑️ REVISION CLEANUP - STEP BY STEP${RESET}\n"
@@ -1093,282 +803,10 @@ ${subsite_line}"
       fi
 
       # 🔧 Update wp_blogs and wp_site tables BEFORE search-replace operations
-      printf "\n${CYAN}${BOLD}🔧 Updating wp_blogs and wp_site tables (before search-replace)...${RESET}\n"
-      printf "================================================================\n\n"
-
-      # Extract the base domain from the main site mapping for wp_site update
-      local base_domain=""
-      local main_site_new_domain=""
-      local main_site_old_domain=""
-
-      # Find the main site mapping for base_domain calculation
-      local array_length=${#domain_keys[@]}
-      for ((i=0; i<array_length; i++)); do
-          local blog_id="${domain_blog_ids[i]}"
-          if [[ "$blog_id" == "$main_site_id" ]]; then
-              main_site_new_domain="${domain_values[i]}"
-              main_site_old_domain="${domain_keys[i]}"
-              break
-          fi
-      done
-
-      if [[ -n "$main_site_new_domain" ]]; then
-        base_domain="$main_site_new_domain"
-        # Remove protocol if present
-        base_domain="${base_domain#http://}"
-        base_domain="${base_domain#https://}"
-        # Remove trailing slash
-        base_domain="${base_domain%/}"
-        # Remove path if it's a subdirectory setup (we only want the base domain)
-        base_domain="${base_domain%%/*}"
-      fi
-
-      if [[ -n "$base_domain" ]]; then
-        printf "${CYAN}🔄 Executing wp_blogs and wp_site table updates via wp eval...${RESET}\n\n"
-
-        # Build the wp eval command with all necessary updates
-        local wp_eval_commands="global \\\$wpdb;"
-        local processed_blog_ids=()
-
-        # Generate wp_blogs UPDATE commands for subsites (ID != main_site_id)
-        printf "${YELLOW}📝 Preparing wp_blogs updates for subsites...${RESET}\n"
-        for ((i=0; i<array_length; i++)); do
-          local old_domain="${domain_keys[i]}"
-          local new_domain="${domain_values[i]}"
-          local blog_id="${domain_blog_ids[i]}"
-
-          # Skip main site for now
-          if [[ "$blog_id" == "$main_site_id" ]]; then
-            continue
-          fi
-
-          # Skip if empty or unchanged
-          if [[ -z "$new_domain" || "$old_domain" == "$new_domain" ]]; then
-            continue
-          fi
-
-          # Check for duplicates
-          local duplicate_blog_id=false
-          for processed_id in "${processed_blog_ids[@]}"; do
-            if [[ "$processed_id" == "$blog_id" ]]; then
-              duplicate_blog_id=true
-              break
-            fi
-          done
-
-          if [[ "$duplicate_blog_id" == true ]]; then
-            continue
-          fi
-
-          processed_blog_ids+=("$blog_id")
-
-          # Calculate the target domain and path
-          local target_domain="$base_domain"
-          local site_path="/"
-          local clean_new_domain="$new_domain"
-          clean_new_domain="${clean_new_domain#http://}"
-          clean_new_domain="${clean_new_domain#https://}"
-
-          # Extract path component for subdirectory setups
-          if [[ "$clean_new_domain" == *"/"* ]]; then
-            local path_part="${clean_new_domain#*/}"
-            if [[ -n "$path_part" ]]; then
-              site_path="/${path_part}"
-              if [[ ! "$site_path" =~ /$ ]]; then
-                site_path="${site_path}/"
-              fi
-            fi
-          fi
-
-          # For subdomain setups, use the full domain
-          if [[ "$multisite_type" != "subdirectory" ]]; then
-            local domain_part="$clean_new_domain"
-            domain_part="${domain_part%/}"
-            domain_part="${domain_part%%/*}"
-            target_domain="$domain_part"
-          fi
-
-          if [[ "$site_path" == "//" ]]; then
-            site_path="/"
-          fi
-
-          # Add to wp eval commands
-          wp_eval_commands="${wp_eval_commands} \\\$wpdb->query(\\\"UPDATE wp_blogs SET domain='${target_domain}', path='${site_path}' WHERE blog_id=${blog_id};\\\");"
-          printf "  → Blog ID %s: %s → %s%s\n" "$blog_id" "$old_domain" "$target_domain" "$site_path"
-        done
-
-        # Generate wp_blogs UPDATE command for main site (ID = main_site_id)
-        printf "\n${YELLOW}📝 Preparing wp_blogs update for main site (ID: %s)...${RESET}\n" "$main_site_id"
-        if [[ -n "$main_site_new_domain" ]]; then
-            local main_site_path="/"
-            local target_domain="$base_domain"
-
-            if [[ "$multisite_type" != "subdirectory" ]]; then
-              local domain_part="$main_site_new_domain"
-              domain_part="${domain_part#http://}"
-              domain_part="${domain_part#https://}"
-              domain_part="${domain_part%/}"
-              domain_part="${domain_part%%/*}"
-              target_domain="$domain_part"
-            fi
-
-            wp_eval_commands="${wp_eval_commands} \\\$wpdb->query(\\\"UPDATE wp_blogs SET domain='${target_domain}', path='${main_site_path}' WHERE blog_id=${main_site_id};\\\");"
-            printf "  → Blog ID %s: %s → %s%s\n" "$main_site_id" "$main_site_old_domain" "$target_domain" "$main_site_path"
-        fi
-
-        # Generate wp_site UPDATE command
-        printf "\n${YELLOW}📝 Preparing wp_site update for network (ID: 1)...${RESET}\n"
-        wp_eval_commands="${wp_eval_commands} \\\$wpdb->query(\\\"UPDATE wp_site SET domain='${base_domain}' WHERE id=1;\\\");"
-        printf "  → Site ID 1: Network domain → %s\n" "$base_domain"
-
-        # Add success message
-        wp_eval_commands="${wp_eval_commands} echo 'wp_blogs and wp_site updated successfully.';"
-
-        printf "\n${CYAN}⚡ Updating wp_blogs and wp_site tables...${RESET}\n"
-
-        # Explicitly disable shell debugging to prevent variable assignment echoes
-        set +x +v
-
-        # Execute the wp eval command using the original search domain for --url parameter
-        local eval_output eval_exit_code
-        local total_commands_executed=0
-        local failed_commands=0
-        local failed_details=""
-
-        # Try a simpler approach: Test WP-CLI connection first
-        local connection_test
-        connection_test=$(execute_wp_cli eval "echo 'Connection OK';" --url="$search_domain" 2>&1)
-        local connection_exit_code=$?
-
-        if [[ $connection_exit_code -ne 0 ]]; then
-            printf "${RED}Connection failed: %s${RESET}\n" "$connection_test"
-            local auto_updates_successful="no"
-        else
-            # Execute wp_site update FIRST (before wp_blogs updates change domain references)
-            local site_command="global \$wpdb; \$result = \$wpdb->update('wp_site', array('domain' => '${base_domain}'), array('id' => 1)); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
-
-            # Execute command and check result using bash pattern matching (no grep dependency)
-            local site_output
-            {
-              site_output=$(set +x; execute_wp_cli eval "$site_command" --url="$search_domain" 2>&1)
-            } 2>/dev/null
-
-            if [[ "$site_output" == "SUCCESS" ]]; then
-              ((total_commands_executed++))
-            else
-              ((failed_commands++))
-              failed_details="${failed_details}Updating Network Site... Failed ❌\n"
-            fi
-
-            # Execute subsite updates
-            for ((i=0; i<array_length; i++)); do
-              local old_domain="${domain_keys[i]}"
-              local new_domain="${domain_values[i]}"
-              local blog_id="${domain_blog_ids[i]}"
-
-              # Skip main site for now
-              if [[ "$blog_id" == "$main_site_id" ]]; then
-                continue
-              fi
-
-              # Skip if empty or unchanged
-              if [[ -z "$new_domain" || "$old_domain" == "$new_domain" ]]; then
-                continue
-              fi
-
-              # Calculate the target domain and path (same logic as before)
-              local target_domain="$base_domain"
-              local site_path="/"
-              local clean_new_domain="$new_domain"
-              clean_new_domain="${clean_new_domain#http://}"
-              clean_new_domain="${clean_new_domain#https://}"
-
-              # Extract path component for subdirectory setups
-              if [[ "$clean_new_domain" == *"/"* ]]; then
-                local path_part="${clean_new_domain#*/}"
-                if [[ -n "$path_part" ]]; then
-                  site_path="/${path_part}"
-                  if [[ ! "$site_path" =~ /$ ]]; then
-                    site_path="${site_path}/"
-                  fi
-                fi
-              fi
-
-              # For subdomain setups, use the full domain
-              if [[ "$multisite_type" != "subdirectory" ]]; then
-                local domain_part="$clean_new_domain"
-                domain_part="${domain_part%/}"
-                domain_part="${domain_part%%/*}"
-                target_domain="$domain_part"
-              fi
-
-              if [[ "$site_path" == "//" ]]; then
-                site_path="/"
-              fi
-
-              # Execute individual wp eval command for this subsite
-              # Use simpler PHP syntax that's more compatible with wp eval
-              local individual_command="global \$wpdb; \$result = \$wpdb->update('wp_blogs', array('domain' => '${target_domain}', 'path' => '${site_path}'), array('blog_id' => ${blog_id})); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
-
-              # Execute command and check result using bash pattern matching (no grep dependency)
-              local blog_output
-              {
-                blog_output=$(set +x; execute_wp_cli eval "$individual_command" --url="$search_domain" 2>&1)
-              } 2>/dev/null
-
-              if [[ "$blog_output" == "SUCCESS" ]]; then
-                ((total_commands_executed++))
-              else
-                ((failed_commands++))
-                failed_details="${failed_details}Updating Blog ID ${blog_id}... Failed ❌\n"
-              fi
-            done
-
-            # Execute main site update
-            if [[ -n "$main_site_new_domain" ]]; then
-                local main_site_path="/"
-                local target_domain="$base_domain"
-
-                if [[ "$multisite_type" != "subdirectory" ]]; then
-                  local domain_part="$main_site_new_domain"
-                  domain_part="${domain_part#http://}"
-                  domain_part="${domain_part#https://}"
-                  domain_part="${domain_part%/}"
-                  domain_part="${domain_part%%/*}"
-                  target_domain="$domain_part"
-                fi
-
-                # Execute main site wp_blogs update
-                local main_command="global \$wpdb; \$result = \$wpdb->update('wp_blogs', array('domain' => '${target_domain}', 'path' => '${main_site_path}'), array('blog_id' => ${main_site_id})); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
-
-                # Execute command and check result using bash pattern matching (no grep dependency)
-                local main_output
-                {
-                  main_output=$(set +x; execute_wp_cli eval "$main_command" --url="$search_domain" 2>&1)
-                } 2>/dev/null
-
-                if [[ "$main_output" == "SUCCESS" ]]; then
-                  ((total_commands_executed++))
-                else
-                  ((failed_commands++))
-                  failed_details="${failed_details}Updating Main Site (Blog ID ${main_site_id})... Failed ❌\n"
-                fi
-            fi
-
-            # Determine overall success and show clean output
-            if [[ $failed_commands -eq 0 ]]; then
-              printf "${GREEN}✅ Database tables wp_blogs & wp_site updated successfully!${RESET}\n"
-              local auto_updates_successful="yes"
-            else
-              printf "${RED}❌ Database update failed!${RESET}\n"
-              echo -e "$failed_details"
-              local auto_updates_successful="no"
-            fi
-        fi
-
+      if update_multisite_tables "$main_site_id" "$multisite_type" "$search_domain"; then
+          local auto_updates_successful="yes"
       else
-        printf "${YELLOW}⚠️  Could not determine base domain - skipping automatic table updates${RESET}\n"
-        local auto_updates_successful="no"
+          local auto_updates_successful="no"
       fi
 
       local new_domain SR_LOG_MULTI
@@ -1701,16 +1139,19 @@ ${subsite_line}"
 
   # ⏱️ Calculate and display total execution time
   pause_script_timer # Final pause to capture the last segment
+
   local total_end_time=$(date +%s)
-  local total_elapsed=$((total_end_time - total_start_time))
+  local start_time_val=$(get_total_start_time)
+  local total_elapsed=$((total_end_time - start_time_val))
 
   # Format total elapsed time
   local total_minutes=$((total_elapsed / 60))
   local total_seconds=$((total_elapsed % 60))
 
   # Format script execution time
-  local script_minutes=$((script_execution_duration / 60))
-  local script_seconds=$((script_execution_duration % 60))
+  local execution_duration=$(get_execution_duration)
+  local script_minutes=$((execution_duration / 60))
+  local script_seconds=$((execution_duration % 60))
 
   printf "\n${BOLD}⏱️  ${CYAN}Execution${RESET} ${GREEN}%02d:%02d${RESET}${RESET}" "$script_minutes" "$script_seconds"
   printf "${CYAN}${BOLD} | Total${RESET} ${GREEN}%02d:%02d${RESET}${RESET}\n\n" "$total_minutes" "$total_seconds"
@@ -1720,3 +1161,8 @@ ${subsite_line}"
   # Ensure cleanup is run on successful exit
   trap - EXIT
 }
+
+# Check if sourced or executed
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    import_wp_db "$@"
+fi

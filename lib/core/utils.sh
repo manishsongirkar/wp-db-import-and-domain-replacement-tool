@@ -214,13 +214,45 @@ calculate_elapsed_time() {
 }
 
 # ===============================================
+# Timer Management
+# ===============================================
+# Global variables for timer state
+_TIMER_TOTAL_START=0
+_TIMER_SEGMENT_START=0
+_TIMER_EXECUTION_DURATION=0
+
+init_script_timer() {
+    _TIMER_TOTAL_START=$(date +%s)
+    _TIMER_SEGMENT_START=$(date +%s)
+    _TIMER_EXECUTION_DURATION=0
+}
+
+pause_script_timer() {
+    local now=$(date +%s)
+    local segment_duration=$((now - _TIMER_SEGMENT_START))
+    _TIMER_EXECUTION_DURATION=$((_TIMER_EXECUTION_DURATION + segment_duration))
+}
+
+resume_script_timer() {
+    _TIMER_SEGMENT_START=$(date +%s)
+}
+
+get_execution_duration() {
+    echo "$_TIMER_EXECUTION_DURATION"
+}
+
+get_total_start_time() {
+    echo "$_TIMER_TOTAL_START"
+}
+
+# ===============================================
 # Display Execution Time
 # ===============================================
 #
 # Description: Calculates and displays the total execution time since a specified start time.
 #
 # Parameters:
-#	- $1: Optional. The start time (Unix timestamp). Uses global `start_time` if omitted.
+#	- $1: Optional. The start time (Unix timestamp). Uses global `_TIMER_TOTAL_START` if omitted.
 #
 # Returns:
 #	- Prints the formatted execution time (MM:SS) to stdout.
@@ -228,12 +260,12 @@ calculate_elapsed_time() {
 #
 display_execution_time() {
     local start_time_param="$1"
-    # If parameter provided, use it; otherwise use local/global start_time variable
-    local start_time_value="${start_time_param:-${start_time:-}}"
+    # If parameter provided, use it; otherwise use global variable
+    local start_time_value="${start_time_param:-${_TIMER_TOTAL_START:-}}"
 
-    if [[ -z "$start_time_value" ]]; then
-        printf "${YELLOW}⚠️  No start time available for execution time calculation${RESET}\n"
-        return 1
+    if [[ -z "$start_time_value" || "$start_time_value" -eq 0 ]]; then
+        # Try to use date if not initialized
+        start_time_value=$(date +%s)
     fi
 
     local end_time=$(date +%s)
@@ -682,6 +714,11 @@ if is_sourced; then
         export -f execute_with_timeout
         export -f calculate_elapsed_time
         export -f display_execution_time
+        export -f init_script_timer
+        export -f pause_script_timer
+        export -f resume_script_timer
+        export -f get_execution_duration
+        export -f get_total_start_time
         export -f show_file_size
         export -f detect_main_site
         export -f detect_protocol

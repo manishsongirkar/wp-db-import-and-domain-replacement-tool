@@ -200,10 +200,110 @@ show_utilities_revision_cleanup_if_needed() {
   fi
 }
 
+
+# ===============================================
+# Function to perform revision cleanup silently and quickly
+# ===============================================
+#
+# Description: Deletes all WordPress post revisions for the current site or a specified subsite
+#              in a multisite network. It leverages the high-speed bulk operation capability
+#              of 'wp post list' piped to 'xargs wp post delete', which efficiently handles
+#              a large number of post IDs while bypassing Bash array splitting limits.
+#
+# Parameters:
+#   - $1 (optional, string): The `--url` parameter (e.g., `subsite.example.com`) to target a specific multisite subsite.
+#
+# Returns:
+#   - 0 (Success) if all revisions were successfully deleted or if no revisions were found initially.
+#   - 1 (Failure) if the bulk deletion fails or if revisions still remain in the database after the cleanup attempt.
+#
+# Behavior:
+#   - Step 1: Retrieves all post revision IDs (`post_type=revision`) using WP-CLI.
+#   - Step 2: Pipes the list of IDs to `xargs` to execute `wp post delete --force` in batches of 500.
+#   - Step 3: Verifies the remaining revision count after deletion.
+#   - Relies on the external functions `execute_wp_cli` and the global variable `$network_flag`.
+#
+clean_revisions_silent() {
+    local url_param="$1"
+    local wp_cli_args
+    local revision_ids_output
+    local revision_count_before
+    local delete_success=0
+
+    # 1. --- Revision ID Retrieval ---
+    if [[ -n "$url_param" ]]; then
+      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
+    else
+      wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
+    fi
+
+    # Execute the command and capture IDs.
+    revision_ids_output=$(execute_wp_cli "${wp_cli_args[@]}" 2>/dev/null)
+    local trimmed_output
+    # Remove all carriage returns and newlines to get a single space-separated string of IDs.
+    trimmed_output=$(echo "$revision_ids_output" | tr -d '\r\n')
+
+    if [[ -z "$trimmed_output" ]]; then
+        printf "${YELLOW}ℹ️  No revisions found for site: %s${RESET}\n" "${url_param:-main site}"
+        return 0
+    fi
+
+    # Count IDs for verification and logging.
+    revision_count_before=$(echo "$trimmed_output" | wc -w | tr -d ' ')
+
+    printf "${CYAN}   Revisions found: %s${RESET}\n" "$revision_count_before"
+
+    local wp_args=("--force")
+    if [[ -n "$url_param" ]]; then
+        wp_args+=("--url=$url_param")
+    fi
+
+    # Use xargs to pipeline the list of IDs, calling 'wp post delete' in batches of 500.
+    # Ensure WP_COMMAND is available, otherwise fallback to 'wp'
+    local wp_cmd="${WP_COMMAND:-wp}"
+    xargs_command_output=$(echo "$trimmed_output" | xargs -r -n 500 "$wp_cmd" post delete "${wp_args[@]}" 2>&1)
+    xargs_exit_code=$?
+
+    # Check for execution success. WP-CLI may report success even if not all rows were deleted,
+    # so we rely on the verification step.
+    if [[ $xargs_exit_code -eq 0 ]]; then
+        printf "  ${GREEN}✅ Revisions deleted (WP-CLI reported success)${RESET}\n"
+        delete_success=1
+    else
+        printf "  ${RED}❌ Failed to execute BULK deletion (xargs Exit Code %s)${RESET}\n" "$xargs_exit_code"
+        printf "  ${RED}WP-CLI output:${RESET}\n%s\n" "$xargs_command_output"
+        return 1
+    fi
+
+    # 3. --- Verification Step ---
+    local revisions_after
+    local verify_wp_cli_args
+    if [[ -n "$url_param" ]]; then
+      verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids" "--url=$url_param")
+    else
+      verify_wp_cli_args=("post" "list" "--post_type=revision" "--format=ids")
+    fi
+
+    local verify_output
+    verify_output=$(execute_wp_cli "${verify_wp_cli_args[@]}" 2>/dev/null)
+    revisions_after=$(echo "$verify_output" | wc -w | tr -d ' ')
+    revisions_after="${revisions_after:-0}"
+
+    # Final check for total success
+    if [[ "$revisions_after" -eq 0 ]]; then
+        return 0
+    else
+        printf "${RED}⚠️  WARNING: %s revisions remain in the database after bulk attempt.${RESET}\n" "$revisions_after"
+        printf "${RED}WP-CLI output after deletion:${RESET}\n%s\n" "$verify_output"
+        return 1
+    fi
+}
+
 # Export functions for external use
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     {
         export -f show_revision_cleanup_commands
         export -f show_utilities_revision_cleanup_if_needed
+        export -f clean_revisions_silent
     } >/dev/null 2>&1
 fi

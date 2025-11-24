@@ -544,7 +544,12 @@ run_unit_tests() {
     local overall_result=0
 
     if [[ -f "$test_dir/test_core_functions.sh" ]]; then
-        run_test_suite "Unit Tests" "$test_dir/test_core_functions.sh" "Core function unit tests"
+        run_test_suite "Unit Tests (Core)" "$test_dir/test_core_functions.sh" "Core function unit tests"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
+    if [[ -f "$test_dir/test_new_modules.sh" ]]; then
+        run_test_suite "Unit Tests (Modules)" "$test_dir/test_new_modules.sh" "New modules unit tests"
         [[ $? -ne 0 ]] && overall_result=1
     fi
 

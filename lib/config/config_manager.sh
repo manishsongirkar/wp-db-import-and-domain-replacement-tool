@@ -209,12 +209,17 @@ parse_config_section() {
             }
             next
         }
-        in_section && $0 ~ "^" key "=" {
-            sub("^" key "=", "")
-            sub(/^[ \t]+/, "")  # Remove leading whitespace
-            sub(/[ \t]+$/, "")  # Remove trailing whitespace
-            print $0
-            exit
+        in_section && $0 ~ key "[[:space:]]*=" {
+            # Find position of first equals sign
+            match($0, /=/)
+            if (RSTART > 0) {
+                # Extract everything after the equals sign
+                val = substr($0, RSTART + 1)
+                sub(/^[[:space:]]+/, "", val)  # Remove leading whitespace
+                sub(/[[:space:]]+$/, "", val)  # Remove trailing whitespace
+                print val
+                exit
+            }
         }
     ' "$config_path"
 }
@@ -253,9 +258,9 @@ get_site_mappings() {
             }
             next
         }
-        in_section && /^[0-9]+:/ && !/^#/ {
-            sub(/^[ \t]+/, "")  # Remove leading whitespace
-            sub(/[ \t]+$/, "")  # Remove trailing whitespace
+        in_section && /^[[:space:]]*[0-9]+:/ && !/^[[:space:]]*#/ {
+            sub(/^[[:space:]]+/, "")  # Remove leading whitespace
+            sub(/[[:space:]]+$/, "")  # Remove trailing whitespace
             print $0
         }
     ' "$config_path"
@@ -324,7 +329,7 @@ update_site_mapping() {
     local temp_file="$config_path.tmp"
 
     # Check if the mapping already exists
-    if grep -q "^${blog_id}:" "$config_path" 2>/dev/null; then
+    if grep -q "^[[:space:]]*${blog_id}:" "$config_path" 2>/dev/null; then
         # Update existing mapping
         awk -v blog_id="$blog_id" -v new_mapping="$mapping_line" '
             BEGIN {
@@ -341,7 +346,7 @@ update_site_mapping() {
                 print $0
                 next
             }
-            in_section && $0 ~ "^" blog_id ":" {
+            in_section && $0 ~ "^[[:space:]]*" blog_id ":" {
                 print new_mapping
                 updated = 1
                 next
@@ -436,7 +441,7 @@ update_config_general() {
             print $0
             next
         }
-        in_section && $0 ~ "^" key "=" {
+        in_section && $0 ~ "^[[:space:]]*" key "=" {
             print key "=" value
             updated = 1
             next
