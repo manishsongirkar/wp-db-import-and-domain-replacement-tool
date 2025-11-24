@@ -5,8 +5,18 @@
 # ================================================================
 #
 # Description:
-#   Provides functions for cleaning up temporary files and logs created
-#   during the execution of the tool.
+#   This module provides utility functions for cleaning up temporary files
+#   and logs created during the execution of the wp-db-import-and-domain-replacement-tool.
+#
+# Usage:
+#   The `cleanup` function is designed to be used with a Bash `trap` command
+#   to ensure that temporary files are removed even if the script exits
+#   unexpectedly. It can also be invoked manually if needed.
+#
+# Dependencies:
+#   - Requires Bash version 4.0 or higher for associative arrays and advanced
+#     string manipulation.
+#   - Relies on standard Unix utilities like `find` and `rm`.
 #
 # ================================================================
 
@@ -14,16 +24,26 @@
 # Comprehensive Cleanup Function
 # ===============================================
 #
-# Description: This function executes a comprehensive cleanup routine designed to safely
-#              remove all temporary files generated during the script's execution.
-#              It is primarily intended to be executed via a Bash `trap cleanup EXIT`
-#              command to ensure cleanup happens even if the script is interrupted or fails.
+# Description:
+#   Executes a comprehensive cleanup routine designed to safely remove all
+#   temporary files generated during the script's execution. This function
+#   ensures that no leftover files remain in the `/tmp` directory or other
+#   locations used by the tool.
 #
 # Parameters:
 #   - None (Operates on globally defined variables).
 #
 # Returns:
 #   - 0 (Success) always.
+#
+# Notes:
+#   - This function is intended to be executed via a Bash `trap cleanup EXIT`
+#     command to ensure cleanup happens even if the script is interrupted or fails.
+#   - Temporary files are identified using the script's PID ($$) to avoid
+#     accidentally deleting unrelated files.
+#
+# Example:
+#   trap cleanup EXIT
 #
 cleanup() {
     # 🧹 Comprehensive cleanup of all temporary files created by this script (using PID $$)

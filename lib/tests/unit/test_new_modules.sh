@@ -5,11 +5,22 @@
 # ================================================================
 #
 # Description:
-#   Unit tests for the newly refactored modules:
-#   - cleanup.sh
-#   - db_import.sh
-#   - domain_manager.sh
-#   - multisite_manager.sh
+#   This script contains unit tests for the newly refactored modules
+#   in the wp-db-import-and-domain-replacement-tool project. These
+#   tests ensure the correctness and reliability of the following modules:
+#
+#   - cleanup.sh: Handles cleanup operations, such as removing temporary files.
+#   - db_import.sh: Manages database import functionality.
+#   - domain_manager.sh: Validates and manages domain replacements.
+#   - multisite_manager.sh: Updates multisite tables for WordPress installations.
+#
+# Usage:
+#   This script is executed as part of the unit testing suite. It can
+#   also be run independently to verify the functionality of the new modules.
+#
+# Dependencies:
+#   - test_framework.sh: Provides the testing framework for defining and running tests.
+#   - Mock functions: Used to simulate external dependencies like WP-CLI.
 #
 # ================================================================
 
@@ -26,6 +37,16 @@ mock_wp_cli() {
 # ===============================================
 # Test Cleanup Module
 # ===============================================
+#
+# Description:
+#   Tests the cleanup module to ensure it removes temporary files
+#   and performs cleanup operations correctly.
+#
+# Test Cases:
+#   - Verify that the cleanup function removes the DB_LOG file.
+#   - Handle cases where the cleanup module is not found.
+#
+
 test_cleanup_module() {
     start_test "Cleanup Module" "Test cleanup functionality"
 
@@ -60,6 +81,16 @@ test_cleanup_module() {
 # ===============================================
 # Test DB Import Module
 # ===============================================
+#
+# Description:
+#   Tests the database import module to ensure it handles database
+#   import operations correctly.
+#
+# Test Cases:
+#   - Verify that perform_db_import executes successfully.
+#   - Handle cases where the db_import module is not found.
+#
+
 test_db_import_module() {
     start_test "DB Import Module" "Test database import logic"
 
@@ -86,6 +117,17 @@ test_db_import_module() {
 # ===============================================
 # Test Domain Manager Module
 # ===============================================
+#
+# Description:
+#   Tests the domain manager module to ensure it validates and manages
+#   domain replacements correctly.
+#
+# Test Cases:
+#   - Validate domains with valid input.
+#   - Handle cases with empty new domain values.
+#   - Handle cases where the domain manager module is not found.
+#
+
 test_domain_manager_module() {
     start_test "Domain Manager Module" "Test domain validation logic"
 
@@ -125,6 +167,16 @@ test_domain_manager_module() {
 # ===============================================
 # Test Multisite Manager Module
 # ===============================================
+#
+# Description:
+#   Tests the multisite manager module to ensure it updates multisite
+#   tables for WordPress installations correctly.
+#
+# Test Cases:
+#   - Verify that update_multisite_tables executes successfully.
+#   - Handle cases where the multisite manager module is not found.
+#
+
 test_multisite_manager_module() {
     start_test "Multisite Manager Module" "Test multisite table update logic"
 

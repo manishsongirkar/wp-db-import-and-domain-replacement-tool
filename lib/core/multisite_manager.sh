@@ -217,7 +217,7 @@ update_multisite_tables() {
         return 0
     else
         printf "\n"
-        printf "${RED}❌ Database update failed!${RESET}\n"
+        printf "${RED}❌ Database tables wp_blogs & wp_site update failed!${RESET}\n"
         echo -e "$failed_details"
         return 1
     fi
