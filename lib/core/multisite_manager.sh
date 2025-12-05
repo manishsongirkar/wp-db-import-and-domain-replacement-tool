@@ -100,7 +100,7 @@ update_multisite_tables() {
         site_output=$(set +x; execute_wp_cli eval "$site_command" --url="$search_domain" 2>&1)
     } 2>/dev/null
 
-    if [[ "$site_output" == "SUCCESS" ]]; then
+    if [[ "$site_output" == *"SUCCESS"* ]]; then
         ((total_commands_executed++))
         printf "  → Site ID 1: Network domain → %s ${GREEN}✅${RESET}\n" "$base_domain"
     else
@@ -166,7 +166,7 @@ update_multisite_tables() {
             blog_output=$(set +x; execute_wp_cli eval "$individual_command" --url="$search_domain" 2>&1)
         } 2>/dev/null
 
-        if [[ "$blog_output" == "SUCCESS" ]]; then
+        if [[ "$blog_output" == *"SUCCESS"* ]]; then
             ((total_commands_executed++))
             printf "  → Blog ID %s: %s → %s%s ${GREEN}✅${RESET}\n" "$blog_id" "$old_domain" "$target_domain" "$site_path"
         else
@@ -200,7 +200,7 @@ update_multisite_tables() {
             main_output=$(set +x; execute_wp_cli eval "$main_command" --url="$search_domain" 2>&1)
         } 2>/dev/null
 
-        if [[ "$main_output" == "SUCCESS" ]]; then
+        if [[ "$main_output" == *"SUCCESS"* ]]; then
             ((total_commands_executed++))
             printf "  → Blog ID %s: %s → %s%s ${GREEN}✅${RESET}\n" "$main_site_id" "$main_site_old_domain" "$target_domain" "$main_site_path"
         else

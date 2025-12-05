@@ -653,6 +653,8 @@ execute_wp_cli() {
         export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
         # Disable OPcache warnings that can interfere with output parsing
         export PHP_INI_SCAN_DIR=""
+        # Suppress PHP startup errors to prevent pollution of output parsing
+        export WP_CLI_PHP_ARGS="${WP_CLI_PHP_ARGS:-} -d display_startup_errors=0"
         # Execute the command passed as arguments
         "$WP_COMMAND" "$@"
     )
