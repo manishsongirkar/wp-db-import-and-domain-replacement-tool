@@ -8,7 +8,9 @@ The WordPress Database Import Tool includes a comprehensive test framework to va
 
 - **Compatibility Tests**: OS and shell compatibility (Linux, macOS, BSD, WSL, Cygwin, Bash 3.2+, Zsh, POSIX)
 - **System Tests**: Environment validation, resource checks, permissions, utilities
-- **Unit Tests**: Core function and module validation
+- **Unit Tests**: Core function and module validation, plus import hardening (backup, compressed dumps, compatibility filter, checksum, temp files, benchmark safety)
+- **Security Tests**: Penetration-style checks (injection, traversal, symlink, tampering, gzip bomb, static scan)
+- **Server Matrix (opt-in)**: Fixture dumps imported into real MySQL/MariaDB servers
 - **Integration Tests**: WordPress-specific scenarios, WP-CLI, multisite, config
 - **Validation Tests**: Tool/module loading, version info, basic diagnostics
 
@@ -31,7 +33,19 @@ wp-db-import test
 ./run_tests.sh unit               # Core functions
 ./run_tests.sh wordpress          # WordPress integration
 ./run_tests.sh validation         # Tool validation
+./run_tests.sh security           # Penetration-style security tests
+./run_tests.sh matrix             # Real server version matrix (opt-in, not part of "all")
 ```
+
+### Server Version Matrix
+
+`./run_tests.sh matrix` starts throw-away MySQL/MariaDB servers (temporary data directory, socket only, no network) and imports `lib/tests/fixtures/dump_*.sql` into each with and without the compatibility filter. Servers are found automatically (Local by Flywheel, Homebrew). Add others with:
+
+```bash
+WPDB_MATRIX_SERVERS="/opt/homebrew/opt/mariadb@10.6/bin /path/to/mysql-8.0/bin" ./run_tests.sh matrix
+```
+
+The test is skipped when no server binaries are found. It is not part of `all` because it starts real servers.
 
 ### Common Options
 ```bash
@@ -51,11 +65,21 @@ lib/tests/
 ├── system/
 │   └── test_environment.sh
 ├── integration/
+│   ├── test_server_matrix.sh   # opt-in
 │   └── test_wordpress.sh
 ├── unit/
-│   └── test_core_functions.sh
+│   ├── test_core_functions.sh
+│   ├── test_import_hardening.sh
+│   ├── test_import_performance.sh
+│   ├── test_import_security.sh
+│   ├── test_new_modules.sh
+│   ├── test_socket_detection.sh
+│   └── test_update_uninstall.sh   # update command and uninstall.sh in a sandbox
 ├── fixtures/
-│   └── README.md
+│   ├── README.md
+│   ├── dump_legacy.sql         # accepted by every server version
+│   ├── dump_mariadb11.sql      # MariaDB 11 collations/engine/sandbox line
+│   └── dump_mysql8.sql         # MySQL 8 collations/GTID/DEFINER
 └── reports/                    # Test reports (generated)
     ├── test_results.json
     ├── test_results.html

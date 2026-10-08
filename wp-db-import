@@ -185,6 +185,12 @@ get_version() {
 
 # ===============================================
 # Function to show version information
+# True if tracked files have uncommitted changes. Uses `git status` because it refreshes the
+# index first; `git diff-index --quiet` reports false changes after a file is merely touched.
+repo_has_local_changes() {
+    [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]]
+}
+
 # ===============================================
 #
 # Description: Displays the current tool version, associated Git repository
@@ -214,7 +220,7 @@ show_version() {
         printf "  Repository: ${CYAN}${repo_url}${RESET}\n\n"
 
         # Check if there are uncommitted changes
-        if ! git -C "$SCRIPT_DIR" diff-index --quiet HEAD -- >/dev/null 2>&1; then
+        if repo_has_local_changes; then
             printf "${YELLOW}⚠️  Note: You have uncommitted changes in the repository${RESET}\n"
         fi
 
@@ -270,7 +276,8 @@ show_version() {
 #
 # Behavior:
 #   - Checks for uncommitted local changes and prompts the user before proceeding.
-#   - Uses `git -C "$SCRIPT_DIR" pull` to perform the update.
+#   - Uses `git -C "$SCRIPT_DIR" pull --ff-only` (never merges or rewrites history).
+#   - Prints the version change and, on failure, the cause and how to fix it.
 #
 update_tool() {
     printf "${CYAN}🔄 Updating WordPress Database Import Tool...${RESET}\n\n"
@@ -297,7 +304,7 @@ update_tool() {
     printf "Current: ${YELLOW}${current_branch}@${current_commit}${RESET}\n"
 
     # Check for uncommitted changes
-    if ! git -C "$SCRIPT_DIR" diff-index --quiet HEAD -- >/dev/null 2>&1; then
+    if repo_has_local_changes; then
         printf "${YELLOW}⚠️  Warning: You have uncommitted changes${RESET}\n"
         printf "Do you want to continue? This may overwrite local changes (y/N): "
         read -r confirm_update
@@ -307,22 +314,61 @@ update_tool() {
         fi
     fi
 
-    # Perform git pull
+    # Perform a fast-forward-only pull: never creates merge commits or rewrites your history
+    local old_version
+    old_version=$(tr -d '\n\r' < "$SCRIPT_DIR/VERSION" 2>/dev/null)
+    local branch="${current_branch:-main}"
+    local pull_output pull_rc
+
     printf "\n${CYAN}📥 Fetching latest changes...${RESET}\n"
-    if git -C "$SCRIPT_DIR" pull origin "${current_branch:-main}" 2>&1; then
-        local new_commit=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
-        if [[ "$current_commit" != "$new_commit" ]]; then
-            printf "\n${GREEN}✅ Successfully updated!${RESET}\n"
-            printf "Updated: ${YELLOW}${current_branch}@${current_commit}${RESET} → ${GREEN}${current_branch}@${new_commit}${RESET}\n"
-            printf "\n${CYAN}💡 Changes are immediately available since you're using a symlinked installation${RESET}\n"
-        else
-            printf "\n${GREEN}✅ Already up to date${RESET}\n"
-        fi
-    else
+    pull_output=$(git -C "$SCRIPT_DIR" pull --ff-only origin "$branch" 2>&1)
+    pull_rc=$?
+    [[ -n "$pull_output" ]] && printf "%s\n" "$pull_output"
+
+    if [[ $pull_rc -ne 0 ]]; then
         printf "\n${RED}❌ Update failed${RESET}\n"
-        printf "${YELLOW}💡 Try running: cd $SCRIPT_DIR && git pull${RESET}\n"
+        # Say why, and how to fix it
+        if [[ "$pull_output" == *"couldn't find remote ref"* ]]; then
+            printf "${YELLOW}Cause: the branch '%s' no longer exists on the remote (it was probably merged and deleted).${RESET}\n" "$branch"
+            printf "${YELLOW}Fix:   cd %s && git checkout main && git pull${RESET}\n" "$SCRIPT_DIR"
+        elif [[ "$pull_output" == *"Not possible to fast-forward"* || "$pull_output" == *"diverging"* || "$pull_output" == *"divergent"* ]]; then
+            printf "${YELLOW}Cause: your local '%s' has commits that are not on the remote, so it cannot fast-forward.${RESET}\n" "$branch"
+            printf "${YELLOW}Fix:   cd %s && git status   (then rebase or reset to origin/%s)${RESET}\n" "$SCRIPT_DIR" "$branch"
+        elif [[ "$pull_output" == *"would be overwritten"* ]]; then
+            printf "${YELLOW}Cause: local changes would be overwritten by the update.${RESET}\n"
+            printf "${YELLOW}Fix:   cd %s && git stash && git pull && git stash pop${RESET}\n" "$SCRIPT_DIR"
+        elif [[ "$pull_output" == *"Could not resolve host"* || "$pull_output" == *"unable to access"* || "$pull_output" == *"Connection"* ]]; then
+            printf "${YELLOW}Cause: the remote could not be reached. Check your network connection.${RESET}\n"
+        elif [[ -z "$current_branch" ]]; then
+            printf "${YELLOW}Cause: the installation is in a detached HEAD state.${RESET}\n"
+            printf "${YELLOW}Fix:   cd %s && git checkout main && git pull${RESET}\n" "$SCRIPT_DIR"
+        else
+            printf "${YELLOW}💡 Try running: cd %s && git pull${RESET}\n" "$SCRIPT_DIR"
+        fi
         return 1
     fi
+
+    local new_commit new_version
+    new_commit=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
+    new_version=$(tr -d '\n\r' < "$SCRIPT_DIR/VERSION" 2>/dev/null)
+    if [[ "$current_commit" != "$new_commit" ]]; then
+        printf "\n${GREEN}✅ Successfully updated!${RESET}\n"
+        printf "Updated: ${YELLOW}${current_branch}@${current_commit}${RESET} → ${GREEN}${current_branch}@${new_commit}${RESET}\n"
+        if [[ "$old_version" != "$new_version" ]]; then
+            printf "Version: ${YELLOW}${old_version:-unknown}${RESET} → ${GREEN}${new_version:-unknown}${RESET}  ${DIM}(see CHANGELOG.md)${RESET}\n"
+        fi
+        # Confirm the updated tool still loads
+        if bash -n "$SCRIPT_DIR/import_wp_db.sh" 2>/dev/null && bash -n "$SCRIPT_DIR/lib/module_loader.sh" 2>/dev/null; then
+            printf "${GREEN}✅ Updated files verified${RESET}\n"
+        else
+            printf "${RED}❌ The updated files failed a syntax check; run: wp-db-import test${RESET}\n"
+            return 1
+        fi
+        printf "\n${CYAN}💡 Changes are immediately available since you're using a symlinked installation${RESET}\n"
+    else
+        printf "\n${GREEN}✅ Already up to date${RESET}${DIM} (version ${new_version:-unknown})${RESET}\n"
+    fi
+    return 0
 }
 
 # Parse command line arguments

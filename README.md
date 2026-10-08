@@ -64,6 +64,11 @@ wp-db-import version
 - 🧹 **Post-Import Cleanup** — Flushes caches, rewrite rules, and transients after operations.
 - 📸 **Stage File Proxy Integration** — Optional setup for serving media from production in local environments.
 - 🧪 **Dry-run & Safety** — Preview changes before applying them; comprehensive logging for troubleshooting.
+- ⚡ **Fast Local Import** — Imports through the MySQL Unix socket (or the `mysql` client) with WP-CLI as the automatic fallback.
+- 💾 **Pre-Import Backup** — Saves a compressed copy of the current database before it is replaced, and lets you opt out (the choice is saved in the config).
+- 🗜️ **Compressed Dumps** — Imports `.sql.gz`, `.zip` and `.sql.bz2` directly, streamed without extracting to disk.
+- 🔀 **Cross-Version SQL Compatibility** — Retries a failed import with a filter that fixes MariaDB/MySQL version differences (collations, engines, `DEFINER`, GTID).
+- 🔒 **Hardened by Default** — Private temp files, checksum-verified plugin download, passwords never on the command line, benchmark that never touches your real database.
 
 ## 🧰 Requirements
 
@@ -115,6 +120,18 @@ wp-db-import update  # Automatic git pull
 # Download latest version and replace files
 # Then re-run: ./install.sh
 ```
+
+### 🔄 Updating and Uninstalling
+
+```bash
+wp-db-import update        # git installations: fast-forward update, shows version change
+./uninstall.sh             # interactive uninstall
+./uninstall.sh --yes       # no prompts; saved backups are kept
+./uninstall.sh --delete-backups   # also delete ~/.wp-db-import (cannot be undone)
+```
+
+- `update` only fast-forwards (it never merges or rewrites your history). If it fails it prints the cause and how to fix it, for example when your installed branch was deleted after a merge (`git checkout main && git pull`).
+- `uninstall.sh` removes the command, the Bash/Zsh completions and stale private temp directories. It **never deletes your saved database backups unless you answer yes** (or pass `--delete-backups`). If anything cannot be removed it prints the exact error, the path, its permissions and a hint, lists every problem in the summary, and exits non-zero. Per-project `wpdb-import.conf` files and the cloned repository folder are not removed.
 
 ### 📋 Available Commands
 ```bash
@@ -171,6 +188,9 @@ wp-db-import test
 - **System Environment** - User permissions, utilities, resource limits
 - **WordPress Functionality** - WP-CLI integration, database operations, multisite handling
 - **Unit Tests** - Core functions, string utilities, configuration management
+- **Import Hardening** - Backup preference prompt, compressed dumps, compatibility filter, checksum verification, private temp files, benchmark safety
+- **Security Tests** - Penetration-style checks: command injection (file names, passwords, config), path traversal, symlink attacks, tampered downloads, gzip bombs, static scan
+- **Server Matrix (opt-in)** - Imports fixture dumps into real MySQL 8.x and MariaDB servers: `./run_tests.sh matrix`
 
 ### 📊 Test Reports
 Tests generate comprehensive reports in multiple formats:
@@ -210,6 +230,9 @@ use_socket=auto
 mysql_socket=
 import_optimizations=auto
 parallel_import=false
+backup_before_import=ask
+backup_dir=
+backup_keep=5
 
 [site_mappings]
 # Format: blog_id:old_domain:new_domain
@@ -233,6 +256,52 @@ parallel_import=false
 - `import_optimizations=auto` enables session-level MySQL flags during direct mysql/socket imports: `AUTOCOMMIT=0`, `FOREIGN_KEY_CHECKS=0`, `UNIQUE_CHECKS=0`.
 - `import_optimizations=true` forces those flags for direct mysql imports, and `import_optimizations=false` disables them.
 - `parallel_import=false` remains the safe default because generic SQL dumps are order-sensitive. Turning it on currently logs a warning and continues with safe single-stream import.
+- For dumps of 100 MB or more the tool prints an import time estimate. It benchmarks a sample in a **temporary scratch database** (dropped afterwards), so your real database is never touched. If the account cannot create databases, or the sample has no `INSERT` rows, a size-based estimate is shown instead.
+
+### 💾 Pre-Import Backup
+
+Before the current database is replaced, the tool can save a compressed copy so a bad import can be undone.
+
+| `backup_before_import` | Behavior |
+|---|---|
+| `ask` (default) | Asks `Back up the current database before importing? (Y/n)`. **Enter = Yes.** Answering `n` saves `backup_before_import=false` to `wpdb-import.conf`, so you are not asked again. |
+| `true` | Always back up, never ask. |
+| `false` | Never back up, never ask. |
+
+- Unattended runs (`auto_proceed=true`) back up without asking when the value is `ask`.
+- If a requested backup fails, the import is **cancelled** to protect your current data.
+- An empty or missing database is skipped (nothing to back up).
+- Backups are saved as `<dbname>-<timestamp>.sql.gz` in `~/.wp-db-import/backups` (folder mode `700`, files mode `600`). Set `backup_dir=` to use another folder. Two backups in the same second never overwrite each other.
+- The export uses `--add-drop-table`, so a restore replaces existing tables cleanly.
+- **Rotation:** `backup_keep=5` (default) keeps the newest 5 backups per database and deletes older ones after each new backup, so the folder cannot grow forever. Use `backup_keep=0` to keep everything. Only files named `<dbname>-YYYYMMDD-HHMMSS.sql.gz` are ever deleted; other files and other databases' backups are never touched. Stale `.partial` files from interrupted runs are cleaned up too.
+
+### 🧾 Logs and Temporary Files
+
+The tool does not keep log files between runs. Import and search-replace logs live in a private temporary directory that is **removed when the run ends** (on success and on failure). Each import log is also size-capped (first and last 128 KB are kept) so a failing import cannot fill the disk, and the first error lines are printed on screen when an import fails. The only data that persists is your backups, which are rotated as described above.
+
+Some MySQL/MariaDB clients exit with code 0 even when statements fail. The tool also scans the import output for `ERROR nnnn` lines, so such an import is reported as failed (and retried with the compatibility filter when appropriate) instead of showing a false "successful".
+- Restore with: `gunzip -c <backup-file> | wp db import -`
+
+### 🗜️ Compressed Dumps
+
+Set `sql_file` to a `.sql.gz`, `.zip` or `.sql.bz2` file. The dump is checked for corruption first, then streamed straight into MySQL or WP-CLI. Nothing is extracted to disk. For `.zip` files only the `.sql` entries are used (macOS `__MACOSX` junk is ignored). Requires `gzip`, `unzip` or `bzip2` on the machine.
+
+### 🔀 Cross-Version SQL Compatibility
+
+Dumps from a different server version (for example a MariaDB 11 dump into MySQL 8.4, or a MySQL 8 dump into MariaDB 10.6) can contain SQL the target rejects. The tool never changes a dump that imports fine. If the first attempt fails with a known compatibility error, it retries **once** with a filter that:
+
+- maps `utf8mb4_0900_*` and `utf8mb4_uca1400_*` collations to `utf8mb4_unicode_520_ci` / `utf8mb4_bin`, `utf8mb3_uca1400_*` to `utf8_unicode_520_ci`, and `utf8mb3` to `utf8`;
+- changes `ENGINE=Aria` to `InnoDB` and removes `TRANSACTIONAL` / `PAGE_CHECKSUM`;
+- removes `DEFINER=...` clauses, `NO_AUTO_CREATE_USER`, `GTID_PURGED` / `SQL_LOG_BIN` statements and the MariaDB "sandbox mode" first line.
+
+The filter only touches DDL and session statements. Row data inside `INSERT` statements is never modified. When the filter was used, the tool says so after the import. The retry is safe because WordPress dumps drop and recreate their tables.
+
+### 🔒 Security Notes
+
+- Logs and scratch files live in a private per-run temp directory (mode `700`), never in predictable `/tmp` file names. Symlink attacks are refused.
+- The database password is passed through the `MYSQL_PWD` environment variable, never on the command line.
+- The Stage File Proxy plugin is downloaded from this project's GitHub release and installed **only if its SHA-256 matches the pinned value**.
+- Config values, file names, passwords and database names are treated as data and are never evaluated by the shell. See the penetration-style tests in `lib/tests/unit/test_import_security.sh`.
 
 ### 🤖 How It Works
 

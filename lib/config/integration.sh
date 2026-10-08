@@ -51,6 +51,9 @@ load_import_config() {
     export CONFIG_MYSQL_SOCKET=""
     export CONFIG_IMPORT_OPTIMIZATIONS=""
     export CONFIG_PARALLEL_IMPORT=""
+    export CONFIG_BACKUP_BEFORE_IMPORT=""
+    export CONFIG_BACKUP_DIR=""
+    export CONFIG_BACKUP_KEEP=""
 
     if [[ ! -f "$config_path" ]]; then
         return 1
@@ -86,6 +89,14 @@ load_import_config() {
     local raw_parallel_import
     raw_parallel_import=$(parse_config_section "$config_path" "general" "parallel_import")
     CONFIG_PARALLEL_IMPORT="${raw_parallel_import:-false}"
+
+    local raw_backup_before_import
+    raw_backup_before_import=$(parse_config_section "$config_path" "general" "backup_before_import")
+    CONFIG_BACKUP_BEFORE_IMPORT="${raw_backup_before_import:-ask}"
+    CONFIG_BACKUP_DIR=$(parse_config_section "$config_path" "general" "backup_dir")
+    local raw_backup_keep
+    raw_backup_keep=$(parse_config_section "$config_path" "general" "backup_keep")
+    CONFIG_BACKUP_KEEP="${raw_backup_keep:-5}"
 
     return 0
 }

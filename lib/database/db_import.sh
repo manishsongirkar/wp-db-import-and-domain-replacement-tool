@@ -23,6 +23,12 @@
 #
 # ================================================================
 
+# Load SQL source helpers (compressed dumps, compatibility filter, size estimates)
+if ! declare -F sql_open_stream >/dev/null 2>&1; then
+    # shellcheck source=/dev/null
+    source "$(dirname "${BASH_SOURCE[0]}")/sql_source.sh"
+fi
+
 # ===============================================
 # Is truthy config value
 # ===============================================
@@ -98,58 +104,98 @@ perform_db_import_via_socket() {
     local db_name="$7"
     local use_optimized_session="${8:-false}"
 
+    local use_compat_filter="${9:-false}"
+
     # Locate mysql binary with Homebrew paths
     local mysql_bin
-    mysql_bin=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null)
-    if [[ -z "$mysql_bin" ]]; then
-        return 1
-    fi
+    mysql_bin=$(_find_mysql_bin) || return 1
 
-    # Build the mysql command argument array
-    # Use array to correctly handle passwords with special characters
-    local -a mysql_args=(
-        "--user=${db_user}"
-        "--database=${db_name}"
-        "--silent"
-        "--connect-timeout=10"
-    )
-
-    # Prefer socket connection; fall back to TCP host if socket missing
+    _build_mysql_args "$socket_path" "$db_host" "$db_user" "$db_name" 10
+    local -a mysql_args=("${_WPDB_MYSQL_ARGS[@]}")
     if [[ -n "$socket_path" && -S "$socket_path" ]]; then
-        mysql_args+=("--socket=${socket_path}")
         printf "${CYAN}🔌 Socket:${RESET} %s\n" "$socket_path"
-    elif [[ -n "$db_host" ]]; then
-        # Handle host:port format
-        local host_part="${db_host%%:*}"
-        local port_part="${db_host##*:}"
-        mysql_args+=("--host=${host_part}")
-        if [[ "$port_part" != "$host_part" && "$port_part" =~ ^[0-9]+$ ]]; then
-            mysql_args+=("--port=${port_part}")
-        fi
     fi
 
     # Pass password via environment variable to avoid shell history / ps exposure.
     # MYSQL_PWD is the official mysql client env var for password.
-    if [[ "$use_optimized_session" == "true" ]]; then
-        {
-            printf "SET AUTOCOMMIT = 0;\n"
-            printf "SET FOREIGN_KEY_CHECKS = 0;\n"
-            printf "SET UNIQUE_CHECKS = 0;\n"
-            cat "$sql_file"
-            printf "\nCOMMIT;\n"
-            printf "SET FOREIGN_KEY_CHECKS = 1;\n"
-            printf "SET UNIQUE_CHECKS = 1;\n"
-            printf "SET AUTOCOMMIT = 1;\n"
-        } | MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" &> "$log_file"
+    _emit_import_stream "$sql_file" "$use_optimized_session" "$use_compat_filter" \
+        | MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" &> "$log_file"
+
+    # Exit status of the pipeline is mysql's; archive integrity was verified up front
+    local rc=$?
+    if [[ "$rc" -eq 0 ]] && import_log_has_errors "$log_file"; then
+        rc=1
+    fi
+    cap_log_file "$log_file"
+    [[ "$rc" -eq 0 ]]
+}
+
+# ================================================================
+# Emit the SQL stream sent to the importer
+# ================================================================
+#
+# Parameters:
+#   $1: SQL file (plain, .gz, .zip or .bz2)
+#   $2: Wrap with session optimizations (true/false)
+#   $3: Apply the compatibility filter (true/false)
+#
+_emit_import_stream() {
+    local sql_file="$1" optimized="${2:-false}" compat="${3:-false}"
+
+    if [[ "$optimized" == "true" ]]; then
+        printf "SET AUTOCOMMIT = 0;\nSET FOREIGN_KEY_CHECKS = 0;\nSET UNIQUE_CHECKS = 0;\n"
+    fi
+    if [[ "$compat" == "true" ]]; then
+        sql_open_stream "$sql_file" | sql_compat_filter
     else
-        MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" < "$sql_file" &> "$log_file"
+        sql_open_stream "$sql_file"
+    fi
+    if [[ "$optimized" == "true" ]]; then
+        printf "\nCOMMIT;\nSET FOREIGN_KEY_CHECKS = 1;\nSET UNIQUE_CHECKS = 1;\nSET AUTOCOMMIT = 1;\n"
+    fi
+}
+
+# ================================================================
+# Perform Database Import via WP-CLI (stream form)
+# ================================================================
+#
+# Description:
+#   Imports through `wp db import -` (stdin). Used for compressed dumps and
+#   for the compatibility-filter retry; plain files use `wp db import <file>`.
+#
+# Parameters:
+#   $1: SQL file   $2: log file   $3: apply compatibility filter (true/false)
+#   $4: WP-CLI command (default: wp)   $5: "direct" to use execute_wp_cli
+#
+perform_db_import_via_wpcli() {
+    local sql_file="$1" log_file="$2" compat="${3:-false}" wp_cmd="${4:-wp}" mode="${5:-}"
+
+    local rc
+    if [[ "$mode" == "direct" ]]; then
+        if [[ "$compat" != "true" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
+            execute_wp_cli db import "$sql_file" &> "$log_file"
+        else
+            _emit_import_stream "$sql_file" false "$compat" | execute_wp_cli db import - &> "$log_file"
+        fi
+        rc=$?
+    else
+        (
+            export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+            if [[ "$compat" != "true" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
+                "$wp_cmd" db import "$sql_file"
+            else
+                _emit_import_stream "$sql_file" false "$compat" | "$wp_cmd" db import -
+            fi
+        ) &> "$log_file"
+        rc=$?
     fi
 
-    if [[ $? -eq 0 ]]; then
-        return 0
+    # Some mysql clients exit 0 although statements failed: trust the log, not just the exit code
+    if [[ "$rc" -eq 0 ]] && import_log_has_errors "$log_file"; then
+        rc=1
     fi
-
-    return 1
+    cap_log_file "$log_file"
+    return "$rc"
 }
 
 # ================================================================
@@ -211,11 +257,13 @@ _now_ms() {
 #   (values like "2 5 15" for small files or "30 45 120" for 20GB)
 #
 # Behavior:
-#   - Creates a temporary sample (first 50 MB or 5% of file, whichever is smaller)
-#   - Imports that sample using the selected method
-#   - Calculates throughput (MB/s) and projects full file time
-#   - Applies safety multipliers: min=0.7x, likely=1.0x, max=2.0x
-#   - Cleans up temporary file
+#   - Files under 100 MB, or when no benchmark is possible: size-based estimate
+#   - Otherwise takes a sample (first 5%, max 50 MB, cut at a line boundary)
+#   - Imports the sample into a throw-away database (never the real one), then drops it
+#   - Falls back to the size-based estimate if the sample has no INSERT rows, the
+#     account cannot create databases, or the sample fails to import
+#   - Projects full time from throughput; multipliers: min=0.7x, likely=1.0x, max=2.0x
+#   - Uncompressed size is used for .gz/.zip/.bz2 dumps
 #
 estimate_import_duration() {
     local sql_file="$1"
@@ -224,99 +272,83 @@ estimate_import_duration() {
     local db_user="$4"
     local db_pass="$5"
     local db_name="$6"
-    local optimization_mode="${7:-auto}"
 
-    # Get file size in bytes
-    local file_size_bytes
-    file_size_bytes=$(stat -f%z "$sql_file" 2>/dev/null || stat -c%s "$sql_file" 2>/dev/null || echo 0)
+    local total_bytes total_mb
+    total_bytes=$(sql_uncompressed_size_bytes "$sql_file")
+    total_mb=$((total_bytes / 1048576))
 
-    if [[ "$file_size_bytes" -le 0 ]]; then
-        printf "10 20 40"  # Fallback estimate
+    # Small files: size-based estimate, no benchmark
+    if [[ "$total_bytes" -le 0 || "$total_mb" -lt 100 ]]; then
+        estimate_heuristic "$total_mb"
         return 0
     fi
 
-    local file_size_mb=$((file_size_bytes / 1048576))
-
-    # For small files, just estimate without benchmarking
-    if [[ "$file_size_mb" -lt 100 ]]; then
-        # For files under 100 MB, use direct estimate: ~10-20 MB/s
-        local likely=$((file_size_mb / 15))
-        likely=$((likely > 1 ? likely : 1))
-        printf "%d %d %d" $((likely / 2)) "$likely" $((likely * 2))
+    local mysql_bin
+    mysql_bin=$(_find_mysql_bin)
+    if [[ -z "$mysql_bin" || -z "$db_user" ]]; then
+        estimate_heuristic "$total_mb"
         return 0
     fi
 
-    # For large files, benchmark a sample
-    local sample_size_mb=$((file_size_mb / 20))  # 5% of file
-    sample_size_mb=$((sample_size_mb > 50 ? 50 : sample_size_mb))  # Cap at 50 MB
+    local tmp_dir
+    tmp_dir=$(secure_tmpdir) || { estimate_heuristic "$total_mb"; return 0; }
 
-    # Create temporary sample file
-    local temp_sample
-    temp_sample=$(mktemp "/tmp/wp_db_import_sample_$$.sql")
-    # Cut at a byte limit, then drop the final (partial) line so the sample
-    # ends on a complete statement; otherwise mysql always exits with a syntax error.
-    if ! head -c $((sample_size_mb * 1048576)) "$sql_file" 2>/dev/null | sed '$d' > "$temp_sample" 2>/dev/null; then
+    # Sample: first 5% of the SQL (max 50 MB), cut at a line boundary so it ends on a
+    # complete statement; otherwise mysql always exits with a syntax error.
+    local sample_size_mb=$((total_mb / 20))
+    sample_size_mb=$((sample_size_mb > 50 ? 50 : sample_size_mb))
+    local temp_sample="$tmp_dir/bench_sample.sql"
+    local bench_log="$tmp_dir/bench.log"
+    if ! sql_open_stream "$sql_file" 2>/dev/null | head -c $((sample_size_mb * 1048576)) | sed '$d' > "$temp_sample" 2>/dev/null; then
         rm -f "$temp_sample"
-        printf "30 60 120"  # Fallback for large files
+        estimate_heuristic "$total_mb"
         return 0
     fi
 
-    # Benchmark: time the sample import
-    local bench_log
-    bench_log=$(mktemp "/tmp/wp_db_bench_$$.log")
-    local bench_start
-    bench_start=$(_now_ms)
-    local bench_success=false
+    # A single INSERT line larger than the sample leaves only schema statements, which
+    # would make the speed look far better than it is: use the size-based estimate.
+    if ! LC_ALL=C grep -qE '^(INSERT|REPLACE)[[:space:]]' "$temp_sample"; then
+        rm -f "$temp_sample"
+        estimate_heuristic "$total_mb"
+        return 0
+    fi
+    local sample_bytes
+    sample_bytes=$(_sql_file_size_bytes "$temp_sample")
 
-    # Determine which method to benchmark
-    if [[ -n "$socket_path" && -S "$socket_path" ]]; then
-        # Benchmark socket import
-        local mysql_bin
-        mysql_bin=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null)
-        if [[ -n "$mysql_bin" ]]; then
-            local -a mysql_args=("--user=${db_user}" "--database=${db_name}" "--silent" "--connect-timeout=5")
-            mysql_args+=("--socket=${socket_path}")
-            if MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" < "$temp_sample" &> "$bench_log" 2>&1; then
-                bench_success=true
-            fi
-        fi
-    elif [[ -n "$db_host" && -n "$db_user" && -n "$db_name" ]]; then
-        # Benchmark mysql CLI over TCP
-        local mysql_bin
-        mysql_bin=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null)
-        if [[ -n "$mysql_bin" ]]; then
-            local -a mysql_args=("--user=${db_user}" "--database=${db_name}" "--silent" "--connect-timeout=5")
-            local host_part="${db_host%%:*}"
-            local port_part="${db_host##*:}"
-            mysql_args+=("--host=${host_part}")
-            if [[ "$port_part" != "$host_part" && "$port_part" =~ ^[0-9]+$ ]]; then
-                mysql_args+=("--port=${port_part}")
-            fi
-            if MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" < "$temp_sample" &> "$bench_log" 2>&1; then
-                bench_success=true
-            fi
-        fi
+    # Benchmark in a throw-away database so the real target database is never touched.
+    # If the account cannot create databases, skip the benchmark.
+    local scratch_db="wpdb_bench_$$"
+    _build_mysql_args "$socket_path" "$db_host" "$db_user" "" 5
+    local -a admin_args=("${_WPDB_MYSQL_ARGS[@]}")
+    if ! MYSQL_PWD="$db_pass" "$mysql_bin" "${admin_args[@]}" -e "CREATE DATABASE \`${scratch_db}\`" &> "$bench_log"; then
+        rm -f "$temp_sample" "$bench_log"
+        estimate_heuristic "$total_mb"
+        return 0
     fi
 
-    local bench_end
+    _build_mysql_args "$socket_path" "$db_host" "$db_user" "$scratch_db" 5
+    local -a bench_args=("${_WPDB_MYSQL_ARGS[@]}")
+    local bench_start bench_end bench_success=false
+    bench_start=$(_now_ms)
+    if MYSQL_PWD="$db_pass" "$mysql_bin" "${bench_args[@]}" < "$temp_sample" &> "$bench_log"; then
+        bench_success=true
+    fi
     bench_end=$(_now_ms)
-    local bench_elapsed_ms=$((bench_end - bench_start))
 
-    # Clean up temp files
+    MYSQL_PWD="$db_pass" "$mysql_bin" "${admin_args[@]}" -e "DROP DATABASE IF EXISTS \`${scratch_db}\`" &>/dev/null
     rm -f "$temp_sample" "$bench_log"
 
-    if [[ "$bench_success" != "true" ]]; then
-        # Benchmark failed; use conservative estimate
-        printf "30 60 120"
-        return 0
-    fi
-
+    local bench_elapsed_ms=$((bench_end - bench_start))
     # Clock resolution can be 1s; never divide by zero on very fast samples
     [[ "$bench_elapsed_ms" -lt 1 ]] && bench_elapsed_ms=1
 
-    # Project full import time
-    # full_sec = file_mb / (sample_mb / elapsed_s), kept in integer ms math
-    local full_import_sec=$((file_size_mb * bench_elapsed_ms / (sample_size_mb * 1000)))
+    if [[ "$bench_success" != "true" || "$sample_bytes" -le 0 ]]; then
+        estimate_heuristic "$total_mb"
+        return 0
+    fi
+
+    # full_sec = total_bytes / (sample_bytes / elapsed_s), in integer ms math
+    local full_import_sec=$((total_bytes * bench_elapsed_ms / (sample_bytes * 1000)))
     local full_import_min=$((full_import_sec / 60))
 
     # Apply safety multipliers
@@ -362,7 +394,7 @@ estimate_import_duration() {
 #
 perform_db_import() {
     local sql_file="$1"
-    local log_file="${2:-${DB_LOG:-/tmp/wp_db_import.log}}"
+    local log_file="${2:-${DB_LOG:-$(secure_tmpdir)/db_import.log}}"
 
     if [[ -z "$sql_file" ]]; then
         printf "${RED}❌ Error: No SQL file specified for import.${RESET}\n"
@@ -372,22 +404,32 @@ perform_db_import() {
     # --------------------------------------------------------
     # Print file size and estimate import duration
     # --------------------------------------------------------
+    local verify_error
+    if ! verify_error=$(sql_verify_source "$sql_file" 2>&1); then
+        printf "${RED}❌ %s${RESET}\n" "$verify_error"
+        return 1
+    fi
+
     local file_size_mb=0
-    if [[ -f "$sql_file" ]]; then
-        local file_size_bytes
-        file_size_bytes=$(stat -f%z "$sql_file" 2>/dev/null || stat -c%s "$sql_file" 2>/dev/null || echo 0)
-        file_size_mb=$((file_size_bytes / 1048576))
-        if [[ "$file_size_mb" -ge 1024 ]]; then
-            printf "\n${CYAN}📊 SQL File: %d GB (~%.1f GB)${RESET}\n" $((file_size_mb / 1024)) "$(echo "scale=1; $file_size_mb / 1024" | bc 2>/dev/null || echo $((file_size_mb / 1024)))"
-        else
-            printf "\n${CYAN}📊 SQL File: %d MB${RESET}\n" "$file_size_mb"
-        fi
+    local file_size_bytes
+    file_size_bytes=$(sql_uncompressed_size_bytes "$sql_file")
+    file_size_mb=$((file_size_bytes / 1048576))
+    if [[ "$file_size_mb" -ge 1024 ]]; then
+        printf "\n${CYAN}📊 SQL File: %d GB (~%.1f GB)${RESET}\n" $((file_size_mb / 1024)) "$(echo "scale=1; $file_size_mb / 1024" | bc 2>/dev/null || echo $((file_size_mb / 1024)))"
+    else
+        printf "\n${CYAN}📊 SQL File: %d MB${RESET}\n" "$file_size_mb"
+    fi
+    local sql_kind
+    sql_kind=$(sql_file_kind "$sql_file")
+    if [[ "$sql_kind" != "plain" ]]; then
+        printf "${CYAN}🗜️  Compressed dump (%s): streaming without extracting to disk${RESET}\n" "$sql_kind"
     fi
 
     printf "\n${CYAN}⏳ Importing database...${RESET}\n"
     local import_start_time=$(date +%s)
     local import_success=false
     local import_method=""
+    local compat_used=false
     local optimization_mode="${CONFIG_IMPORT_OPTIMIZATIONS:-auto}"
     local use_parallel_import="${CONFIG_PARALLEL_IMPORT:-false}"
 
@@ -437,7 +479,7 @@ perform_db_import() {
 
         # Only proceed if mysql binary is available
         local mysql_available=false
-        if PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql &>/dev/null; then
+        if _find_mysql_bin >/dev/null 2>&1; then
             mysql_available=true
         else
             wp_cli_reason="mysql client not available for socket import"
@@ -512,12 +554,33 @@ perform_db_import() {
                     import_success=true
                     import_method="$mysql_cli_mode"
                 else
-                    if [[ "$mysql_cli_mode" == "socket" ]]; then
-                        printf "${YELLOW}⚠️  Socket import failed, falling back to WP-CLI...${RESET}\n"
-                        wp_cli_reason="socket import failed"
-                    else
-                        printf "${YELLOW}⚠️  Direct mysql import failed, falling back to WP-CLI...${RESET}\n"
-                        wp_cli_reason="direct mysql import failed"
+                    # Version-specific SQL (collations, DEFINER, ...): retry once with the filter.
+                    # Safe to re-run: dumps drop and recreate their tables.
+                    if import_error_is_compat_related "$log_file"; then
+                        printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
+                        (
+                            perform_db_import_via_socket \
+                                "$sql_file" "$log_file" \
+                                "$socket_path" "$db_host" \
+                                "$db_user" "$db_pass" "$db_name" \
+                                "$use_optimized_session" "true"
+                        ) &
+                        socket_pid=$!
+                        show_spinner "$socket_pid" "Importing"
+                        if wait "$socket_pid"; then
+                            import_success=true
+                            import_method="$mysql_cli_mode"
+                            compat_used=true
+                        fi
+                    fi
+                    if [[ "$import_success" == "false" ]]; then
+                        if [[ "$mysql_cli_mode" == "socket" ]]; then
+                            printf "${YELLOW}⚠️  Socket import failed, falling back to WP-CLI...${RESET}\n"
+                            wp_cli_reason="socket import failed"
+                        else
+                            printf "${YELLOW}⚠️  Direct mysql import failed, falling back to WP-CLI...${RESET}\n"
+                            wp_cli_reason="direct mysql import failed"
+                        fi
                     fi
                 fi
             fi
@@ -534,19 +597,29 @@ perform_db_import() {
     # --------------------------------------------------------
     local wp_cmd="${WP_COMMAND:-wp}"
 
-    if [[ "$import_success" == "false" ]] && command -v sh >/dev/null 2>&1; then
+    if [[ "$import_success" == "false" ]]; then
         if [[ -n "$wp_cli_reason" ]]; then
             printf "${CYAN}ℹ️  Import method:${RESET} WP-CLI ${DIM}(%s)${RESET}\n" "$wp_cli_reason"
         else
             printf "${CYAN}ℹ️  Import method:${RESET} WP-CLI\n"
         fi
 
-        /bin/sh -c "(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; \"$wp_cmd\" db import \"$sql_file\") &> \"$log_file\"" &
+        perform_db_import_via_wpcli "$sql_file" "$log_file" false "$wp_cmd" &
         local spinner_pid=$!
         show_spinner "$spinner_pid" "Importing"
         if wait "$spinner_pid"; then
             import_success=true
             import_method="wp-cli"
+        elif import_error_is_compat_related "$log_file"; then
+            printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
+            perform_db_import_via_wpcli "$sql_file" "$log_file" true "$wp_cmd" &
+            spinner_pid=$!
+            show_spinner "$spinner_pid" "Importing"
+            if wait "$spinner_pid"; then
+                import_success=true
+                import_method="wp-cli"
+                compat_used=true
+            fi
         fi
     fi
 
@@ -555,7 +628,7 @@ perform_db_import() {
     # --------------------------------------------------------
     if [[ "$import_success" == "false" ]]; then
         printf "${YELLOW}Fallback: Direct WP-CLI execution...${RESET}\n"
-        if execute_wp_cli db import "$sql_file" &> "$log_file"; then
+        if perform_db_import_via_wpcli "$sql_file" "$log_file" "$compat_used" "$wp_cmd" direct; then
             import_success=true
             import_method="wp-cli-direct"
         fi
@@ -565,7 +638,11 @@ perform_db_import() {
     # Result
     # --------------------------------------------------------
     if [[ "$import_success" == "false" ]]; then
-        printf "${RED}❌ Database import failed. Check %s for details.${RESET}\n" "$log_file"
+        printf "${RED}❌ Database import failed.${RESET}\n"
+        # The log lives in a private temp directory removed on exit, so show the cause here
+        if [[ -f "$log_file" ]]; then
+            LC_ALL=C grep -E '^(ERROR|Error)' "$log_file" 2>/dev/null | head -3 | cut -c1-300 | sed 's/^/   /'
+        fi
         return 1
     fi
 
@@ -581,8 +658,12 @@ perform_db_import() {
         wp-cli*)      method_label=" ${GRAY}via WP-CLI${RESET}" ;;
     esac
 
-    printf "${GREEN}✅ Database import successful!%s ${CYAN}[Completed in %02d:%02d]${RESET}\n\n" \
+    printf "${GREEN}✅ Database import successful!%s ${CYAN}[Completed in %02d:%02d]${RESET}\n" \
         "$method_label" "$import_minutes" "$import_seconds"
+    if [[ "$compat_used" == "true" ]]; then
+        printf "${YELLOW}ℹ️  Imported with the SQL compatibility filter (collations/DEFINER/engine options adjusted for this server).${RESET}\n"
+    fi
+    printf "\n"
     return 0
 }
 
@@ -592,4 +673,6 @@ export -f should_enable_optimized_import_session
 export -f _now_ms
 export -f estimate_import_duration
 export -f perform_db_import_via_socket
+export -f perform_db_import_via_wpcli
+export -f _emit_import_stream
 export -f perform_db_import

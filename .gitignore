@@ -19,6 +19,8 @@ temp/
 # WordPress database files
 *.sql
 *.sql.gz
+# ...but the small SQL dumps used by the server version matrix test are tracked
+!lib/tests/fixtures/*.sql
 
 # Runtime logs
 wp_*_*.log
@@ -35,6 +37,9 @@ test-reports/
 reports/*.html
 reports/*.json
 reports/*.txt
+# Per-run test session output (generated; never commit)
+reports/test_sessions
+reports/test_sessions/*
 *.test.html
 *.test.json
 *.test.txt

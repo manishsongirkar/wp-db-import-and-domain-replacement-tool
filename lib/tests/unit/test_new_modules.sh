@@ -103,12 +103,21 @@ test_db_import_module() {
         execute_wp_cli() { echo "Import success"; return 0; }
         show_spinner() { return 0; }
 
-        # Test perform_db_import
-        if perform_db_import "test.sql" >/dev/null 2>&1; then
-            pass_test "perform_db_import execution successful"
-        else
+        # Test perform_db_import with a real SQL file
+        local sql_file
+        sql_file=$(mktemp "${TMPDIR:-/tmp}/wpdb-test-import.XXXXXX")
+        printf "CREATE TABLE t (id int);\n" > "$sql_file"
+        local log_file="$sql_file.log"
+
+        if ! perform_db_import "$sql_file" "$log_file" >/dev/null 2>&1; then
             fail_test "perform_db_import failed"
+        # A missing SQL file must be refused, never reported as imported
+        elif perform_db_import "$sql_file.missing" "$log_file" >/dev/null 2>&1; then
+            fail_test "perform_db_import accepted a missing SQL file"
+        else
+            pass_test "perform_db_import succeeds with a real file and refuses a missing one"
         fi
+        rm -f "$sql_file" "$log_file"
     else
         fail_test "DB Import module not found"
     fi
