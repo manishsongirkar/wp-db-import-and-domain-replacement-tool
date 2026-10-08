@@ -357,7 +357,7 @@ process_multisite_mappings() {
             continue
         fi
 
-        local SR_LOG_MULTI="/tmp/wp_replace_${blog_id}_$$.log"
+        local SR_LOG_MULTI="$(secure_tmpdir)/wp_replace_${blog_id}.log"
 
         # Parse domain and path components
         local actual_domain="$cleaned_domain"
@@ -388,7 +388,7 @@ process_multisite_mappings() {
 
     # Process main site last
     if [[ -n "$main_site_key" && "$main_site_key" != "$main_site_value" ]]; then
-        local main_site_log="/tmp/wp_replace_${main_site_id}_$$.log"
+        local main_site_log="$(secure_tmpdir)/wp_replace_${main_site_id}.log"
 
         # Construct display domain including path when meaningful
         local main_display_old="$main_site_key"

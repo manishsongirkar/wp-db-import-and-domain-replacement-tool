@@ -34,6 +34,11 @@
 #	- Checks TERM variable and redirection status to intelligently decide whether to use colors.
 #	- Sets all color variables to empty strings if colors are disabled.
 #
+# Sets DIM unless something (for example the test framework) already made it read-only
+_set_dim_color() {
+    declare -p DIM 2>/dev/null | grep -q '^declare -[a-zA-Z-]*r' || DIM="$1"
+}
+
 init_colors() {
     # Skip if colors already initialized
     [[ -n "${_COLORS_INITIALIZED:-}" ]] && return 0
@@ -80,16 +85,18 @@ init_colors() {
         LIGHT_BLUE=$'\033[1;34m'
         LIGHT_CYAN=$'\033[1;36m'
         LIGHT_GRAY=$'\033[0;37m'
+        _set_dim_color $'\033[2m'
     else
         # No color mode (e.g., when redirected or NO_COLOR is set)
         RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; WHITE=""
         BOLD=""; RESET=""; NC=""
         GRAY=""; LIGHT_RED=""; LIGHT_GREEN=""
         LIGHT_BLUE=""; LIGHT_CYAN=""; LIGHT_GRAY=""
+        _set_dim_color ""
     fi
 
     export RED GREEN YELLOW BLUE CYAN WHITE BOLD RESET NC
-    export GRAY LIGHT_RED LIGHT_GREEN LIGHT_BLUE LIGHT_CYAN LIGHT_GRAY
+    export GRAY LIGHT_RED LIGHT_GREEN LIGHT_BLUE LIGHT_CYAN LIGHT_GRAY DIM
     _COLORS_INITIALIZED=true
 }
 
@@ -737,6 +744,8 @@ if is_sourced; then
         export -f check_wp_config_constant
         export -f detect_multisite_filesystem_indicators
         export -f get_wp_db_credentials
+        export -f secure_tmpdir
+        export -f secure_tmpdir_cleanup
     } 2>/dev/null
 fi
 
@@ -1137,6 +1146,52 @@ check_wpcli_availability() {
 }
 
 # ===============================================
+# Secure Temp Directory
+# ===============================================
+#
+# Description: Prints a private (mode 700) per-process temp directory, creating it on
+#   first use. All logs and scratch files live here instead of predictable, world-readable
+#   /tmp paths. Safe to call from subshells (the path is derived from the parent PID).
+#
+# Returns:
+#	- 0 and the directory path (echoed); 1 if it cannot be created safely
+#	  (for example a symlink or a directory owned by another user is in the way).
+#
+secure_tmpdir() {
+    local base="${TMPDIR:-/tmp}"
+    base="${base%/}"
+    local dir="$base/wpdb-import-$(id -u)-$$"
+
+    if [[ -L "$dir" ]]; then
+        printf "%s\n" "Refusing to use symlinked temp directory: $dir" >&2
+        return 1
+    fi
+    if [[ ! -d "$dir" ]]; then
+        if ! (umask 077; mkdir "$dir") 2>/dev/null; then
+            printf "%s\n" "Cannot create temp directory: $dir" >&2
+            return 1
+        fi
+    fi
+    if [[ ! -O "$dir" ]]; then
+        printf "%s\n" "Temp directory is not owned by the current user: $dir" >&2
+        return 1
+    fi
+    chmod 700 "$dir" 2>/dev/null
+    printf "%s" "$dir"
+}
+
+# Removes the per-process temp directory created by secure_tmpdir (if it is ours).
+secure_tmpdir_cleanup() {
+    local base="${TMPDIR:-/tmp}"
+    base="${base%/}"
+    local dir="$base/wpdb-import-$(id -u)-$$"
+    if [[ -d "$dir" && ! -L "$dir" && -O "$dir" ]]; then
+        rm -rf "$dir" 2>/dev/null
+    fi
+    return 0
+}
+
+# ===============================================
 # Create Temp File
 # ===============================================
 #
@@ -1152,7 +1207,9 @@ check_wpcli_availability() {
 create_temp_file() {
     local prefix="${1:-wp_import}"
     local extension="${2:-log}"
-    local temp_file="/tmp/${prefix}_$$.${extension}"
+    local tmp_dir
+    tmp_dir=$(secure_tmpdir) || return 1
+    local temp_file="$tmp_dir/${prefix}.${extension}"
 
     # Create file with restricted permissions
     touch "$temp_file"

@@ -86,6 +86,8 @@ Tests WordPress-specific functionality:
 Tests individual functions and components:
 
 - Core utility functions
+- Import hardening: pre-import backup preference (`ask`/`true`/`false`), compressed dumps, SQL compatibility filter, checksum-verified downloads, private temp directory, benchmark in a scratch database
+- Security (penetration-style, `./run_tests.sh security`): command injection through file names, passwords, config values and DB names; path traversal; symlink and temp-file attacks; tampered downloads; gzip bombs and huge lines; static scan
 - Module loading system
 - Configuration management
 - String manipulation utilities
@@ -114,9 +116,16 @@ lib/tests/
 ├── system/                     # System environment tests
 │   └── test_environment.sh    # Resource and permission tests
 ├── integration/                # Integration tests
+│   ├── test_server_matrix.sh  # Real MySQL/MariaDB versions (opt-in: ./run_tests.sh matrix)
 │   └── test_wordpress.sh      # WordPress functionality tests
 ├── unit/                       # Unit tests
-│   └── test_core_functions.sh # Core function tests
+│   ├── test_core_functions.sh # Core function tests
+│   ├── test_import_hardening.sh   # Backup, compressed dumps, compat filter, checksum, temp dir, benchmark
+│   ├── test_import_performance.sh # Import estimate, optimizations, config keys
+│   ├── test_import_security.sh    # Penetration-style security tests
+│   ├── test_new_modules.sh        # Module loading
+│   ├── test_socket_detection.sh   # MySQL socket detection
+│   └── test_update_uninstall.sh   # wp-db-import update + uninstall.sh (sandboxed)
 ├── fixtures/                   # Test fixtures and sample data
 │   └── README.md              # Fixture documentation
 └── reports/                    # Test reports (generated)

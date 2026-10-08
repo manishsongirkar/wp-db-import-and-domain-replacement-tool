@@ -63,6 +63,9 @@ use_socket=auto
 mysql_socket=
 import_optimizations=auto
 parallel_import=false
+backup_before_import=ask
+backup_dir=
+backup_keep=5
 
 [site_mappings]
 1:production-site.com:local-site.test
@@ -82,12 +85,40 @@ parallel_import=false
 - These flags are skipped automatically when importing through WP-CLI fallback so behavior stays compatible.
 - `parallel_import` stays disabled by default because regular SQL dumps are order-sensitive; forcing parallel execution can corrupt import order.
 
+### Pre-Import Backup Behavior
+
+- `backup_before_import=ask` (default) asks `Back up the current database before importing? (Y/n)` on every run. Press Enter for Yes.
+- Answer `n` and the tool saves `backup_before_import=false` into `wpdb-import.conf`, so it will not ask again. Change it back to `ask` or `true` to re-enable.
+- `true` always backs up without asking. `false` never backs up.
+- With `auto_proceed=true`, `ask` backs up without prompting. If a requested backup fails, the import is cancelled.
+- Backups are written to `~/.wp-db-import/backups/<dbname>-<timestamp>.sql.gz` (owner-only). Override with `backup_dir=`.
+- `backup_keep=5` keeps the newest 5 backups per database and deletes older ones after each backup (rotation). `0` keeps all.
+- The tool keeps no log files between runs: logs are in a private temp directory removed when the run ends, and are size-capped. When an import fails, the first error lines are printed on screen.
+- Restore: `gunzip -c ~/.wp-db-import/backups/<file>.sql.gz | wp db import -`
+
+### Compressed Dumps
+
+`sql_file` can be `.sql.gz`, `.zip` or `.sql.bz2`. The archive is verified, then streamed (no extraction to disk).
+
+### Cross-Version Compatibility
+
+If an import fails with a known compatibility error (unknown collation, missing definer, `ENGINE=Aria`, GTID statements, ...), the tool retries once with a filter that adapts the SQL to the target server. Dumps that already import are never changed, and row data is never modified.
+
 ### Example Setup
 ```bash
 cp wpdb-import-example-single.conf ~/path/to/wordpress/wpdb-import.conf
 nano ~/path/to/wordpress/wpdb-import.conf
 wp-db-import
 ```
+
+## 🧹 Uninstall
+```bash
+./uninstall.sh                    # interactive
+./uninstall.sh --yes              # no prompts (backups are kept)
+./uninstall.sh --delete-backups   # also delete saved backups in ~/.wp-db-import
+./uninstall.sh --keep-backups     # never ask about backups
+```
+Removes the command, shell completions and stale temp directories. Saved backups are only deleted on an explicit yes. Failures print the exact cause (error text, path, permissions, hint) and the script exits non-zero.
 
 ## 🔄 Auto-Updates
 ```bash
@@ -120,6 +151,8 @@ wp-db-import test                # Run all tests (globally)
 ./run_tests.sh                   # Run all tests from project directory
 ./run_tests.sh compatibility     # OS/shell compatibility only
 ./run_tests.sh --quick all       # Fast essential tests
+./run_tests.sh security          # Penetration-style security tests
+./run_tests.sh matrix            # Real MySQL/MariaDB version matrix (opt-in)
 ```
 See TESTING.md for full details.
 
@@ -138,6 +171,10 @@ wp-db-import-and-domain-replacement-tool/
 ├── uninstall.sh                        # Uninstaller
 ├── VERSION                             # Version file
 ├── README.md                           # Main documentation
+├── CHANGELOG.md                        # Release notes
+├── hooks/pre-commit                    # Optional pre-commit test hook
+├── install_pre_commit_hook.sh          # Installs the hook
+├── watch_and_test.sh                   # Re-run tests on file change
 ├── USAGE.md                            # Usage guide
 ├── CONTRIBUTING.md                     # Contributor guidelines
 ├── LICENSE                             # License file
@@ -147,7 +184,7 @@ wp-db-import-and-domain-replacement-tool/
 │   ├── completion/                     # Autocomplete scripts
 │   ├── config/                         # Config management modules
 │   ├── core/                           # Core utilities
-│   ├── database/                       # Database utilities
+│   ├── database/                       # Import, socket detection, backup, SQL compatibility, search-replace
 │   ├── tests/                          # Test framework and suites
 │   ├── utilities/                      # Utility modules
 ├── docs/                               # Documentation

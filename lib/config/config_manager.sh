@@ -195,6 +195,31 @@ import_optimizations=auto
 #
 parallel_import=false
 
+# -----------------------------------------------
+# Pre-Import Backup (recommended)
+# -----------------------------------------------
+# backup_before_import saves a compressed copy of the CURRENT database before
+# it is replaced, so a bad import can be undone. If a requested backup fails, the
+# import is cancelled to protect your data.
+#
+# Values:
+#   ask   — Ask before each import (Y/n, default Yes). Answering "n" saves false here.
+#           Unattended runs (auto_proceed=true) back up without asking. (default)
+#   true  — Always back up, never ask
+#   false — Never back up, never ask
+#
+backup_before_import=ask
+
+# backup_dir is where backups are stored (created with mode 700, files 600).
+# Leave blank for the default: ~/.wp-db-import/backups
+# Restore with:  gunzip -c <backup-file> | wp db import -
+backup_dir=
+
+# backup_keep is the number of backups to keep per database. After each new backup the
+# oldest ones beyond this number are deleted (rotation), so the folder cannot grow forever.
+# Use 0 to keep every backup.
+backup_keep=5
+
 [site_mappings]
 # Format:
 # blog_id:old_domain:new_domain
@@ -530,33 +555,19 @@ ensure_socket_config_settings() {
         return 1
     fi
 
-    if ! grep -qi '^[[:space:]]*use_socket[[:space:]]*=' "$config_path" 2>/dev/null; then
-        if ! update_config_general "$config_path" "use_socket" "auto"; then
-            return 1
+    # key=default pairs added to configs created before these settings existed
+    local pair key default
+    for pair in "use_socket=auto" "mysql_socket=" "import_optimizations=auto" \
+                "parallel_import=false" "backup_before_import=ask" "backup_dir=" "backup_keep=5"; do
+        key="${pair%%=*}"
+        default="${pair#*=}"
+        if ! grep -qi "^[[:space:]]*${key}[[:space:]]*=" "$config_path" 2>/dev/null; then
+            if ! update_config_general "$config_path" "$key" "$default"; then
+                return 1
+            fi
+            updated=true
         fi
-        updated=true
-    fi
-
-    if ! grep -qi '^[[:space:]]*mysql_socket[[:space:]]*=' "$config_path" 2>/dev/null; then
-        if ! update_config_general "$config_path" "mysql_socket" ""; then
-            return 1
-        fi
-        updated=true
-    fi
-
-    if ! grep -qi '^[[:space:]]*import_optimizations[[:space:]]*=' "$config_path" 2>/dev/null; then
-        if ! update_config_general "$config_path" "import_optimizations" "auto"; then
-            return 1
-        fi
-        updated=true
-    fi
-
-    if ! grep -qi '^[[:space:]]*parallel_import[[:space:]]*=' "$config_path" 2>/dev/null; then
-        if ! update_config_general "$config_path" "parallel_import" "false"; then
-            return 1
-        fi
-        updated=true
-    fi
+    done
 
     if [[ "$updated" == "true" ]]; then
         CONFIG_SOCKET_SETTINGS_MIGRATED="true"

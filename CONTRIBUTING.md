@@ -223,6 +223,22 @@ execute_wp_cli() {
 
 ## 🧪 Testing Guidelines
 
+### Security, Regression and Version Testing
+
+Run these before opening a pull request that touches import, backup, temp files or downloads:
+
+```bash
+./run_tests.sh                      # Full regression suite (includes unit + security)
+./run_tests.sh security             # Penetration-style tests only
+./run_tests.sh matrix               # Imports fixtures into every MySQL/MariaDB found locally
+/opt/homebrew/bin/bash ./run_tests.sh   # Repeat under Bash 5 (macOS default /bin/bash is 3.2)
+```
+
+- Treat file names, passwords, database names and config values as hostile data: quote every expansion and never `eval` them. Add a case to `test_import_security.sh` for any new input.
+- New temp files go in `$(secure_tmpdir)`, never a fixed `/tmp/...` path.
+- `WPDB_MATRIX_SERVERS="/path/to/bin ..."` adds servers (directories containing `mysqld` or `mariadbd`) to the matrix test.
+- `WPDB_MYSQL_BIN=/path/to/mysql` makes the importer use a specific client (used by the tests with stubs).
+
 ### Local Test Automation (Optional)
 
 ```bash
@@ -436,6 +452,7 @@ Understanding the project structure helps with contributions:
 ```bash
 wp-db-import-and-domain-replacement-tool/
 ├── .gitignore
+├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── LICENSE
 ├── README.md
@@ -468,22 +485,36 @@ wp-db-import-and-domain-replacement-tool/
 │   │   ├── validation.sh
 │   │   └── wp_detection.sh
 │   ├── database/
-│   │   └── search_replace.sh
+│   │   ├── db_backup.sh          # Pre-import backup (ask/true/false)
+│   │   ├── db_import.sh          # Socket / mysql / WP-CLI import, estimate, retry
+│   │   ├── search_replace.sh
+│   │   ├── socket_detector.sh    # MySQL socket auto-detection
+│   │   └── sql_source.sh         # .gz/.zip/.bz2 streams, compat filter, size helpers
 │   ├── tests/
 │   │   ├── README.md
 │   │   ├── compatibility/
 │   │   │   ├── test_bash_versions.sh
 │   │   │   └── test_os_shell.sh
 │   │   ├── fixtures/
-│   │   │   └── README.md
+│   │   │   ├── README.md
+│   │   │   ├── dump_legacy.sql
+│   │   │   ├── dump_mariadb11.sql
+│   │   │   └── dump_mysql8.sql
 │   │   ├── integration/
+│   │   │   ├── test_server_matrix.sh   # Real MySQL/MariaDB servers (opt-in)
 │   │   │   └── test_wordpress.sh
 │   │   ├── reports/
 │   │   │   └── README.md
 │   │   ├── system/
 │   │   │   └── test_environment.sh
 │   │   └── unit/
-│   │       └── test_core_functions.sh
+│   │       ├── test_core_functions.sh
+│   │       ├── test_import_hardening.sh
+│   │       ├── test_import_performance.sh
+│   │       ├── test_import_security.sh
+│   │       ├── test_new_modules.sh
+│   │       ├── test_socket_detection.sh
+│   │       └── test_update_uninstall.sh
 │   ├── utilities/
 │   │   ├── gitignore_manager.sh
 │   │   ├── revision_cleanup.sh

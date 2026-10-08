@@ -58,7 +58,7 @@ test_import_duration_estimation() {
 
     # Test 1: Small file estimate (should use conservative estimate, no benchmark)
     local small_file
-    small_file=$(mktemp "/tmp/test_small_sql_$$.sql")
+    small_file=$(mktemp "${TMPDIR:-/tmp}/test_small_sql.XXXXXX")
     echo "CREATE TABLE test (id INT);" > "$small_file"
     local estimate
     estimate=$(estimate_import_duration "$small_file" "" "" "" "" "" "auto" 2>/dev/null)

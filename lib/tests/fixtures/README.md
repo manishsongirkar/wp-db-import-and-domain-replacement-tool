@@ -12,6 +12,14 @@ fixtures/
 └── environment/      # Environment setup files
 ```
 
+## SQL Dump Fixtures (server version matrix)
+
+Small dumps used by `integration/test_server_matrix.sh` (each creates `wp_posts` with 2 rows):
+
+- `dump_legacy.sql` - plain WordPress-style dump every MySQL/MariaDB version accepts
+- `dump_mariadb11.sql` - MariaDB 11 style: `uca1400` collation, `ENGINE=Aria`, sandbox-mode first line
+- `dump_mysql8.sql` - MySQL 8 style: `0900_ai_ci` collation, `utf8mb3`, `GTID_PURGED`, `DEFINER` view
+
 ## Usage
 
 Test fixtures are used by various test suites to create realistic testing scenarios without requiring actual WordPress installations or databases.

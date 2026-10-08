@@ -104,7 +104,6 @@ fi
 if ! source "$MODULE_LOADER" >/dev/null 2>&1; then
     echo "${RED}❌ Failed to load module system.${RESET}"
     echo "Check: $MODULE_LOADER"
-    echo "Error log saved to /tmp/wp_import_errors.log"
     exit 1
 fi
 
@@ -231,10 +230,16 @@ import_wp_db() {
   export WP_COMMAND
 
   # 🧹 Define and set up cleanup for temporary log and data files
-  local DB_LOG="/tmp/wp_db_import_$$.log"
-  local SR_LOG_SINGLE="/tmp/wp_replace_single_$$.log"
-  local REVISION_LOG="/tmp/wp_revision_delete_$$.log"
-  local SUBSITE_DATA="/tmp/wp_subsite_data_$$.csv" # Temporary file to store subsite CSV data from WP-CLI
+  # Logs live in a private (mode 700) temp directory, not in world-readable /tmp paths
+  local WPDB_TMP_DIR
+  if ! WPDB_TMP_DIR=$(secure_tmpdir); then
+    printf "${RED}❌ Could not create a private temporary directory.${RESET}\n"
+    return 1
+  fi
+  local DB_LOG="$WPDB_TMP_DIR/db_import.log"
+  local SR_LOG_SINGLE="$WPDB_TMP_DIR/replace_single.log"
+  local REVISION_LOG="$WPDB_TMP_DIR/revision_delete.log"
+  local SUBSITE_DATA="$WPDB_TMP_DIR/subsite_data.csv" # Temporary file to store subsite CSV data from WP-CLI
 
   trap cleanup EXIT
 
@@ -268,7 +273,7 @@ import_wp_db() {
       if declare -F ensure_socket_config_settings >/dev/null 2>&1; then
         ensure_socket_config_settings "$config_path" >/dev/null 2>&1 || true
         if [[ "$CONFIG_SOCKET_SETTINGS_MIGRATED" == "true" ]]; then
-          printf "${GREEN}✅ Updated existing config with import settings:${RESET} use_socket, mysql_socket, import_optimizations, parallel_import\n\n"
+          printf "${GREEN}✅ Updated existing config with import settings:${RESET} use_socket, mysql_socket, import_optimizations, parallel_import, backup_before_import, backup_dir, backup_keep\n\n"
         fi
       fi
 
@@ -406,6 +411,12 @@ import_wp_db() {
     resume_script_timer
     confirm="${confirm:-y}"
     [[ "$confirm" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
+  fi
+
+  # 💾 Back up the current database before it is replaced (cancels the import on failure)
+  # Uses db_backup.sh
+  if ! backup_database_before_import "$wp_root" "$config_path"; then
+      return 1
   fi
 
   # 📥 Import the database using WP-CLI (with a spinner)
@@ -1167,7 +1178,9 @@ ${subsite_line}"
 
   printf "\n"
 
-  # Ensure cleanup is run on successful exit
+  # Remove the temporary logs and private temp directory now, then clear the EXIT trap.
+  # (Clearing the trap alone would skip cleanup on success and leave the files behind.)
+  cleanup
   trap - EXIT
 }
 

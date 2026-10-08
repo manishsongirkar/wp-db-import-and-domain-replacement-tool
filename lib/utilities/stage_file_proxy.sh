@@ -66,6 +66,67 @@
 #   - Uses `awk` to parse the specified section and format the output.
 #   - Assumes mapping format is `blog_id:old_domain:new_domain`.
 #
+# ===============================================
+# Verified Stage File Proxy Download
+# ===============================================
+#
+# Description: Downloads the Stage File Proxy release zip from the project's GitHub
+#   releases and installs nothing unless the file matches the pinned SHA-256.
+#   To publish a new plugin release: upload it, then update SFP_RELEASE_URL and
+#   SFP_RELEASE_SHA256 below (shasum -a 256 stage-file-proxy.zip).
+#
+# Parameters:
+#	- $1: Destination path for the zip.
+#	- $2: Optional log file for download output.
+#
+# Returns: 0 if downloaded and verified; 1 otherwise (the file is removed on failure).
+#
+SFP_RELEASE_URL="${SFP_RELEASE_URL:-https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip}"
+SFP_RELEASE_SHA256="${SFP_RELEASE_SHA256:-64fb0897b56392c3550a31bddefe574ad5497b329a2284bed9fc10667fd9bbaf}"
+
+# Prints the SHA-256 of a file using whichever tool exists (macOS, Linux, BusyBox).
+sha256_of_file() {
+    local file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" 2>/dev/null | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" 2>/dev/null | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$file" 2>/dev/null | awk '{print $NF}'
+    else
+        return 1
+    fi
+}
+
+download_verified_stage_file_proxy_zip() {
+    local dest="$1"
+    local log="${2:-/dev/null}"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$SFP_RELEASE_URL" -o "$dest" >> "$log" 2>&1 || { rm -f "$dest"; return 1; }
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$dest" "$SFP_RELEASE_URL" >> "$log" 2>&1 || { rm -f "$dest"; return 1; }
+    else
+        printf "${RED}❌ Neither curl nor wget is available to download the plugin${RESET}\n"
+        return 1
+    fi
+
+    local actual
+    actual=$(sha256_of_file "$dest")
+    if [[ -z "$actual" ]]; then
+        rm -f "$dest"
+        printf "${RED}❌ No SHA-256 tool found (sha256sum, shasum or openssl); cannot verify the plugin${RESET}\n"
+        return 1
+    fi
+    if [[ "$actual" != "$SFP_RELEASE_SHA256" ]]; then
+        rm -f "$dest"
+        printf "${RED}❌ Stage File Proxy download failed checksum verification; not installing.${RESET}\n"
+        printf "${DIM}   expected: %s${RESET}\n${DIM}   actual:   %s${RESET}\n" "$SFP_RELEASE_SHA256" "$actual"
+        return 1
+    fi
+    return 0
+}
+
 get_stage_proxy_mappings() {
     local config_path="$1"
 
@@ -385,41 +446,21 @@ setup_stage_file_proxy() {
     if ! wp plugin is-installed stage-file-proxy --quiet 2>/dev/null; then
         printf "${CYAN}📦 Stage File Proxy plugin not found. Installing...${RESET}\n"
 
-        # Create a temporary log for installation debugging
-        local install_log="/tmp/wp_plugin_install_setup_$$.log"
+        # Download the release zip, verify its pinned SHA-256, then install the local file
+        local install_log
+        install_log="$(secure_tmpdir)/sfp_install_setup.log" || return 1
         local install_success=false
 
-        # Method 1: Try installing from GitHub release
-        printf "${YELLOW}    Attempting installation from GitHub release...${RESET}\n"
-        if wp plugin install https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip --quiet > "$install_log" 2>&1; then
-            printf "${GREEN}✅ Plugin installed successfully from GitHub${RESET}\n"
-            install_success=true
-        else
-            printf "${YELLOW}⚠️  GitHub installation failed, trying direct download method...${RESET}\n"
-
-            # Method 2: Try direct download and install
-            printf "${YELLOW}    Attempting direct download method...${RESET}\n"
-            local temp_plugin_file="/tmp/stage-file-proxy-setup-$$.zip"
-
-            # Try downloading with curl first, then wget as fallback
-            if command -v curl &>/dev/null; then
-                if curl -L -o "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
-                    if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
-                        printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                        install_success=true
-                    fi
-                    rm -f "$temp_plugin_file" 2>/dev/null
-                fi
-            elif command -v wget &>/dev/null; then
-                if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
-                    if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
-                        printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                        install_success=true
-                    fi
-                    rm -f "$temp_plugin_file" 2>/dev/null
-                fi
+        printf "${YELLOW}    Downloading and verifying Stage File Proxy release...${RESET}\n"
+        local temp_plugin_file
+        temp_plugin_file="$(secure_tmpdir)/stage-file-proxy.zip" || return 1
+        if download_verified_stage_file_proxy_zip "$temp_plugin_file" "$install_log"; then
+            if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
+                printf "${GREEN}✅ Plugin installed successfully (checksum verified)${RESET}\n"
+                install_success=true
             fi
         fi
+        rm -f "$temp_plugin_file" 2>/dev/null
 
         # Handle installation result
         if [[ "$install_success" == true ]]; then
@@ -1434,7 +1475,8 @@ get_validated_domain_with_input() {
 #
 install_stage_file_proxy_plugin() {
     local install_success=false
-    local install_log="/tmp/sfp_install.log"
+    local install_log
+    install_log="$(secure_tmpdir)/sfp_install.log" || return 1
 
     # Check if plugin is already installed
     if wp plugin is-installed stage-file-proxy --quiet 2>/dev/null; then
@@ -1444,25 +1486,16 @@ install_stage_file_proxy_plugin() {
 
     printf "${BLUE}Installing Stage File Proxy plugin...${RESET}\n"
 
-    # Download Plugin
-    local temp_plugin_file="/tmp/stage-file-proxy.zip"
-    if command -v curl >/dev/null 2>&1; then
-        if curl -sL "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" -o "$temp_plugin_file" >> "$install_log" 2>&1; then
-            if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
-                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                install_success=true
-            fi
-            rm -f "$temp_plugin_file" 2>/dev/null
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        if wget -O "$temp_plugin_file" "https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip" >> "$install_log" 2>&1; then
-            if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
-                printf "${GREEN}✅ Plugin installed successfully via direct download${RESET}\n"
-                install_success=true
-            fi
-            rm -f "$temp_plugin_file" 2>/dev/null
+    # Download plugin (checksum verified)
+    local temp_plugin_file
+    temp_plugin_file="$(secure_tmpdir)/stage-file-proxy.zip" || return 1
+    if download_verified_stage_file_proxy_zip "$temp_plugin_file" "$install_log"; then
+        if wp plugin install "$temp_plugin_file" --quiet >> "$install_log" 2>&1; then
+            printf "${GREEN}✅ Plugin installed successfully (checksum verified)${RESET}\n"
+            install_success=true
         fi
     fi
+    rm -f "$temp_plugin_file" 2>/dev/null
 
     # Handle installation result
     if [[ "$install_success" == true ]]; then
@@ -1499,6 +1532,8 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
         export -f setup_single_site_stage_file_proxy_manual
         export -f setup_multisite_stage_file_proxy_manual
         export -f install_stage_file_proxy_plugin
+        export -f download_verified_stage_file_proxy_zip
+        export -f sha256_of_file
         export -f get_stage_proxy_mappings
         export -f save_stage_proxy_mapping
         export -f get_domain_mapping_for_site

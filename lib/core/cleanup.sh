@@ -61,6 +61,11 @@ cleanup() {
       fi
     done
 
+    # Remove the private per-process temp directory (logs, benchmark samples, downloads)
+    if declare -F secure_tmpdir_cleanup >/dev/null 2>&1; then
+        secure_tmpdir_cleanup
+    fi
+
     # Clean up multisite logs (any log files starting with /tmp/wp_replace_ that contain the script's PID)
     find /tmp -type f -name "wp_replace_*_$$.log" -delete 2>/dev/null
 

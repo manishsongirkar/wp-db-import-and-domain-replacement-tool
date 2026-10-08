@@ -258,6 +258,14 @@ load_database_modules() {
         source "$database_dir/search_replace.sh" 2>/dev/null
     fi
 
+    # Load SQL source helpers and pre-import backup
+    if [[ -f "$database_dir/sql_source.sh" ]]; then
+        source "$database_dir/sql_source.sh" 2>/dev/null
+    fi
+    if [[ -f "$database_dir/db_backup.sh" ]]; then
+        source "$database_dir/db_backup.sh" 2>/dev/null
+    fi
+
     # Load database import module
     if [[ -f "$database_dir/db_import.sh" ]]; then
         source "$database_dir/db_import.sh" 2>/dev/null

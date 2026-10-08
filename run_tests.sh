@@ -38,6 +38,8 @@
 #   wordpress          WordPress functionality tests
 #   unit               Unit tests
 #   validation         Tool validation tests
+#   security           Security (penetration-style) tests - also part of "all"
+#   matrix             Real MySQL/MariaDB server version matrix (opt-in, not in "all")
 #
 # Dependencies:
 # - lib/tests/test_framework.sh
@@ -319,7 +321,7 @@ parse_arguments() {
             *)
                 # Test suite argument
                 case "$1" in
-                    all|compatibility|bash|system|unit|wordpress|validation)
+                    all|compatibility|bash|system|unit|wordpress|validation|security|matrix)
                         TEST_SUITE="$1"
                         ;;
                     *)
@@ -414,10 +416,11 @@ run_test_suite() {
 
     # Execute the test script
     if [[ "$VERBOSE" == "true" ]]; then
-        bash "$test_script"
+        # stdin is closed so a test can never hang waiting for keyboard input
+        bash "$test_script" </dev/null
         result=$?
     else
-        bash "$test_script" >/dev/null 2>&1
+        bash "$test_script" </dev/null >/dev/null 2>&1
         result=$?
     fi
 
@@ -428,16 +431,16 @@ run_test_suite() {
     local status="FAIL"
     if [[ $result -eq 0 ]]; then
         status="PASS"
-        ((TOTAL_PASSED++))
+        TOTAL_PASSED=$((TOTAL_PASSED + 1))
         log_success "$suite_name tests completed (${duration}s)"
     else
         status="FAIL"
-        ((TOTAL_FAILED++))
+        TOTAL_FAILED=$((TOTAL_FAILED + 1))
         FAILED_TESTS+=("$suite_name")
         log_error "$suite_name tests failed (${duration}s)"
     fi
 
-    ((TOTAL_TESTS++))
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
     # Store detailed result
     TEST_RESULTS+=("$suite_name|$status|$duration|$suite_description")
@@ -563,6 +566,21 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_update_uninstall.sh" ]]; then
+        run_test_suite "Unit Tests (Update/Uninstall)" "$test_dir/test_update_uninstall.sh" "wp-db-import update and uninstall.sh in a sandbox"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
+    if [[ -f "$test_dir/test_import_security.sh" ]]; then
+        run_test_suite "Security Tests" "$test_dir/test_import_security.sh" "Penetration-style tests: injection, traversal, symlink, secrets, tampering"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
+    if [[ -f "$test_dir/test_import_hardening.sh" ]]; then
+        run_test_suite "Unit Tests (Import Hardening)" "$test_dir/test_import_hardening.sh" "Backup, compressed dumps, compat filter, checksum, temp dir, benchmark safety"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
     return $overall_result
 }
 
@@ -609,16 +627,16 @@ run_validation_tests() {
     local status="FAIL"
     if [[ $result -eq 0 ]]; then
         status="PASS"
-        ((TOTAL_PASSED++))
+        TOTAL_PASSED=$((TOTAL_PASSED + 1))
         log_success "Validation tests completed (${duration}s)"
     else
         status="FAIL"
-        ((TOTAL_FAILED++))
+        TOTAL_FAILED=$((TOTAL_FAILED + 1))
         FAILED_TESTS+=("Validation")
         log_error "Validation tests failed (${duration}s)"
     fi
 
-    ((TOTAL_TESTS++))
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
     TEST_RESULTS+=("Tool Validation|$status|$duration|Tool functionality validation tests")
 
     return $result
@@ -655,6 +673,19 @@ execute_tests() {
             run_unit_tests || overall_result=1
             run_wordpress_tests || overall_result=1
             run_validation_tests || overall_result=1
+            ;;
+        "security")
+            local test_dir="$SCRIPT_DIR/lib/tests/unit"
+            run_test_suite "Security Tests" "$test_dir/test_import_security.sh" "Penetration-style tests: injection, traversal, symlink, secrets, tampering"
+            [[ $? -ne 0 ]] && overall_result=1
+            ;;
+        "matrix")
+            # The version table is the point of this suite: always show it, even without --verbose
+            local test_dir="$SCRIPT_DIR/lib/tests/integration"
+            local saved_verbose="$VERBOSE"; VERBOSE=true
+            run_test_suite "Server Matrix" "$test_dir/test_server_matrix.sh" "Fixture dumps on every available MySQL/MariaDB version"
+            VERBOSE="$saved_verbose"
+            [[ $? -ne 0 ]] && overall_result=1
             ;;
         "compatibility")
             run_compatibility_tests || overall_result=1
@@ -965,7 +996,7 @@ EOF
 
     for result in "${TEST_RESULTS[@]}"; do
         IFS='|' read -r suite_name status duration description <<< "$result"
-        ((suite_counter++))
+        suite_counter=$((suite_counter + 1))
 
         # Map suite names to directory patterns
         local search_pattern=""
@@ -1014,9 +1045,9 @@ EOF
 
                     # Count by status
                     case "$test_status" in
-                        "PASS") ((suite_individual_passed++)) ;;
-                        "FAIL") ((suite_individual_failed++)) ;;
-                        "SKIP") ((suite_individual_skipped++)) ;;
+                        "PASS") suite_individual_passed=$((suite_individual_passed + 1)) ;;
+                        "FAIL") suite_individual_failed=$((suite_individual_failed + 1)) ;;
+                        "SKIP") suite_individual_skipped=$((suite_individual_skipped + 1)) ;;
                     esac
 
                     # Generate HTML for individual test
@@ -1058,9 +1089,9 @@ EOF
 
                         # Count by status
                         case "$test_status" in
-                            "PASS") ((suite_individual_passed++)) ;;
-                            "FAIL") ((suite_individual_failed++)) ;;
-                            "SKIP") ((suite_individual_skipped++)) ;;
+                            "PASS") suite_individual_passed=$((suite_individual_passed + 1)) ;;
+                            "FAIL") suite_individual_failed=$((suite_individual_failed + 1)) ;;
+                            "SKIP") suite_individual_skipped=$((suite_individual_skipped + 1)) ;;
                         esac
 
                         # Generate HTML for individual test
@@ -1085,23 +1116,23 @@ EOF
 
         # If no individual tests found, show suite-level result
         if [[ -z "$individual_tests_html" ]]; then
-            ((total_individual_tests++))
+            total_individual_tests=$((total_individual_tests + 1))
             local status_class="pass"
             local status_label="PASS"
 
             case "$status" in
                 "PASS")
-                    ((total_individual_passed++))
+                    total_individual_passed=$((total_individual_passed + 1))
                     ;;
                 "FAIL")
                     status_class="fail"
                     status_label="FAIL"
-                    ((total_individual_failed++))
+                    total_individual_failed=$((total_individual_failed + 1))
                     ;;
                 "SKIP")
                     status_class="skip"
                     status_label="SKIP"
-                    ((total_individual_skipped++))
+                    total_individual_skipped=$((total_individual_skipped + 1))
                     ;;
             esac
 
