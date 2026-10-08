@@ -104,6 +104,12 @@ backup_keep=5
 
 If an import fails with a known compatibility error (unknown collation, missing definer, `ENGINE=Aria`, GTID statements, ...), the tool retries once with a filter that adapts the SQL to the target server. Dumps that already import are never changed, and row data is never modified.
 
+For dumps without `DROP TABLE` statements, the tables created by the failed attempt are removed before the retry (pre-existing tables are never touched).
+
+### mysql Client
+
+The `mysql` client first in your `PATH` is used; Homebrew directories are only a fallback. `WPDB_MYSQL_BIN` picks a client explicitly, `WPDB_VERBOSE=1` shows which one is used, and a warning appears if the client and server are different products (MariaDB vs MySQL).
+
 ### Example Setup
 ```bash
 cp wpdb-import-example-single.conf ~/path/to/wordpress/wpdb-import.conf

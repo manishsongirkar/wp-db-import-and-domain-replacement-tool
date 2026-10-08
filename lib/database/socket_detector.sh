@@ -184,7 +184,7 @@ _extract_socket_from_wp_config() {
 # ===============================================
 _detect_socket_via_mysqladmin() {
     local mysql_admin_cmd
-    mysql_admin_cmd=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysqladmin 2>/dev/null) || return 0
+    mysql_admin_cmd=$(PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}" command -v mysqladmin 2>/dev/null) || return 0
 
     local socket_path
     socket_path=$(
@@ -205,7 +205,7 @@ _detect_socket_via_mysqladmin() {
 # ===============================================
 _detect_socket_via_defaults() {
     local mysql_cmd
-    mysql_cmd=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null) || return 0
+    mysql_cmd=$(PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}" command -v mysql 2>/dev/null) || return 0
 
     local socket_path
     socket_path=$(
@@ -453,7 +453,7 @@ detect_mysql_socket() {
 # ===============================================
 is_mysql_binary_available() {
     local mysql_cmd
-    mysql_cmd=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null)
+    mysql_cmd=$(PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}" command -v mysql 2>/dev/null)
     if [[ -n "$mysql_cmd" && -x "$mysql_cmd" ]]; then
         return 0
     fi
@@ -464,7 +464,7 @@ is_mysql_binary_available() {
 # Get mysql binary path
 # ===============================================
 get_mysql_binary() {
-    PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null || true
+    PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}" command -v mysql 2>/dev/null || true
 }
 
 # Export public functions

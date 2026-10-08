@@ -223,6 +223,36 @@ cap_log_file() {
 }
 
 # ===============================================
+# Does the dump drop tables before creating them?
+# ===============================================
+# Looks at the first 256 KB of the SQL. Dumps made with --skip-add-drop-table (or by tools
+# that never emit DROP TABLE) cannot be re-run safely after a partly failed import.
+# If the DROP statements appear only later, this returns 1: the caller then takes the
+# safe path (snapshot tables, remove new ones before a retry).
+sql_has_drop_table() {
+    sql_open_stream "$1" 2>/dev/null | head -c 262144 | LC_ALL=C grep -qiE '^[[:space:]]*(/\*![0-9]+[[:space:]]+)?DROP[[:space:]]+TABLE[[:space:]]+IF[[:space:]]+EXISTS'
+}
+
+# ===============================================
+# Describe a mysql client: "<path> (<version line>)"
+# ===============================================
+_describe_mysql_client() {
+    local bin="$1" ver
+    ver=$("$bin" --version 2>/dev/null | head -1 | sed 's/^[[:space:]]*//')
+    printf "%s (%s)" "$bin" "${ver:-unknown version}"
+}
+
+# ===============================================
+# "mariadb" or "mysql" from any version text
+# ===============================================
+_mysql_flavor() {
+    case "$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')" in
+        *mariadb*) printf "mariadb" ;;
+        *)         printf "mysql" ;;
+    esac
+}
+
+# ===============================================
 # Locate the mysql client
 # ===============================================
 # Honors WPDB_MYSQL_BIN (explicit path, also used by the tests), then PATH plus the
@@ -230,7 +260,7 @@ cap_log_file() {
 _find_mysql_bin() {
     local bin="${WPDB_MYSQL_BIN:-}"
     if [[ -z "$bin" ]]; then
-        bin=$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mysql 2>/dev/null)
+        bin=$(PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}" command -v mysql 2>/dev/null)
     fi
     [[ -n "$bin" && -x "$bin" ]] || return 1
     printf "%s" "$bin"
@@ -259,4 +289,4 @@ _build_mysql_args() {
 
 export -f _sql_file_size_bytes sql_file_kind sql_open_stream sql_verify_source \
     sql_uncompressed_size_bytes estimate_heuristic _sql_compat_script sql_compat_filter \
-    import_error_is_compat_related import_log_has_errors cap_log_file _find_mysql_bin _build_mysql_args 2>/dev/null
+    import_error_is_compat_related import_log_has_errors cap_log_file sql_has_drop_table _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null

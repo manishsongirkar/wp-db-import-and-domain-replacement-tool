@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **The environment's own mysql client is used again** ([#16](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/16)). The tool put `/opt/homebrew/bin` and `/usr/local/bin` **before** the user's `PATH`, so a Homebrew client could replace the right one (for example Local's MySQL client), which once caused a false "import successful". These directories are now only a fallback after the user's `PATH` (override with `WPDB_FALLBACK_PATH`). This applies to the import, WP-CLI calls, socket detection and the WP-CLI lookup.
+- **Retry is safe for dumps without `DROP TABLE IF EXISTS`** ([#27](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/27)). For such dumps the table list is saved before the import. Before any retry or fallback, only the tables (and views) created by the failed attempt are removed; tables that existed before are never touched. If the list cannot be saved, the tool does not retry and says why. Dumps that drop their own tables are unaffected.
+- `get_wp_db_credentials` returned the first value for every constant when several `define()` calls were on one line of `wp-config.php`.
+
+### Added
+- A warning when the mysql client and the server are different products (MariaDB client with a MySQL server, or the reverse), with the client path and how to fix it.
+- `WPDB_VERBOSE=1` prints which mysql client is used for the import.
+- Table cleanup and listing use the same mysql client and socket as the import, with `wp db query` (then `--defaults`) as fallback, because `wp db query` cannot connect in Local.
+- Server matrix fixture `dump_nodrop_mariadb11.sql` and unit tests for both fixes.
+
 ## [1.2.0] - 2026-10-08
 
 ### Added

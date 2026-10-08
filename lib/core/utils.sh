@@ -656,8 +656,9 @@ execute_wp_cli() {
     # Arguments: WP-CLI command parts (e.g., core is-installed)
     # Execution environment: Export a robust PATH and run the command
     (
-        # Prepend common paths (Homebrew, /usr/local) to the current PATH
-        export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        # Append common paths (Homebrew, /usr/local) AFTER the current PATH: the active
+        # environment's tools (for example Local's mysql) must win over Homebrew ones
+        export PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"
         # Disable OPcache warnings that can interfere with output parsing
         export PHP_INI_SCAN_DIR=""
         # Suppress PHP startup errors to prevent pollution of output parsing
@@ -938,7 +939,10 @@ get_wp_db_credentials() {
         local constant="$1"
         awk -v const="$constant" '
             $0 ~ ("define.*[\"\\047]" const "[\"\\047]") {
-                s = $0; qc = 0; start = 0
+                # Start at this constant (several define() calls can share one line)
+                p = index($0, "\047" const "\047")
+                if (p == 0) p = index($0, "\"" const "\"")
+                s = substr($0, p); qc = 0; start = 0
                 for (i = 1; i <= length(s); i++) {
                     c = substr(s, i, 1)
                     if (c == "\"" || c == "\047") {
@@ -1133,7 +1137,7 @@ validate_wordpress_installation() {
 check_wpcli_availability() {
     # Use global WP_COMMAND if available, otherwise detect it
     if [[ -z "${WP_COMMAND:-}" ]]; then
-        local enhanced_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+        local enhanced_path="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}:/usr/bin:/bin"
         WP_COMMAND=$(PATH="$enhanced_path" command -v wp)
         if [[ -z "$WP_COMMAND" ]]; then
             printf "${RED}❌ WP-CLI not found in PATH.${RESET}\n"

@@ -118,6 +118,8 @@ test_db_import_module() {
             pass_test "perform_db_import succeeds with a real file and refuses a missing one"
         fi
         rm -f "$sql_file" "$log_file"
+        # perform_db_import may create the private temp directory (table snapshot); remove it
+        declare -F secure_tmpdir_cleanup >/dev/null 2>&1 && secure_tmpdir_cleanup
     else
         fail_test "DB Import module not found"
     fi

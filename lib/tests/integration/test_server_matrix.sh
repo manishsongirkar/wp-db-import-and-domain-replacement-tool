@@ -95,6 +95,44 @@ _matrix_start() {
     return 0
 }
 
+# Real-server check of retry safety (issue #27) for a dump that has no DROP TABLE statements.
+# Prints one table row. Returns 0 on success.
+_matrix_nodrop_case() {
+    local client="$1" sock="$2" label="$3" fx="$FIXTURES/dump_nodrop_mariadb11.sql"
+    local plain filt rows control="n/a" ok=0
+    q() { "$client" --no-defaults -uroot --socket="$sock" "$@"; }
+    q -e "DROP DATABASE IF EXISTS wp; CREATE DATABASE wp" >/dev/null 2>&1
+
+    # execute_wp_cli stand-in that runs the SQL on this server (what the tool would send through WP-CLI)
+    execute_wp_cli() { [[ "$1 $2" == "db query" ]] || return 0; q wp -N -e "$3"; }
+
+    local snapshot
+    snapshot=$(import_snapshot_tables) || { printf "     ❌ could not snapshot tables on %s\n" "$label"; return 1; }
+
+    perform_db_import_via_socket "$fx" "$MATRIX_WORK/nd1.log" "$sock" "" root "" wp false false >/dev/null 2>&1
+    plain=$?
+    if [[ $plain -ne 0 ]]; then
+        import_error_is_compat_related "$MATRIX_WORK/nd1.log" || { printf "     ❌ %s: first failure is not retry-eligible\n" "$label"; ok=1; }
+        # Control: retrying WITHOUT cleanup must fail (proves the scenario is real)
+        perform_db_import_via_socket "$fx" "$MATRIX_WORK/nd2.log" "$sock" "" root "" wp false true >/dev/null 2>&1
+        if [[ $? -eq 0 ]]; then control="no-failure"; printf "     ❌ %s: retry without cleanup unexpectedly worked (scenario not exercised)\n" "$label"; ok=1; else control="fails"; fi
+        import_prepare_retry "$snapshot" >/dev/null 2>&1 || { printf "     ❌ %s: cleanup failed\n" "$label"; ok=1; }
+        perform_db_import_via_socket "$fx" "$MATRIX_WORK/nd3.log" "$sock" "" root "" wp false true >/dev/null 2>&1
+        filt=$?
+    else
+        filt=0
+    fi
+    rows=$(q -N -e "SELECT COUNT(*) FROM wp.wp_posts" 2>/dev/null)
+    local tables; tables=$(q -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wp'" 2>/dev/null)
+    printf "  %-24s %-20s %-14s %-14s\n" "$label" "dump_nodrop (cleanup)" "$([[ $plain -eq 0 ]] && echo ok || echo "rejected")" "$([[ $filt -eq 0 && "$rows" == 2 && "$tables" == 2 ]] && echo ok || echo FAIL)"
+    if [[ $filt -ne 0 || "$rows" != "2" || "$tables" != "2" ]]; then
+        printf "     ❌ %s: no-DROP dump did not end with 2 tables / 2 rows (tables=%s rows=%s)\n" "$label" "$tables" "$rows"
+        ok=1
+    fi
+    unset -f execute_wp_cli q
+    return $ok
+}
+
 test_server_matrix() {
     start_test "Server Version Matrix" "fixtures import on every available MySQL/MariaDB version with the filter"
     local servers
@@ -107,7 +145,7 @@ test_server_matrix() {
     MATRIX_WORK=$(mktemp -d "${TMPDIR:-/tmp}/wpdb-matrix.XXXXXX")
     trap _matrix_cleanup EXIT
     local errors=0 tested=0 idx=0 bindir info label client sock fx want
-    local -a fixtures=("dump_legacy.sql" "dump_mariadb11.sql" "dump_mysql8.sql")
+    local -a fixtures=("dump_legacy.sql" "dump_mariadb11.sql" "dump_mysql8.sql" "dump_nodrop_mariadb11.sql")
 
     printf "\n  %-24s %-20s %-14s %-14s\n" "SERVER" "FIXTURE" "UNFILTERED" "FILTERED"
     while IFS= read -r bindir; do
@@ -128,6 +166,12 @@ test_server_matrix() {
 
         for fx in "${fixtures[@]}"; do
             local plain filt
+            if [[ "$fx" == "dump_nodrop_mariadb11.sql" ]]; then
+                # Dump without DROP TABLE: the retry needs the failed attempt's tables removed first.
+                _matrix_nodrop_case "$client" "$sock" "$label"
+                [[ $? -ne 0 ]] && ((errors++))
+                continue
+            fi
             # Unfiltered attempt (informational, plus: a failure must be retry-eligible)
             perform_db_import_via_socket "$FIXTURES/$fx" "$MATRIX_WORK/p.log" "$sock" "" root "" wp false false >/dev/null 2>&1
             plain=$?
