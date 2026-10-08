@@ -79,7 +79,8 @@ lib/tests/
 │   ├── README.md
 │   ├── dump_legacy.sql         # accepted by every server version
 │   ├── dump_mariadb11.sql      # MariaDB 11 collations/engine/sandbox line
-│   └── dump_mysql8.sql         # MySQL 8 collations/GTID/DEFINER
+│   ├── dump_mysql8.sql         # MySQL 8 collations/GTID/DEFINER
+│   └── dump_nodrop_mariadb11.sql  # no DROP TABLE: retry needs cleanup (#27)
 └── reports/                    # Test reports (generated)
     ├── test_results.json
     ├── test_results.html

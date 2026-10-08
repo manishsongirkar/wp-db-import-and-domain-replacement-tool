@@ -391,12 +391,242 @@ test_backup_before_import() {
 }
 
 # ================================================================
+# Issue #16: the active environment's mysql client must win over Homebrew
+# ================================================================
+test_mysql_client_selection() {
+    start_test "mysql Client Selection" "user's PATH wins; Homebrew dirs are only a fallback; flavor mismatch is reported"
+    _hard_load
+    source "$_HARD_ROOT/lib/database/socket_detector.sh" >/dev/null 2>&1
+    local errors=0 w; w=$(_hard_workdir)
+    local user="$w/c_user" fb="$w/c_fallback" empty="$w/c_empty"
+    mkdir -p "$user" "$fb" "$empty"
+    printf '#!/bin/sh\necho "mysql  Ver 8.4.0 for macos on arm64 (MySQL Community Server - GPL)"\n' > "$user/mysql"
+    printf '#!/bin/sh\necho "mysql  Ver 15.1 Distrib 11.8.9-MariaDB, for osx (arm64)"\n' > "$fb/mysql"
+    printf '#!/bin/sh\necho user-mysqladmin\n' > "$user/mysqladmin"
+    chmod +x "$user/mysql" "$fb/mysql" "$user/mysqladmin"
+
+    # _find_mysql_bin: user's PATH first, fallback second, none -> failure
+    _chk "user PATH client wins over the fallback dir"     bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; export WPDB_FALLBACK_PATH='$fb'; PATH='$user:/usr/bin:/bin'; test \"\$(_find_mysql_bin)\" = '$user/mysql'"
+    _chk "fallback dir is used when PATH has no client"    bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; export WPDB_FALLBACK_PATH='$fb'; PATH='$empty'; test \"\$(_find_mysql_bin)\" = '$fb/mysql'"
+    _chk "no client anywhere -> failure"                   bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; export WPDB_FALLBACK_PATH='$empty'; PATH='$empty'; ! _find_mysql_bin"
+    _chk "WPDB_MYSQL_BIN still overrides everything"       bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; export WPDB_FALLBACK_PATH='$fb' WPDB_MYSQL_BIN='$fb/mysql'; PATH='$user'; test \"\$(_find_mysql_bin)\" = '$fb/mysql'"
+    _chk "single client: unchanged behavior"               bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; export WPDB_FALLBACK_PATH='$empty'; PATH='$user'; test \"\$(_find_mysql_bin)\" = '$user/mysql'"
+
+    # socket_detector helpers follow the same order
+    _chk "get_mysql_binary: user PATH wins"                bash -c "source '$_HARD_ROOT/lib/database/socket_detector.sh' >/dev/null 2>&1; export WPDB_FALLBACK_PATH='$fb'; PATH='$user:/usr/bin:/bin'; test \"\$(get_mysql_binary)\" = '$user/mysql'"
+
+    # execute_wp_cli: the PATH it gives WP-CLI keeps the user's entries first
+    printf '#!/bin/sh\necho "PATH=$PATH"\ncommand -v mysql\n' > "$w/c_wp"; chmod +x "$w/c_wp"
+    local out
+    out=$(WP_COMMAND="$w/c_wp" WPDB_FALLBACK_PATH="$fb" PATH="$user:/usr/bin:/bin" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; execute_wp_cli x")
+    _chk "execute_wp_cli: PATH is user PATH + fallback"   grep -qxF "PATH=$user:/usr/bin:/bin:$fb" <<< "$out"
+    _chk "execute_wp_cli: WP-CLI sees the user's mysql"   grep -qxF "$user/mysql" <<< "$out"
+
+    # perform_db_import_via_wpcli (the path that actually runs 'wp db import'): same rule
+    printf 'SELECT 1;\n' > "$w/c.sql"
+    out=$(WPDB_FALLBACK_PATH="$fb" PATH="$user:/usr/bin:/bin" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; perform_db_import_via_wpcli '$w/c.sql' '$w/c.log' false '$w/c_wp'; cat '$w/c.log'")
+    _chk "wpcli import: WP-CLI sees the user's mysql"     grep -qxF "$user/mysql" <<< "$out"
+    out=$(WPDB_FALLBACK_PATH="$fb" PATH="$empty:/usr/bin:/bin" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; perform_db_import_via_wpcli '$w/c.sql' '$w/c.log' false '$w/c_wp'; cat '$w/c.log'")
+    _chk "wpcli import: fallback dir still helps when PATH has no mysql" grep -qxF "$fb/mysql" <<< "$out"
+
+    # No production code may put Homebrew in front of the user's PATH again
+    local hits
+    hits=$(grep -rnE 'PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"|PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"' "$_HARD_ROOT/import_wp_db.sh" "$_HARD_ROOT/wp-db-import" "$_HARD_ROOT"/lib/core "$_HARD_ROOT"/lib/database "$_HARD_ROOT"/lib/utilities "$_HARD_ROOT"/lib/config 2>/dev/null)
+    _chk "no Homebrew-first PATH assignments remain"      test -z "$hits"
+    [[ -n "$hits" ]] && printf "%s\n" "$hits" | sed 's/^/     /'
+
+    # Client/server flavor mismatch warning (never fatal)
+    printf '#!/bin/sh\ncase " $* " in *" SELECT VERSION() "*) echo "${STUB_SERVER_VERSION:-8.4.0}";; *) echo "mysql  Ver 15.1 Distrib 11.8.9-MariaDB, for osx (arm64)";; esac\n' > "$w/c_maria"
+    printf '#!/bin/sh\ncase " $* " in *" SELECT VERSION() "*) echo "${STUB_SERVER_VERSION:-8.4.0}";; *) echo "mysql  Ver 8.4.0 for macos on arm64 (MySQL Community Server - GPL)";; esac\n' > "$w/c_mysql"
+    printf '#!/bin/sh\nexit 1\n' > "$w/c_down"
+    chmod +x "$w/c_maria" "$w/c_mysql" "$w/c_down"
+    out=$(STUB_SERVER_VERSION="8.4.0" _warn_client_server_mismatch "$w/c_maria" "" "h" "u" "p" "d" 2>&1)
+    _chk "MariaDB client + MySQL server: warns"           grep -q 'different product' <<< "$out"
+    _chk "warning names the client path and the fix"      bash -c "grep -q '$w/c_maria' <<< '$out' && grep -q 'WPDB_MYSQL_BIN' <<< '$out'"
+    out=$(STUB_SERVER_VERSION="8.4.0" _warn_client_server_mismatch "$w/c_mysql" "" "h" "u" "p" "d" 2>&1)
+    _chk "matching flavors: no warning"                   test -z "$out"
+    out=$(STUB_SERVER_VERSION="11.8.9-MariaDB-log" _warn_client_server_mismatch "$w/c_maria" "" "h" "u" "p" "d" 2>&1)
+    _chk "MariaDB client + MariaDB server: no warning"    test -z "$out"
+    out=$(_warn_client_server_mismatch "$w/c_down" "" "h" "u" "p" "d" 2>&1); local rc=$?
+    _chk "server unreachable: no warning, returns 0"      test -z "$out" -a "$rc" -eq 0
+    _chk "empty client path: returns 0"                   _warn_client_server_mismatch "" "" "h" "u" "p" "d"
+    _chk "describe shows path and version"                bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; _describe_mysql_client '$w/c_mysql' | grep -q 'c_mysql (mysql  Ver 8.4.0'"
+    _finish "the environment's own mysql client is used"
+}
+
+# ================================================================
+# Issue #27: retry safety for dumps without DROP TABLE
+# ================================================================
+test_retry_safety() {
+    start_test "Retry Safety" "tables from a failed attempt are removed before a retry, only when the dump has no DROP TABLE"
+    _hard_load
+    local errors=0 w; w=$(_hard_workdir)
+    local state="$w/rs.state" qlog="$w/rs.queries" attempts="$w/rs.attempts"
+
+    # --- fake database behind execute_wp_cli: state file holds "name<TAB>type" lines
+    _rs_reset() { printf 'wp_old\tBASE TABLE\n' > "$state"; : > "$qlog"; : > "$attempts"; unset RS_LIST_FAILS RS_DROP_FAILS; }
+    execute_wp_cli() {
+        [[ "$1 $2" == "db query" ]] || return 0
+        local sql="$3"
+        printf '%s\n' "$sql" >> "$qlog"
+        if [[ "$sql" == "SHOW FULL TABLES" ]]; then
+            [[ -n "${RS_LIST_FAILS:-}" ]] && return 1
+            cat "$state"; printf 'Deprecated: PHP notice that must be ignored\n'; return 0
+        fi
+        [[ -n "${RS_DROP_FAILS:-}" ]] && return 1
+        local names; names=$(printf '%s' "$sql" | tr ';' '\n' | sed -n -e 's/^ *DROP TABLE IF EXISTS `\(.*\)`$/\1/p' -e 's/^ *DROP VIEW IF EXISTS `\(.*\)`$/\1/p' | sed 's/``/`/g')
+        local n tmp="$state.tmp"; cp "$state" "$tmp"
+        while IFS= read -r n; do [[ -n "$n" ]] || continue; awk -F'\t' -v n="$n" '$1 != n' "$tmp" > "$tmp.2"; mv "$tmp.2" "$tmp"; done <<< "$names"
+        mv "$tmp" "$state"; return 0
+    }
+
+    # --- sql_has_drop_table
+    printf 'DROP TABLE IF EXISTS `t`;\nCREATE TABLE t (i int);\n' > "$w/rs_drop.sql"
+    printf 'drop table if exists `t`;\nCREATE TABLE t (i int);\n' > "$w/rs_drop_lc.sql"
+    printf '/*!40000 DROP TABLE IF EXISTS `t`*/;\nCREATE TABLE t (i int);\n' > "$w/rs_drop_cm.sql"
+    printf 'CREATE TABLE t (i int);\nINSERT INTO t VALUES (1);\n' > "$w/rs_nodrop.sql"
+    gzip -c "$w/rs_drop.sql" > "$w/rs_drop.sql.gz"; gzip -c "$w/rs_nodrop.sql" > "$w/rs_nodrop.sql.gz"
+    { head -c 300000 /dev/zero | tr '\0' ' '; printf '\nDROP TABLE IF EXISTS `t`;\n'; } > "$w/rs_late.sql"
+    _chk "detects DROP TABLE IF EXISTS"                  sql_has_drop_table "$w/rs_drop.sql"
+    _chk "detects lower-case drop"                       sql_has_drop_table "$w/rs_drop_lc.sql"
+    _chk "detects /*! conditional */ drop"               sql_has_drop_table "$w/rs_drop_cm.sql"
+    _chk "detects drop inside a .gz dump"                sql_has_drop_table "$w/rs_drop.sql.gz"
+    _chk "no DROP -> false"                              bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; ! sql_has_drop_table '$w/rs_nodrop.sql'"
+    _chk "no DROP in a .gz dump -> false"                bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; ! sql_has_drop_table '$w/rs_nodrop.sql.gz'"
+    _chk "DROP only after 256 KB -> false (safe path)"   bash -c "source '$_HARD_ROOT/lib/database/sql_source.sh' >/dev/null 2>&1; ! sql_has_drop_table '$w/rs_late.sql'"
+
+    # --- snapshot and drop of only the new tables
+    _rs_reset
+    local snap; snap=$(import_snapshot_tables)
+    _chk "snapshot file is created"                      test -f "$snap"
+    _chk "snapshot lists existing tables only"           test "$(cat "$snap")" = "$(printf 'wp_old\tBASE TABLE')"
+    _chk "snapshot ignores PHP notices on stdout"        bash -c "! grep -q Deprecated '$snap'"
+    printf 'wp_new\tBASE TABLE\nv_new\tVIEW\nwe`ird name\tBASE TABLE\n' >> "$state"
+    local removed; removed=$(import_drop_new_tables "$snap")
+    _chk "drops 3 new tables/views"                      test "$removed" = 3
+    _chk "pre-existing table is kept"                    test "$(cat "$state")" = "$(printf 'wp_old\tBASE TABLE')"
+    _chk "views use DROP VIEW"                           grep -q 'DROP VIEW IF EXISTS `v_new`' "$qlog"
+    _chk "backtick in a name is escaped by doubling"     grep -qF 'DROP TABLE IF EXISTS `we``ird name`' "$qlog"
+    _chk "foreign key checks are off while dropping"     grep -q '^SET FOREIGN_KEY_CHECKS=0;' "$qlog"
+    : > "$qlog"
+    removed=$(import_drop_new_tables "$snap")
+    _chk "nothing new -> 0 removed and no DROP issued"   bash -c "test '$removed' = 0 && ! grep -q DROP '$qlog'"
+    _chk "pre-existing tables are never dropped even if listed twice" test "$(grep -c wp_old "$state")" = 1
+
+    # --- failures
+    RS_LIST_FAILS=1 import_snapshot_tables >/dev/null 2>&1
+    _chk "snapshot fails when the list cannot be read"   test $? -ne 0
+    printf 'wp_new\tBASE TABLE\n' >> "$state"
+    RS_DROP_FAILS=1 import_drop_new_tables "$snap" >/dev/null 2>&1
+    _chk "drop fails when the DROP query fails"          test $? -ne 0
+    unset RS_LIST_FAILS RS_DROP_FAILS
+    import_prepare_retry "" >/dev/null 2>&1
+    _chk "gate: dump with DROP -> allowed, no queries"   bash -c "test $? -eq 0"
+    import_prepare_retry "UNSAFE" >/dev/null 2>&1
+    _chk "gate: no snapshot possible -> blocked"         test $? -ne 0
+    RS_DROP_FAILS=1 import_prepare_retry "$snap" >/dev/null 2>&1
+    _chk "gate: cleanup failure -> blocked"              test $? -ne 0
+    unset RS_DROP_FAILS
+
+    # --- _import_db_query: mysql client first (works in Local), then WP-CLI, then WP-CLI --defaults
+    local qroot="$w/qroot"; mkdir -p "$qroot"
+    printf "<?php\ndefine('DB_NAME','qdb'); define('DB_USER','quser'); define('DB_PASSWORD','q p\$ss'); define('DB_HOST','qhost:3307');\n" > "$qroot/wp-config.php"
+    cat > "$w/q_mysql" <<'EOF'
+#!/usr/bin/env bash
+{ printf 'ARGS:'; printf ' [%s]' "$@"; printf ' PWD=[%s]\n' "${MYSQL_PWD-}"; } >> "$Q_LOG"
+[[ "${Q_FAIL:-}" == 1 ]] && exit 1
+printf 'from_client\tBASE TABLE\n'
+EOF
+    chmod +x "$w/q_mysql"
+    local wpcalls="$w/q_wp.log"
+    _q_wp() { printf '%s\n' "$*" >> "$wpcalls"; if [[ " $* " == *" --defaults "* ]]; then printf 'from_wp_defaults\tBASE TABLE\n'; return 0; fi; [[ -n "${QWP_FAIL:-}" ]] && return 1; printf 'from_wp\tBASE TABLE\n'; }
+    local qout
+    qout=$(cd "$qroot" && Q_LOG="$w/q.log" WPDB_MYSQL_BIN="$w/q_mysql" CONFIG_USE_SOCKET=false WP_ROOT="$qroot" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; execute_wp_cli() { echo wp-called >> '$wpcalls'; return 1; }; _import_db_query 'SHOW FULL TABLES'")
+    _chk "query uses the mysql client when wp-config creds exist" test "$qout" = "$(printf 'from_client\tBASE TABLE')"
+    _chk "client gets user/db/host/port from wp-config"     grep -q '\[--user=quser\].*\[--database=qdb\].*\[--host=qhost\] \[--port=3307\]' "$w/q.log"
+    _chk "password goes through MYSQL_PWD, not argv"         bash -c "grep -qF 'PWD=[q p\$ss]' '$w/q.log' && ! grep -qF -- '--password' '$w/q.log'"
+    _chk "WP-CLI is not called when the client works"        test ! -s "$wpcalls"
+    qout=$(cd "$qroot" && Q_FAIL=1 Q_LOG="$w/q.log" WPDB_MYSQL_BIN="$w/q_mysql" CONFIG_USE_SOCKET=false WP_ROOT="$qroot" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; execute_wp_cli() { printf '%s\n' \"\$*\" >> '$wpcalls'; printf 'from_wp\tBASE TABLE\n'; }; _import_db_query 'SHOW FULL TABLES'")
+    _chk "client failure -> falls back to wp db query"       test "$qout" = "$(printf 'from_wp\tBASE TABLE')"
+    : > "$wpcalls"
+    qout=$(cd "$w" && WPDB_MYSQL_BIN="$w/q_mysql" WP_ROOT="$w/no-such-root" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; execute_wp_cli() { printf '%s\n' \"\$*\" >> '$wpcalls'; if [[ \" \$* \" == *' --defaults '* ]]; then printf 'from_wp_defaults\tBASE TABLE\n'; return 0; fi; return 1; }; _import_db_query 'SHOW FULL TABLES'")
+    _chk "no wp-config creds and wp fails -> wp --defaults"  test "$qout" = "$(printf 'from_wp_defaults\tBASE TABLE')"
+    _chk "wp db query tried before --defaults"               bash -c "head -1 '$wpcalls' | grep -q 'db query SHOW FULL TABLES --skip-column-names$'"
+    unset -f _q_wp
+
+    # --- wp-config parser: several define() calls on one line must not mix up values
+    printf "<?php\ndefine('DB_NAME','n1'); define('DB_USER','u1'); define('DB_PASSWORD','p1'); define('DB_HOST','h1:3307');\n" > "$w/one_line.php"
+    _chk "one-line wp-config: each constant gets its own value" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; get_wp_db_credentials '$w/one_line.php' && test \"\$WP_DB_NAME|\$WP_DB_USER|\$WP_DB_PASSWORD|\$WP_DB_HOST\" = 'n1|u1|p1|h1:3307'"
+    printf "<?php\ndefine( 'DB_NAME', 'local' );\ndefine( \"DB_USER\", \"root\" );\ndefine( 'DB_PASSWORD', 'pw' );\ndefine( 'DB_HOST', 'localhost' );\n" > "$w/multi_line.php"
+    _chk "normal wp-config still parsed (single and double quotes)" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; get_wp_db_credentials '$w/multi_line.php' && test \"\$WP_DB_NAME|\$WP_DB_USER|\$WP_DB_PASSWORD|\$WP_DB_HOST\" = 'local|root|pw|localhost'"
+
+    # --- end-to-end flow of perform_db_import (WP-CLI path) with a fake importer
+    show_spinner() { return 0; }
+    export CONFIG_USE_SOCKET=false CONFIG_BACKUP_BEFORE_IMPORT=false
+    _has() { grep -qF "$1" "$state"; }
+    perform_db_import_via_wpcli() {
+        local f="$1" log="$2" compat="$3" mode="${5:-}"
+        echo "$compat $mode" >> "$attempts"
+        if grep -q '^DROP TABLE' "$f"; then
+            grep -vE '^(t1|t2)'$'\t' "$state" > "$state.t"; mv "$state.t" "$state"       # a dump that drops its tables
+        fi
+        if _has "t1"; then echo "ERROR 1050 (42S01) at line 1: Table 't1' already exists" > "$log"; return 1; fi
+        printf 't1\tBASE TABLE\n' >> "$state"
+        if [[ "${RS_FAIL_KIND:-compat}" == "net" && "$mode" != "direct" ]]; then echo "ERROR 2002 (HY000): Can't connect" > "$log"; return 1; fi
+        if [[ "$compat" != "true" && "${RS_FAIL_KIND:-compat}" == "compat" ]]; then echo "ERROR 1273 (HY000): Unknown collation" > "$log"; return 1; fi
+        printf 't2\tBASE TABLE\n' >> "$state"; : > "$log"; return 0
+    }
+    printf 'CREATE TABLE t1 (i int);\nCREATE TABLE t2 (i int);\n' > "$w/rs_flow_nodrop.sql"
+    printf 'DROP TABLE IF EXISTS t1;\nCREATE TABLE t1 (i int);\nCREATE TABLE t2 (i int);\n' > "$w/rs_flow_drop.sql"
+    local out raw
+
+    _rs_reset
+    raw=$(perform_db_import "$w/rs_flow_nodrop.sql" "$w/rs_flow.log" 2>&1 </dev/null); local frc=$?; out=$(printf '%s' "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+    _chk "no-DROP dump: import succeeds after cleanup"   bash -c "test $frc -eq 0 && grep -q 'Database import successful' <<< '$out'"
+    _chk "no-DROP dump: tells the user what it removed"  grep -q 'removed 1 table(s) created by the failed attempt' <<< "$out"
+    _chk "no-DROP dump: compat filter was used"          grep -q 'compatibility filter' <<< "$out"
+    _chk "no-DROP dump: final tables are old+t1+t2"      test "$(cut -f1 "$state" | sort | tr '\n' ' ')" = "t1 t2 wp_old "
+    _chk "no-DROP dump: exactly two attempts"            test "$(wc -l < "$attempts" | tr -d ' ')" = 2
+    _chk "no-DROP dump: pre-existing wp_old untouched"   _has wp_old
+
+    _rs_reset
+    raw=$(perform_db_import "$w/rs_flow_drop.sql" "$w/rs_flow.log" 2>&1 </dev/null); frc=$?; out=$(printf '%s' "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+    _chk "dump with DROP: succeeds with no table snapshot or cleanup" bash -c "grep -q 'Database import successful' <<< '$out' && ! grep -q 'SHOW FULL TABLES' '$qlog' && ! grep -q 'DROP' '$qlog'"
+
+    _rs_reset; RS_LIST_FAILS=1
+    raw=$(perform_db_import "$w/rs_flow_nodrop.sql" "$w/rs_flow.log" 2>&1 </dev/null); frc=$?; out=$(printf '%s' "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+    unset RS_LIST_FAILS
+    _chk "unsafe (no snapshot): import fails instead of guessing" test "$frc" -ne 0
+    _chk "unsafe: explains why it did not retry"         grep -q 'Cannot retry safely' <<< "$out"
+    _chk "unsafe: only one attempt was made"             test "$(wc -l < "$attempts" | tr -d ' ')" = 1
+
+    # fallback after a non-compat failure also starts from a clean table state
+    _rs_reset; RS_FAIL_KIND=net
+    raw=$(perform_db_import "$w/rs_flow_nodrop.sql" "$w/rs_flow.log" 2>&1 </dev/null); frc=$?; out=$(printf '%s' "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+    unset RS_FAIL_KIND
+    _chk "fallback after a network failure: cleanup then direct import works" bash -c "test $frc -eq 0 && grep -q 'removed 1 table' <<< '$out'"
+    _chk "fallback: direct mode was used"                grep -q ' direct$' "$attempts"
+
+    # cleanup failure blocks the retry and reports failure
+    _rs_reset; RS_DROP_FAILS=1
+    raw=$(perform_db_import "$w/rs_flow_nodrop.sql" "$w/rs_flow.log" 2>&1 </dev/null); frc=$?; out=$(printf '%s' "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+    unset RS_DROP_FAILS
+    _chk "cleanup failure: import reported as failed"    bash -c "test $frc -ne 0 && grep -q 'Database import failed' <<< '$out'"
+    _chk "cleanup failure: first errors are shown"       grep -q 'ERROR 1273' <<< "$out"
+
+    unset -f execute_wp_cli show_spinner perform_db_import_via_wpcli _has _rs_reset
+    unset CONFIG_USE_SOCKET CONFIG_BACKUP_BEFORE_IMPORT RS_FAIL_KIND
+    _hard_load
+    _finish "retries are safe for dumps without DROP TABLE"
+}
+
+# ================================================================
 # Fixtures must be tracked (a *.sql ignore rule once hid them)
 # ================================================================
 test_fixtures_tracked() {
     start_test "SQL Fixtures" "matrix fixtures exist and are not git-ignored"
     local errors=0 f
-    for f in dump_legacy.sql dump_mariadb11.sql dump_mysql8.sql; do
+    for f in dump_legacy.sql dump_mariadb11.sql dump_mysql8.sql dump_nodrop_mariadb11.sql; do
         _chk "fixture exists: $f"                     test -s "$_HARD_ROOT/lib/tests/fixtures/$f"
         if command -v git >/dev/null 2>&1 && git -C "$_HARD_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
             _chk "fixture is not git-ignored: $f"     bash -c "! git -C '$_HARD_ROOT' check-ignore -q 'lib/tests/fixtures/$f'"
@@ -754,6 +984,8 @@ run_import_hardening_tests() {
     test_import_stream_via_stub
     test_benchmark_scratch_db
     test_backup_before_import
+    test_mysql_client_selection
+    test_retry_safety
     test_fixtures_tracked
     test_temp_cleanup
     test_backup_rotation

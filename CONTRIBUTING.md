@@ -238,6 +238,8 @@ Run these before opening a pull request that touches import, backup, temp files 
 - New temp files go in `$(secure_tmpdir)`, never a fixed `/tmp/...` path.
 - `WPDB_MATRIX_SERVERS="/path/to/bin ..."` adds servers (directories containing `mysqld` or `mariadbd`) to the matrix test.
 - `WPDB_MYSQL_BIN=/path/to/mysql` makes the importer use a specific client (used by the tests with stubs).
+- Never put Homebrew or `/usr/local/bin` **before** `$PATH`. Use `PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"` so the user's environment wins (a test enforces this).
+- Anything that runs SQL outside the import should use `_import_db_query` (mysql client with wp-config credentials, then WP-CLI): `wp db query` cannot connect in Local.
 
 ### Local Test Automation (Optional)
 

@@ -19,6 +19,7 @@ Small dumps used by `integration/test_server_matrix.sh` (each creates `wp_posts`
 - `dump_legacy.sql` - plain WordPress-style dump every MySQL/MariaDB version accepts
 - `dump_mariadb11.sql` - MariaDB 11 style: `uca1400` collation, `ENGINE=Aria`, sandbox-mode first line
 - `dump_mysql8.sql` - MySQL 8 style: `0900_ai_ci` collation, `utf8mb3`, `GTID_PURGED`, `DEFINER` view
+- `dump_nodrop_mariadb11.sql` - no `DROP TABLE` statements; on MySQL the second table fails (`utf8mb3_uca1400_ai_ci`), so the retry needs the first attempt's table removed (issue #27)
 
 ## Usage
 

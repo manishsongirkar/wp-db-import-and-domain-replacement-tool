@@ -294,7 +294,19 @@ Dumps from a different server version (for example a MariaDB 11 dump into MySQL 
 - changes `ENGINE=Aria` to `InnoDB` and removes `TRANSACTIONAL` / `PAGE_CHECKSUM`;
 - removes `DEFINER=...` clauses, `NO_AUTO_CREATE_USER`, `GTID_PURGED` / `SQL_LOG_BIN` statements and the MariaDB "sandbox mode" first line.
 
-The filter only touches DDL and session statements. Row data inside `INSERT` statements is never modified. When the filter was used, the tool says so after the import. The retry is safe because WordPress dumps drop and recreate their tables.
+The filter only touches DDL and session statements. Row data inside `INSERT` statements is never modified. When the filter was used, the tool says so after the import.
+
+**Retry safety:** most dumps drop and recreate their tables, so a retry starts clean. For dumps made without `DROP TABLE` statements (for example `mysqldump --skip-add-drop-table`), the tool saves the table list before importing. Before any retry or fallback it removes only the tables the failed attempt created; tables that existed before are never touched. If the table list cannot be saved, the tool does not retry and tells you why.
+
+### 🔧 Which mysql client is used
+
+The tool uses the `mysql` client that comes first in your `PATH`, so the client of your environment (Local, MAMP, DBngin, a Homebrew service you chose, ...) is the one that talks to the server. `/opt/homebrew/bin` and `/usr/local/bin` are only searched **after** your `PATH`, as a fallback. If the client and the server are different products (a MariaDB client with a MySQL server, or the reverse) the tool prints a warning with the client path.
+
+| Variable | Purpose |
+|---|---|
+| `WPDB_MYSQL_BIN=/path/to/mysql` | Use exactly this client |
+| `WPDB_FALLBACK_PATH=/dir1:/dir2` | Fallback directories searched after `PATH` (default `/opt/homebrew/bin:/usr/local/bin`) |
+| `WPDB_VERBOSE=1` | Print which mysql client is used |
 
 ### 🔒 Security Notes
 

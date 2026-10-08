@@ -180,7 +180,8 @@ perform_db_import_via_wpcli() {
         rc=$?
     else
         (
-            export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+            # Fallback directories go AFTER the user's PATH so the active environment's client wins
+            export PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"
             if [[ "$compat" != "true" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
                 "$wp_cmd" db import "$sql_file"
             else
@@ -364,6 +365,129 @@ estimate_import_duration() {
 }
 
 # ================================================================
+# Warn when the mysql client and the server are different products
+# ================================================================
+#
+# A MariaDB client talking to a MySQL server (or the reverse) can behave differently, for
+# example exit 0 although statements failed. Parameters: client binary, socket, host, user,
+# password, database. Never fails; prints a warning only when the flavors differ.
+#
+_warn_client_server_mismatch() {
+    local bin="$1" socket="$2" host="$3" user="$4" pass="$5" db="$6" server client
+    [[ -n "$bin" ]] || return 0
+    _build_mysql_args "$socket" "$host" "$user" "$db" 5
+    server=$(MYSQL_PWD="$pass" "$bin" "${_WPDB_MYSQL_ARGS[@]}" -N -e "SELECT VERSION()" 2>/dev/null | head -1)
+    [[ -n "$server" ]] || return 0
+    client=$("$bin" --version 2>/dev/null | head -1)
+    if [[ "$(_mysql_flavor "$client")" != "$(_mysql_flavor "$server")" ]]; then
+        printf "${YELLOW}⚠️  The mysql client (%s) is a different product than the server (%s).${RESET}\n" "$(_mysql_flavor "$client")" "$server"
+        printf "${YELLOW}   Client: %s${RESET}\n" "$bin"
+        printf "${YELLOW}   Put the matching client first in PATH, or set WPDB_MYSQL_BIN to its full path.${RESET}\n"
+    fi
+    return 0
+}
+
+# ================================================================
+# Retry safety: tables created by a failed attempt
+# ================================================================
+#
+# Description:
+#   A dump without DROP TABLE statements cannot be re-run after a partly failed import:
+#   the tables the first attempt created make every CREATE TABLE fail ("already exists").
+#   Before such a dump is imported, the table list is saved. Before any retry or fallback,
+#   ONLY the tables (and views) that were not in that list are removed. Tables that existed
+#   before the import are never touched. Dumps that drop their own tables skip all of this.
+#
+
+# Runs one SQL statement on the WordPress database; prints rows tab-separated, no header.
+# Order: 1) the mysql client with wp-config credentials and the detected socket (the same
+# connection the import uses; this is the only way that works in Local, where `wp db query`
+# cannot connect), 2) `wp db query`, 3) `wp db query --defaults`. Returns 1 if all fail.
+_import_db_query() {
+    local sql="$1" bin root
+    root="${WP_ROOT:-$(pwd)}"
+    if bin=$(_find_mysql_bin) && declare -F get_wp_db_credentials >/dev/null 2>&1 \
+        && get_wp_db_credentials "$root" >/dev/null 2>&1; then
+        if [[ -z "${_IMPORT_SOCKET_CACHE+x}" ]]; then
+            _IMPORT_SOCKET_CACHE=""
+            if [[ "${CONFIG_USE_SOCKET:-auto}" != "false" ]] && declare -F detect_mysql_socket >/dev/null 2>&1; then
+                _IMPORT_SOCKET_CACHE=$(detect_mysql_socket "$root" "${CONFIG_MYSQL_SOCKET:-}" 2>/dev/null || true)
+            fi
+        fi
+        _build_mysql_args "$_IMPORT_SOCKET_CACHE" "${WP_DB_HOST:-}" "$WP_DB_USER" "$WP_DB_NAME" 10
+        if MYSQL_PWD="${WP_DB_PASSWORD:-}" "$bin" "${_WPDB_MYSQL_ARGS[@]}" -N -B -e "$sql" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    execute_wp_cli db query "$sql" --skip-column-names 2>/dev/null && return 0
+    execute_wp_cli db query "$sql" --skip-column-names --defaults 2>/dev/null
+}
+
+# Prints "name<TAB>type" per table/view, sorted. Returns 1 if the list cannot be read.
+_import_list_tables() {
+    local out rc
+    out=$(_import_db_query "SHOW FULL TABLES")
+    rc=$?
+    [[ "$rc" -eq 0 ]] || return 1
+    # keep only real rows (ignore any PHP notices that reached stdout)
+    printf "%s\n" "$out" | LC_ALL=C grep -E "$(printf '\t')(BASE TABLE|VIEW|SYSTEM VIEW)$" | LC_ALL=C sort
+    return 0
+}
+
+# Saves the current table list to a private file. Prints the file path; returns 1 on failure.
+import_snapshot_tables() {
+    local dir file list
+    dir=$(secure_tmpdir) || return 1
+    file="$dir/tables_before.txt"
+    list=$(_import_list_tables) || return 1
+    printf "%s\n" "$list" | sed '/^$/d' > "$file" || return 1
+    printf "%s" "$file"
+}
+
+# Removes tables and views that are not in the snapshot. Prints how many were removed.
+# Returns 1 if the current list cannot be read or the DROP fails (the retry must not go on).
+import_drop_new_tables() {
+    local snapshot="$1" now new sql name type esc count=0
+    now=$(_import_list_tables) || return 1
+    new=$(comm -13 "$snapshot" <(printf "%s\n" "$now" | sed '/^$/d') 2>/dev/null)
+    if [[ -z "$new" ]]; then
+        printf "0"
+        return 0
+    fi
+    sql="SET FOREIGN_KEY_CHECKS=0;"
+    while IFS=$'\t' read -r name type; do
+        [[ -n "$name" ]] || continue
+        esc=${name//\`/\`\`}
+        case "$type" in
+            "BASE TABLE") sql+=" DROP TABLE IF EXISTS \`${esc}\`;"; count=$((count + 1)) ;;
+            "VIEW")       sql+=" DROP VIEW IF EXISTS \`${esc}\`;"; count=$((count + 1)) ;;
+        esac
+    done <<< "$new"
+    _import_db_query "$sql" >/dev/null 2>&1 || return 1
+    printf "%d" "$count"
+}
+
+# Gate before every retry or fallback attempt.
+# Parameters: $1 = snapshot file, "" (dump drops its own tables) or "UNSAFE" (no snapshot possible)
+# Returns 0 if it is safe to run the import again.
+import_prepare_retry() {
+    local snapshot="$1" removed
+    [[ -z "$snapshot" ]] && return 0
+    if [[ "$snapshot" == "UNSAFE" ]]; then
+        printf "${RED}❌ Cannot retry safely: the dump has no DROP TABLE statements and the table list could not be saved.${RESET}\n"
+        return 1
+    fi
+    if ! removed=$(import_drop_new_tables "$snapshot"); then
+        printf "${RED}❌ Could not remove the tables created by the failed attempt; not retrying.${RESET}\n"
+        return 1
+    fi
+    if [[ "${removed:-0}" -gt 0 ]]; then
+        printf "${YELLOW}ℹ️  The dump has no DROP TABLE statements: removed %d table(s) created by the failed attempt before retrying.${RESET}\n" "$removed"
+    fi
+    return 0
+}
+
+# ================================================================
 # Perform Database Import
 # ================================================================
 #
@@ -430,6 +554,16 @@ perform_db_import() {
     local import_success=false
     local import_method=""
     local compat_used=false
+
+    # Retry safety: if the dump never drops its tables, remember which tables exist now so a
+    # failed attempt's leftovers can be removed before any retry or fallback.
+    # "" = dump drops its own tables, "UNSAFE" = no snapshot possible, otherwise the snapshot file.
+    local tables_snapshot="" import_attempts=0 retry_blocked=false
+    if ! sql_has_drop_table "$sql_file"; then
+        if ! tables_snapshot=$(import_snapshot_tables); then
+            tables_snapshot="UNSAFE"
+        fi
+    fi
     local optimization_mode="${CONFIG_IMPORT_OPTIMIZATIONS:-auto}"
     local use_parallel_import="${CONFIG_PARALLEL_IMPORT:-false}"
 
@@ -541,6 +675,14 @@ perform_db_import() {
                     printf "${CYAN}🚀 Import optimization:${RESET} session checks disabled during load (autocommit/foreign_key/unique)\n"
                 fi
 
+                local client_bin
+                client_bin=$(_find_mysql_bin)
+                if _is_truthy "${WPDB_VERBOSE:-false}"; then
+                    printf "${DIM}🔧 mysql client: %s${RESET}\n" "$(_describe_mysql_client "$client_bin")"
+                fi
+                _warn_client_server_mismatch "$client_bin" "$socket_path" "$db_host" "$db_user" "$db_pass" "$db_name"
+
+                import_attempts=$((import_attempts + 1))
                 (
                     perform_db_import_via_socket \
                         "$sql_file" "$log_file" \
@@ -555,25 +697,31 @@ perform_db_import() {
                     import_method="$mysql_cli_mode"
                 else
                     # Version-specific SQL (collations, DEFINER, ...): retry once with the filter.
-                    # Safe to re-run: dumps drop and recreate their tables.
+                    # Safe to re-run: dumps drop their tables, or the tables the failed attempt
+                    # created are removed first (import_prepare_retry).
                     if import_error_is_compat_related "$log_file"; then
                         printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
-                        (
-                            perform_db_import_via_socket \
-                                "$sql_file" "$log_file" \
-                                "$socket_path" "$db_host" \
-                                "$db_user" "$db_pass" "$db_name" \
-                                "$use_optimized_session" "true"
-                        ) &
-                        socket_pid=$!
-                        show_spinner "$socket_pid" "Importing"
-                        if wait "$socket_pid"; then
-                            import_success=true
-                            import_method="$mysql_cli_mode"
-                            compat_used=true
+                        if ! import_prepare_retry "$tables_snapshot"; then
+                            retry_blocked=true
+                        else
+                            import_attempts=$((import_attempts + 1))
+                            (
+                                perform_db_import_via_socket \
+                                    "$sql_file" "$log_file" \
+                                    "$socket_path" "$db_host" \
+                                    "$db_user" "$db_pass" "$db_name" \
+                                    "$use_optimized_session" "true"
+                            ) &
+                            socket_pid=$!
+                            show_spinner "$socket_pid" "Importing"
+                            if wait "$socket_pid"; then
+                                import_success=true
+                                import_method="$mysql_cli_mode"
+                                compat_used=true
+                            fi
                         fi
                     fi
-                    if [[ "$import_success" == "false" ]]; then
+                    if [[ "$import_success" == "false" && "$retry_blocked" == "false" ]]; then
                         if [[ "$mysql_cli_mode" == "socket" ]]; then
                             printf "${YELLOW}⚠️  Socket import failed, falling back to WP-CLI...${RESET}\n"
                             wp_cli_reason="socket import failed"
@@ -597,13 +745,22 @@ perform_db_import() {
     # --------------------------------------------------------
     local wp_cmd="${WP_COMMAND:-wp}"
 
-    if [[ "$import_success" == "false" ]]; then
+    # A fallback after an earlier attempt must start from the same table state as the first one
+    if [[ "$import_success" == "false" && "$retry_blocked" == "false" && "$import_attempts" -gt 0 ]]; then
+        import_prepare_retry "$tables_snapshot" || retry_blocked=true
+    fi
+
+    if [[ "$import_success" == "false" && "$retry_blocked" == "false" ]]; then
+        if _is_truthy "${WPDB_VERBOSE:-false}"; then
+            printf "${DIM}🔧 mysql client for WP-CLI: %s${RESET}\n" "$( ( export PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"; command -v mysql || echo 'not found' ) )"
+        fi
         if [[ -n "$wp_cli_reason" ]]; then
             printf "${CYAN}ℹ️  Import method:${RESET} WP-CLI ${DIM}(%s)${RESET}\n" "$wp_cli_reason"
         else
             printf "${CYAN}ℹ️  Import method:${RESET} WP-CLI\n"
         fi
 
+        import_attempts=$((import_attempts + 1))
         perform_db_import_via_wpcli "$sql_file" "$log_file" false "$wp_cmd" &
         local spinner_pid=$!
         show_spinner "$spinner_pid" "Importing"
@@ -612,13 +769,18 @@ perform_db_import() {
             import_method="wp-cli"
         elif import_error_is_compat_related "$log_file"; then
             printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
-            perform_db_import_via_wpcli "$sql_file" "$log_file" true "$wp_cmd" &
-            spinner_pid=$!
-            show_spinner "$spinner_pid" "Importing"
-            if wait "$spinner_pid"; then
-                import_success=true
-                import_method="wp-cli"
-                compat_used=true
+            if ! import_prepare_retry "$tables_snapshot"; then
+                retry_blocked=true
+            else
+                import_attempts=$((import_attempts + 1))
+                perform_db_import_via_wpcli "$sql_file" "$log_file" true "$wp_cmd" &
+                spinner_pid=$!
+                show_spinner "$spinner_pid" "Importing"
+                if wait "$spinner_pid"; then
+                    import_success=true
+                    import_method="wp-cli"
+                    compat_used=true
+                fi
             fi
         fi
     fi
@@ -626,7 +788,11 @@ perform_db_import() {
     # --------------------------------------------------------
     # Method 3: WP-CLI direct (restricted env)
     # --------------------------------------------------------
-    if [[ "$import_success" == "false" ]]; then
+    if [[ "$import_success" == "false" && "$retry_blocked" == "false" ]]; then
+        import_prepare_retry "$tables_snapshot" || retry_blocked=true
+    fi
+
+    if [[ "$import_success" == "false" && "$retry_blocked" == "false" ]]; then
         printf "${YELLOW}Fallback: Direct WP-CLI execution...${RESET}\n"
         if perform_db_import_via_wpcli "$sql_file" "$log_file" "$compat_used" "$wp_cmd" direct; then
             import_success=true
@@ -675,4 +841,5 @@ export -f estimate_import_duration
 export -f perform_db_import_via_socket
 export -f perform_db_import_via_wpcli
 export -f _emit_import_stream
+export -f _warn_client_server_mismatch _import_db_query _import_list_tables import_snapshot_tables import_drop_new_tables import_prepare_retry
 export -f perform_db_import
