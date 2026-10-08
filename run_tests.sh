@@ -553,6 +553,16 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_socket_detection.sh" ]]; then
+        run_test_suite "Unit Tests (Socket)" "$test_dir/test_socket_detection.sh" "MySQL socket detection unit tests"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
+    if [[ -f "$test_dir/test_import_performance.sh" ]]; then
+        run_test_suite "Unit Tests (Import Performance)" "$test_dir/test_import_performance.sh" "Import performance feature unit tests"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
     return $overall_result
 }
 

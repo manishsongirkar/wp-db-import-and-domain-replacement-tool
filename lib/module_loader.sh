@@ -248,6 +248,11 @@ load_config_modules() {
 load_database_modules() {
     local database_dir="$LIB_DIR/database"
 
+    # Load socket detector (auto-detects MySQL Unix socket for faster imports)
+    if [[ -f "$database_dir/socket_detector.sh" ]]; then
+        source "$database_dir/socket_detector.sh" 2>/dev/null
+    fi
+
     # Load search and replace utilities
     if [[ -f "$database_dir/search_replace.sh" ]]; then
         source "$database_dir/search_replace.sh" 2>/dev/null

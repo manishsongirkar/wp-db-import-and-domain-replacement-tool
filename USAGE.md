@@ -59,12 +59,28 @@ dry_run=false
 clear_revisions=true
 setup_stage_proxy=true
 auto_proceed=false
+use_socket=auto
+mysql_socket=
+import_optimizations=auto
+parallel_import=false
 
 [site_mappings]
 1:production-site.com:local-site.test
 2:blog.production-site.com:local-site.test/blog
 3:shop.production-site.com:local-site.test/shop
 ```
+
+### Socket Import Behavior
+
+- `use_socket=auto` is the recommended default for Local, Homebrew MySQL, MAMP, DBngin, and similar host-native setups.
+- Set `mysql_socket` only if you want to override auto-detection with a fixed socket path.
+- On host-side Lando and DDEV projects, MySQL runs inside Docker, so there is no host-accessible socket file to use. In that case the tool skips socket import and falls back to WP-CLI automatically.
+
+### Import Optimization Behavior
+
+- `import_optimizations=auto` applies session-level MySQL import flags (`AUTOCOMMIT=0`, `FOREIGN_KEY_CHECKS=0`, `UNIQUE_CHECKS=0`) when using direct mysql/socket import.
+- These flags are skipped automatically when importing through WP-CLI fallback so behavior stays compatible.
+- `parallel_import` stays disabled by default because regular SQL dumps are order-sensitive; forcing parallel execution can corrupt import order.
 
 ### Example Setup
 ```bash
