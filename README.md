@@ -206,6 +206,10 @@ dry_run=false
 clear_revisions=true
 setup_stage_proxy=true
 auto_proceed=false
+use_socket=auto
+mysql_socket=
+import_optimizations=auto
+parallel_import=false
 
 [site_mappings]
 # Format: blog_id:old_domain:new_domain
@@ -216,6 +220,19 @@ auto_proceed=false
 5:support.example.com:example.test/support
 6:docs.example.com:example.test/docs
 ```
+
+### MySQL Socket Notes
+
+- `use_socket=auto` tries a Unix socket first for faster local imports, then falls back to WP-CLI if no usable socket is available.
+- `use_socket=true` forces a socket attempt, and `use_socket=false` disables socket import entirely.
+- `mysql_socket=` lets you pin a known socket path when your environment uses a non-standard location.
+- Host-side Docker tools like Lando and DDEV do not expose the MySQL socket on the host filesystem, so the tool intentionally skips socket probing there and uses the WP-CLI path instead.
+
+### Import Performance Notes
+
+- `import_optimizations=auto` enables session-level MySQL flags during direct mysql/socket imports: `AUTOCOMMIT=0`, `FOREIGN_KEY_CHECKS=0`, `UNIQUE_CHECKS=0`.
+- `import_optimizations=true` forces those flags for direct mysql imports, and `import_optimizations=false` disables them.
+- `parallel_import=false` remains the safe default because generic SQL dumps are order-sensitive. Turning it on currently logs a warning and continues with safe single-stream import.
 
 ### 🤖 How It Works
 

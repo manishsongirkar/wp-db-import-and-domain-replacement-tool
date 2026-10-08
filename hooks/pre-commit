@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+# ================================================================
+# Pre-Commit Hook for Test Automation
+# ================================================================
+#
+# Description:
+#   Git hook that runs the full test suite before allowing commits.
+#   Prevents code changes from being committed if tests fail.
+#
+# Installation:
+#   cp hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Usage:
+#   Automatically runs when you commit (git commit)
+#   Use --no-verify to skip tests: git commit --no-verify
+#
+# ================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+printf "\n${CYAN}🧪 Running pre-commit tests...${RESET}\n\n"
+
+cd "$PROJECT_ROOT"
+
+# Run the test suite
+if ! ./run_tests.sh all >/tmp/pre_commit_tests.log 2>&1; then
+    printf "\n${RED}❌ Pre-commit tests failed!${RESET}\n"
+    printf "${YELLOW}Review test output:${RESET}\n"
+    tail -50 /tmp/pre_commit_tests.log
+    printf "\n${YELLOW}To commit anyway, use: git commit --no-verify${RESET}\n\n"
+    exit 1
+fi
+
+printf "${GREEN}✅ All pre-commit tests passed!${RESET}\n\n"
+exit 0

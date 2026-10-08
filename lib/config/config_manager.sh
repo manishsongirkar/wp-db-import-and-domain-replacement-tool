@@ -151,6 +151,50 @@ clear_revisions=true
 setup_stage_proxy=true
 auto_proceed=false
 
+# -----------------------------------------------
+# MySQL Socket Settings (optional)
+# -----------------------------------------------
+# use_socket controls whether to attempt a Unix socket connection for
+# the import. Socket connections bypass the TCP/IP stack and are
+# significantly faster for local development environments.
+#
+# Values:
+#   auto  — Auto-detect. Uses socket if available, falls back to WP-CLI (default)
+#   true  — Always attempt socket import; error if socket not found
+#   false — Disable socket import; always use WP-CLI
+#
+use_socket=auto
+
+# mysql_socket allows you to pin a specific socket file path.
+# Leave blank to let the tool auto-detect the socket path.
+# Example: mysql_socket=/opt/homebrew/var/mysql/mysql.sock
+mysql_socket=
+
+# -----------------------------------------------
+# Import Optimization Settings (optional)
+# -----------------------------------------------
+# import_optimizations controls whether session-level MySQL optimization
+# flags are applied during direct mysql imports:
+#   SET AUTOCOMMIT=0;
+#   SET FOREIGN_KEY_CHECKS=0;
+#   SET UNIQUE_CHECKS=0;
+#
+# Values:
+#   auto  — Enable only for direct mysql/socket imports (default)
+#   true  — Force-enable optimizations for direct mysql imports
+#   false — Disable optimizations
+#
+import_optimizations=auto
+
+# parallel_import remains disabled because generic SQL dumps are order-sensitive.
+# Safe parallel loading requires table-chunked exports generated for parallel tools.
+#
+# Values:
+#   false — Disabled (default)
+#   true  — Reserved for future specialized workflows
+#
+parallel_import=false
+
 [site_mappings]
 # Format:
 # blog_id:old_domain:new_domain
@@ -460,6 +504,65 @@ update_config_general() {
     else
         return 1
     fi
+}
+
+# ===============================================
+# Ensure Import Config Settings Exist
+# ===============================================
+#
+# Description: Updates an existing config file with import settings if they are
+#              missing from the [general] section.
+#
+# Parameters:
+#	- $1: Path to the config file.
+#
+# Returns:
+#	- 0 (Success) if the config already had the settings or was updated.
+#	- 1 (Failure) if the config file does not exist or an update fails.
+#
+ensure_socket_config_settings() {
+    local config_path="$1"
+    local updated=false
+
+    CONFIG_SOCKET_SETTINGS_MIGRATED="false"
+
+    if [[ ! -f "$config_path" ]]; then
+        return 1
+    fi
+
+    if ! grep -qi '^[[:space:]]*use_socket[[:space:]]*=' "$config_path" 2>/dev/null; then
+        if ! update_config_general "$config_path" "use_socket" "auto"; then
+            return 1
+        fi
+        updated=true
+    fi
+
+    if ! grep -qi '^[[:space:]]*mysql_socket[[:space:]]*=' "$config_path" 2>/dev/null; then
+        if ! update_config_general "$config_path" "mysql_socket" ""; then
+            return 1
+        fi
+        updated=true
+    fi
+
+    if ! grep -qi '^[[:space:]]*import_optimizations[[:space:]]*=' "$config_path" 2>/dev/null; then
+        if ! update_config_general "$config_path" "import_optimizations" "auto"; then
+            return 1
+        fi
+        updated=true
+    fi
+
+    if ! grep -qi '^[[:space:]]*parallel_import[[:space:]]*=' "$config_path" 2>/dev/null; then
+        if ! update_config_general "$config_path" "parallel_import" "false"; then
+            return 1
+        fi
+        updated=true
+    fi
+
+    if [[ "$updated" == "true" ]]; then
+        CONFIG_SOCKET_SETTINGS_MIGRATED="true"
+    fi
+
+    return 0
 }
 
 # ===============================================

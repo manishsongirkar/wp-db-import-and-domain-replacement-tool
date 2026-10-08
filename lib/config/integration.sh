@@ -47,9 +47,17 @@ load_import_config() {
     export CONFIG_CLEAR_REVISIONS=""
     export CONFIG_SETUP_STAGE_PROXY=""
     export CONFIG_AUTO_PROCEED=""
+    export CONFIG_USE_SOCKET=""
+    export CONFIG_MYSQL_SOCKET=""
+    export CONFIG_IMPORT_OPTIMIZATIONS=""
+    export CONFIG_PARALLEL_IMPORT=""
 
     if [[ ! -f "$config_path" ]]; then
         return 1
+    fi
+
+    if declare -F ensure_socket_config_settings >/dev/null 2>&1; then
+        ensure_socket_config_settings "$config_path" >/dev/null 2>&1 || true
     fi
 
     # Load general settings
@@ -61,6 +69,23 @@ load_import_config() {
     CONFIG_CLEAR_REVISIONS=$(parse_config_section "$config_path" "general" "clear_revisions")
     CONFIG_SETUP_STAGE_PROXY=$(parse_config_section "$config_path" "general" "setup_stage_proxy")
     CONFIG_AUTO_PROCEED=$(parse_config_section "$config_path" "general" "auto_proceed")
+
+    # Load socket settings (optional — empty string is valid, means auto-detect)
+    local raw_use_socket
+    raw_use_socket=$(parse_config_section "$config_path" "general" "use_socket")
+    # Normalize: default to "auto" when key is absent or empty
+    CONFIG_USE_SOCKET="${raw_use_socket:-auto}"
+
+    CONFIG_MYSQL_SOCKET=$(parse_config_section "$config_path" "general" "mysql_socket")
+
+    # Import optimization settings
+    local raw_import_optimizations
+    raw_import_optimizations=$(parse_config_section "$config_path" "general" "import_optimizations")
+    CONFIG_IMPORT_OPTIMIZATIONS="${raw_import_optimizations:-auto}"
+
+    local raw_parallel_import
+    raw_parallel_import=$(parse_config_section "$config_path" "general" "parallel_import")
+    CONFIG_PARALLEL_IMPORT="${raw_parallel_import:-false}"
 
     return 0
 }

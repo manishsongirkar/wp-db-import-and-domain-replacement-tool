@@ -184,7 +184,7 @@ test_wp_cli_integration() {
     fi
 
     # Test WP-CLI version compatibility
-    local wp_version=$(wp --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' || echo "unknown")
+    local wp_version=$(wp --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' | head -1 || echo "unknown")
     printf "    WP-CLI version: $wp_version\n"
 
     # Check if version is recent enough (2.0+)

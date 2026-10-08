@@ -736,6 +736,7 @@ if is_sourced; then
         export -f create_temp_file
         export -f check_wp_config_constant
         export -f detect_multisite_filesystem_indicators
+        export -f get_wp_db_credentials
     } 2>/dev/null
 fi
 
@@ -863,6 +864,102 @@ get_wp_table_prefix() {
     fi
 
     echo "$table_prefix"
+}
+
+# ===============================================
+# Get WordPress Database Credentials
+# ===============================================
+#
+# Description:
+#   Safely extracts MySQL connection credentials from wp-config.php
+#   using grep/sed pattern matching. Never sources the PHP file to
+#   prevent arbitrary code execution.
+#
+# Parameters:
+#   $1: Path to WordPress root directory or wp-config.php file.
+#
+# Returns:
+#   Exports the following variables on success:
+#     WP_DB_HOST     - Database host (may include socket, e.g. localhost:/path/to.sock)
+#     WP_DB_NAME     - Database name
+#     WP_DB_USER     - Database user
+#     WP_DB_PASSWORD - Database password
+#   Returns 0 on success, 1 if wp-config.php is not found or unreadable.
+#
+# Security Note:
+#   Uses pure AWK to parse the PHP file — never eval/source it.
+#   Portable across macOS BSD awk, Linux gawk/mawk, and all Bash versions.
+#   Passwords containing commas and special characters are handled correctly.
+#
+get_wp_db_credentials() {
+    local wp_path="$1"
+    local wp_config
+
+    # Accept either directory or direct file path
+    if [[ -d "$wp_path" ]]; then
+        wp_config="$wp_path/wp-config.php"
+    elif [[ -f "$wp_path" ]]; then
+        wp_config="$wp_path"
+    else
+        wp_config="${wp_path}/wp-config.php"
+    fi
+
+    if [[ ! -f "$wp_config" ]]; then
+        printf "${RED:-}❌ wp-config.php not found at: %s${RESET:-}\n" "$wp_config" >&2
+        return 1
+    fi
+
+    if [[ ! -r "$wp_config" ]]; then
+        printf "${RED:-}❌ wp-config.php is not readable: %s${RESET:-}\n" "$wp_config" >&2
+        return 1
+    fi
+
+    # Helper: extract value from a define() call in wp-config.php.
+    # Uses pure AWK — portable across macOS (BSD awk), Linux (gawk/mawk), and all Bash versions.
+    #
+    # Strategy: count quote characters in the line until the 3rd and 4th ones,
+    # then extract the substring between them. This handles:
+    #   define('DB_NAME', 'value')      → quotes at positions 1,2 (key) and 3,4 (value)
+    #   define( "DB_NAME", "value" );   → same structure with double quotes
+    #   Passwords containing commas, spaces, special chars (between quotes 3–4)
+    #
+    # \047 is the octal escape for a single quote — safe inside awk strings.
+    #
+    _parse_wp_define() {
+        local constant="$1"
+        awk -v const="$constant" '
+            $0 ~ ("define.*[\"\\047]" const "[\"\\047]") {
+                s = $0; qc = 0; start = 0
+                for (i = 1; i <= length(s); i++) {
+                    c = substr(s, i, 1)
+                    if (c == "\"" || c == "\047") {
+                        qc++
+                        if (qc == 3) { start = i + 1 }
+                        if (qc == 4) {
+                            print substr(s, start, i - start)
+                            exit
+                        }
+                    }
+                }
+            }
+        ' "$wp_config" 2>/dev/null | head -1
+    }
+
+    WP_DB_HOST=$(_parse_wp_define "DB_HOST")
+    WP_DB_NAME=$(_parse_wp_define "DB_NAME")
+    WP_DB_USER=$(_parse_wp_define "DB_USER")
+    WP_DB_PASSWORD=$(_parse_wp_define "DB_PASSWORD")
+
+    unset -f _parse_wp_define
+
+    # Validate we got at least a DB name and user
+    if [[ -z "$WP_DB_NAME" || -z "$WP_DB_USER" ]]; then
+        printf "${YELLOW:-}⚠️  Could not parse DB credentials from wp-config.php${RESET:-}\n" >&2
+        return 1
+    fi
+
+    export WP_DB_HOST WP_DB_NAME WP_DB_USER WP_DB_PASSWORD
+    return 0
 }
 
 # ===============================================

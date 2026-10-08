@@ -265,6 +265,13 @@ import_wp_db() {
     if config_file_exists; then
       printf "${GREEN}✅ Configuration found:${RESET} %s\n\n" "$config_path"
 
+      if declare -F ensure_socket_config_settings >/dev/null 2>&1; then
+        ensure_socket_config_settings "$config_path" >/dev/null 2>&1 || true
+        if [[ "$CONFIG_SOCKET_SETTINGS_MIGRATED" == "true" ]]; then
+          printf "${GREEN}✅ Updated existing config with import settings:${RESET} use_socket, mysql_socket, import_optimizations, parallel_import\n\n"
+        fi
+      fi
+
       # Load existing config
       if load_import_config "$config_path"; then
         load_site_mappings "$config_path"
@@ -420,6 +427,8 @@ import_wp_db() {
   local wp_detect_output
   wp_detect_output=$(detect_wordpress_installation_type)
   IFS='|' read -r installation_type multisite_type network_flag blog_count site_count detection_method <<< "$wp_detect_output"
+  # Detection reports "NA" for single sites; only a real "--network" may reach WP-CLI
+  [[ "$network_flag" == "--network" ]] || network_flag=""
 
   # Set is_multisite variable for compatibility with rest of script
   local is_multisite="no"
@@ -868,9 +877,9 @@ ${subsite_line}"
       printf "${GREEN}  ✅ Object cache flushed.${RESET}\n"
   fi
 
-  # 2. Flush rewrite rules (hard flush for robust update)
+  # 2. Flush rewrite rules (soft flush: updates the DB option only, never writes .htaccess/web.config)
   # Use execute_wp_cli for reliable command execution
-  if ! execute_wp_cli rewrite flush --hard $network_flag &>/dev/null; then
+  if ! execute_wp_cli rewrite flush $network_flag &>/dev/null; then
       printf "${YELLOW}  ⚠️  Failed to flush rewrite rule (Not always necessary/available).${RESET}\n"
   else
       printf "${GREEN}  ✅ Rewrite rule flushed.${RESET}\n"

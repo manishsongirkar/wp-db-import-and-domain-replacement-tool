@@ -223,6 +223,16 @@ execute_wp_cli() {
 
 ## 🧪 Testing Guidelines
 
+### Local Test Automation (Optional)
+
+```bash
+# Run the full test suite before every commit (skip with git commit --no-verify)
+./install_pre_commit_hook.sh
+
+# Re-run tests when files change (needs fswatch on macOS, inotify-tools on Linux)
+./watch_and_test.sh [unit|socket|performance]
+```
+
 ### Compatibility Test Suite (Required)
 
 Before committing and pushing changes, you must verify compatibility across global systems using the provided automated test cases. This ensures your code works on all supported Bash versions and environments.
