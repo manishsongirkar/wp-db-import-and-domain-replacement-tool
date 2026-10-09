@@ -23,6 +23,9 @@ wp-db-import config-edit        # Open configuration in editor
 wp-db-import show-links         # Show local site links
 wp-db-import setup-proxy        # Auto-setup Stage File Proxy (uses config)
 wp-db-import show-cleanup       # Show revision cleanup commands
+wp-db-import restore --last     # Restore the newest backup of this site's database
+wp-db-import restore --list     # List backups (--all: every database)
+wp-db-import restore <file>     # Restore a specific backup file
 wp-db-import update             # Update to latest version
 wp-db-import version            # Show version and git info
 wp-db-import test               # Run test suite to validate tool functionality
@@ -110,6 +113,16 @@ backup_keep=5
 - `backup_keep=5` keeps the newest 5 backups per database and deletes older ones after each backup (rotation). `0` keeps all.
 - The tool keeps no log files between runs: logs are in a private temp directory removed when the run ends, and are size-capped. When an import fails, the first error lines are printed on screen.
 - Restore: `gunzip -c ~/.wp-db-import/backups/<file>.sql.gz | wp db import -`
+
+### Restoring a Backup
+
+```bash
+wp-db-import restore --list          # newest first; --all for every database
+wp-db-import restore --last          # asks first (default No); --yes skips the question
+wp-db-import restore ~/.wp-db-import/backups/mydb-20261009-124840.sql.gz
+```
+
+The backup is verified, the current database is backed up first (so you can undo), the import uses the normal fast path with error checks, and tables that were not in the backup are removed afterwards. `backup_keep` rotation never deletes the file being restored.
 
 ### Compressed Dumps
 

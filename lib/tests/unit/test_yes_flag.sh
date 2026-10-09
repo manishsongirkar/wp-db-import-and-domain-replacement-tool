@@ -58,6 +58,7 @@ _y_run() {
     kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
     [[ $rc -ge 128 ]] && rc=124
     Y_OUT=$(_strip < "$f"); Y_RC=$rc
+    export Y_OUT Y_RC
     rm -f "$f"
 }
 
@@ -87,11 +88,11 @@ test_yes_helpers() {
 
     # unattended: never reads (stdin is a pipe that never ends, so a read would hang)
     Y_STDIN="" _y_run 8 bash -c "source '$_Y_ROOT/lib/core/utils.sh' >/dev/null 2>&1; export WPDB_ASSUME_YES=1; x=preset; wpdb_read x; echo \"x=[\$x]\""
-    _chk "unattended wpdb_read returns at once without reading" bash -c "test $Y_RC -eq 0 && grep -qF 'x=[]' <<< '$Y_OUT'"
+    _chk "unattended wpdb_read returns at once without reading" bash -c "test $Y_RC -eq 0 && grep -qF 'x=[]' <<< \"\$Y_OUT\""
     Y_STDIN="" _y_run 8 bash -c "source '$_Y_ROOT/lib/core/utils.sh' >/dev/null 2>&1; export WPDB_ASSUME_YES=1; x=preset; wpdb_read x tty; echo \"x=[\$x]\""
-    _chk "unattended wpdb_read (tty variant) does not touch the terminal" bash -c "test $Y_RC -eq 0 && grep -qF 'x=[]' <<< '$Y_OUT'"
+    _chk "unattended wpdb_read (tty variant) does not touch the terminal" bash -c "test $Y_RC -eq 0 && grep -qF 'x=[]' <<< \"\$Y_OUT\""
     Y_STDIN="" _y_run 8 bash -c "source '$_Y_ROOT/lib/core/utils.sh' >/dev/null 2>&1; export WPDB_ASSUME_YES=1; wpdb_read_required x 'The SQL file name (sql_file)'; echo \"rc=\$?\""
-    _chk "unattended required: returns 1 with a clear message" bash -c "grep -q 'rc=1' <<< '$Y_OUT' && grep -q 'SQL file name (sql_file) is required' <<< '$Y_OUT' && grep -q 'wpdb-import.conf' <<< '$Y_OUT'"
+    _chk "unattended required: returns 1 with a clear message" bash -c "grep -q 'rc=1' <<< \"\$Y_OUT\" && grep -q 'SQL file name (sql_file) is required' <<< \"\$Y_OUT\" && grep -q 'wpdb-import.conf' <<< \"\$Y_OUT\""
     _chk "unattended required: error goes to stderr"  bash -c "source '$_Y_ROOT/lib/core/utils.sh' >/dev/null 2>&1; export WPDB_ASSUME_YES=1; test -z \"\$(wpdb_read_required x 'v' 2>/dev/null)\""
     _finish "helpers behave correctly"
 }
@@ -123,17 +124,17 @@ test_yes_flag_parsing() {
     local f
     for f in --yes -y --non-interactive; do
         Y_STDIN=/dev/null _y_run 20 bash "$tool" $f version
-        _chk "wp-db-import $f version works"           bash -c "test $Y_RC -eq 0 && grep -q 'Version:' <<< '$Y_OUT'"
+        _chk "wp-db-import $f version works"           bash -c "test $Y_RC -eq 0 && grep -q 'Version:' <<< \"\$Y_OUT\""
         Y_STDIN=/dev/null _y_run 20 bash "$tool" version $f
-        _chk "wp-db-import version $f (flag last) works" bash -c "test $Y_RC -eq 0 && grep -q 'Version:' <<< '$Y_OUT'"
+        _chk "wp-db-import version $f (flag last) works" bash -c "test $Y_RC -eq 0 && grep -q 'Version:' <<< \"\$Y_OUT\""
     done
     Y_STDIN=/dev/null WPDB_ASSUME_YES=1 _y_run 20 bash "$tool" version
-    _chk "WPDB_ASSUME_YES=1 alias works"               bash -c "test $Y_RC -eq 0 && grep -q 'Version:' <<< '$Y_OUT'"
+    _chk "WPDB_ASSUME_YES=1 alias works"               bash -c "test $Y_RC -eq 0 && grep -q 'Version:' <<< \"\$Y_OUT\""
 
     Y_STDIN=/dev/null _y_run 20 bash "$tool" --yes bogus
     _chk "unknown command: exit code 2"                test "$Y_RC" -eq 2
     _chk "unknown command: still says so"              grep -q 'Unknown command: bogus' <<< "$Y_OUT"
-    _chk "--yes is not passed on as a command"         bash -c "! grep -q 'Unknown command: --yes' <<< '$Y_OUT'"
+    _chk "--yes is not passed on as a command"         bash -c "! grep -q 'Unknown command: --yes' <<< \"\$Y_OUT\""
     Y_STDIN=/dev/null _y_run 20 bash "$tool" --help
     _chk "--help documents --yes / -y / --non-interactive" grep -qF -- '--yes, -y, --non-interactive' <<< "$Y_OUT"
     _chk "--help documents WPDB_ASSUME_YES"            grep -q 'WPDB_ASSUME_YES=1' <<< "$Y_OUT"
@@ -159,7 +160,7 @@ case "\$(printf "%s" "\${WPDB_ASSUME_YES:-}" | tr '[:upper:]' '[:lower:]')" in 1
 "$w/reader"
 WRAP_END
     _y_run 8 bash "$w/wrap.sh"
-    _chk "child reading stdin returns immediately (EOF)" bash -c "test $Y_RC -eq 0 && grep -q CHILD_GOT_EOF <<< '$Y_OUT'"
+    _chk "child reading stdin returns immediately (EOF)" bash -c "test $Y_RC -eq 0 && grep -q CHILD_GOT_EOF <<< \"\$Y_OUT\""
     _chk "wp-db-import closes stdin in unattended mode" grep -q 'exec </dev/null' "$_Y_ROOT/wp-db-import"
     _chk "import_wp_db.sh closes stdin in unattended mode" grep -q 'wpdb_assume_yes && exec </dev/null' "$_Y_ROOT/import_wp_db.sh"
     _finish "stdin is closed in unattended mode"
@@ -192,15 +193,15 @@ WP_STUB_END
 
     # 2) same through the wp-db-import command, and through the environment variable
     Y_STDIN="" _y_run 25 bash -c "cd '$site' && PATH='$site/bin:'\"\$PATH\" bash '$_Y_ROOT/wp-db-import' --yes"
-    _chk "wp-db-import --yes: no hang, exit 1, clear message" bash -c "test $Y_RC -eq 1 && grep -q 'is required' <<< '$Y_OUT'"
+    _chk "wp-db-import --yes: no hang, exit 1, clear message" bash -c "test $Y_RC -eq 1 && grep -q 'is required' <<< \"\$Y_OUT\""
     Y_STDIN="" _y_run 25 bash -c "cd '$site' && PATH='$site/bin:'\"\$PATH\" WPDB_ASSUME_YES=1 bash '$_Y_ROOT/wp-db-import'"
-    _chk "WPDB_ASSUME_YES=1 (no flag): same behavior"  bash -c "test $Y_RC -eq 1 && grep -q 'is required' <<< '$Y_OUT'"
+    _chk "WPDB_ASSUME_YES=1 (no flag): same behavior"  bash -c "test $Y_RC -eq 1 && grep -q 'is required' <<< \"\$Y_OUT\""
 
     # 3) config wizard
     rm -f "$site/wpdb-import.conf"
     Y_STDIN="" _y_run 25 bash -c "cd '$site' && PATH='$site/bin:'\"\$PATH\" bash '$_Y_ROOT/wp-db-import' --yes config-create"
     _chk "config-create --yes: no hang"                test "$Y_RC" -ne 124
-    _chk "config-create --yes: fails clearly (needs input)" bash -c "test $Y_RC -ne 0 && grep -qE 'is required' <<< '$Y_OUT'"
+    _chk "config-create --yes: fails clearly (needs input)" bash -c "test $Y_RC -ne 0 && grep -qE 'is required' <<< \"\$Y_OUT\""
     _chk "config-create --yes: writes no half-made config" test ! -s "$site/wpdb-import.conf"
 
     # 4) a prompt with a default still works: auto_proceed=false, everything else default
@@ -209,7 +210,7 @@ WP_STUB_END
     Y_STDIN="" _y_run 40 bash -c "cd '$site' && PATH='$site/bin:'\"\$PATH\" bash '$_Y_ROOT/import_wp_db.sh' --yes"
     _chk "defaults flow: no hang"                      test "$Y_RC" -ne 124
     _chk "defaults flow: confirmation skipped with the '--yes' reason" grep -q 'Auto-proceeding with database import (--yes)' <<< "$Y_OUT"
-    _chk "defaults flow: never waited at 'Proceed with database import?'" bash -c "! grep -q 'Proceed with database import? (Y/n)' <<< '$Y_OUT'"
+    _chk "defaults flow: never waited at 'Proceed with database import?'" bash -c "! grep -q 'Proceed with database import? (Y/n)' <<< \"\$Y_OUT\""
     _chk "defaults flow: WP-CLI was started (the stub saw a run)" test -s "$STUB_STDIN_LOG"
     _chk "defaults flow: no WP-CLI child was left reading an open stdin pipe" bash -c "! awk '\$1 >= 128 {bad=1} END {exit !bad}' '$STUB_STDIN_LOG'"
 
@@ -227,7 +228,7 @@ test_yes_completions() {
     start_test "Completions" "Bash and Zsh completions offer --yes / -y / --non-interactive"
     local errors=0
     _chk "bash completion file has valid syntax"       bash -n "$_Y_ROOT/lib/completion/wp-db-import.bash"
-    _chk "Bash 3.x list includes the options"          grep -q 'update version test --help --yes -y --non-interactive' "$_Y_ROOT/lib/completion/wp-db-import.bash"
+    _chk "Bash 3.x list includes the options"          grep -q 'update version test restore --help --yes -y --non-interactive' "$_Y_ROOT/lib/completion/wp-db-import.bash"
     if command -v zsh >/dev/null 2>&1; then
         _chk "zsh completion file has valid syntax"    zsh -n "$_Y_ROOT/lib/completion/_wp-db-import"
     fi
