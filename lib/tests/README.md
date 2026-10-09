@@ -129,6 +129,7 @@ lib/tests/
 │   ├── test_import_security.sh    # Penetration-style security tests
 │   ├── test_new_modules.sh        # Module loading
 │   ├── test_domain_mappings.sh    # [domain_mappings] (stubbed WP-CLI): anchoring, order, scopes, report
+│   ├── test_completions.sh        # Bash/Zsh completions: syntax, sync with --help, behavior in Bash 3.2 and 5
 │   ├── test_doctor.sh             # wp-db-import doctor (stub wp/mysql): tools, connection, config, no secrets
 │   ├── test_restore.sh            # wp-db-import restore (stubbed WP-CLI/importer)
 │   ├── test_socket_detection.sh   # MySQL socket detection

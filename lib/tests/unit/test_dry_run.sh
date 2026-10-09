@@ -329,7 +329,7 @@ EOT
     _chk "import_wp_db.sh: unknown option still exits 2" test $? -eq 2
     _chk "module loader loads db_dry_run.sh"             grep -q 'db_dry_run.sh' "$_D_ROOT/lib/module_loader.sh"
     _chk "Bash completion offers --dry-run"              grep -q -- '--dry-run' "$_D_ROOT/lib/completion/wp-db-import.bash"
-    _chk "Zsh completion offers --dry-run"               grep -q "'--dry-run:" "$_D_ROOT/lib/completion/_wp-db-import"
+    _chk "Zsh completion offers --dry-run"               grep -q -- "--dry-run\[" "$_D_ROOT/lib/completion/_wp-db-import"
     _chk "completion files have valid syntax"            bash -c "bash -n '$_D_ROOT/lib/completion/wp-db-import.bash' && (! command -v zsh >/dev/null || zsh -n '$_D_ROOT/lib/completion/_wp-db-import')"
     _finish "--dry-run is wired in everywhere"
 }
