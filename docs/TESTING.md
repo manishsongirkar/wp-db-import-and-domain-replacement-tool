@@ -37,6 +37,26 @@ wp-db-import test
 ./run_tests.sh matrix             # Real server version matrix (opt-in, not part of "all")
 ```
 
+### Real Import (end to end)
+
+`./run_tests.sh real-import` runs the **real tool against real WordPress sites** and checks the database afterwards. It is opt-in (not part of `all`) because it starts a server, downloads WordPress and takes about two minutes.
+
+What it does:
+1. Starts a throw-away MySQL (temporary data directory, Unix socket only, no network). Your own databases are never touched: `MYSQL_*` variables are cleared and the test only talks to its own server.
+2. Installs a "production" WordPress with WP-CLI, adds content (links, protocol-relative links, serialized data), and exports a dump.
+3. Installs a separate "target" WordPress and runs `import_wp_db.sh` with a config file.
+4. Checks `siteurl`/`home`, replaced links and serialized options, that no old domain is left, the pre-import backup (valid gzip, original data, mode 600), cache and rewrite flush, no temp files left, and that the console shows no shell or PHP errors.
+
+Scenarios: single site (socket), `use_socket=false` (WP-CLI path), `.sql.gz` dump, MariaDB collations (compatibility retry), multisite subdirectory, multisite subdomain.
+
+Needs: a MySQL/MariaDB server binary (found automatically in Local and Homebrew), `php` with `mysqli`, WP-CLI, and network access for `wp core download` (WP-CLI caches it). The suite is skipped with a reason when something is missing.
+
+```bash
+./run_tests.sh real-import
+WPDB_TEST_SERVER_BIN=/path/to/mysql/bin ./run_tests.sh real-import   # choose the server
+WPDB_TEST_DEBUG=1 ./run_tests.sh real-import                         # print the tool's output
+```
+
 ### Server Version Matrix
 
 `./run_tests.sh matrix` starts throw-away MySQL/MariaDB servers (temporary data directory, socket only, no network) and imports `lib/tests/fixtures/dump_*.sql` into each with and without the compatibility filter. Servers are found automatically (Local by Flywheel, Homebrew). Add others with:
@@ -59,12 +79,14 @@ The test is skipped when no server binaries are found. It is not part of `all` b
 ```
 lib/tests/
 ├── test_framework.sh           # Core test framework
+├── server_helpers.sh           # throw-away MySQL/MariaDB servers (matrix, real import)
 ├── compatibility/              # OS and shell compatibility
 │   ├── test_os_shell.sh
 │   └── test_bash_versions.sh
 ├── system/
 │   └── test_environment.sh
 ├── integration/
+│   ├── test_real_import.sh     # opt-in: real sites, real server, real tool
 │   ├── test_server_matrix.sh   # opt-in
 │   └── test_wordpress.sh
 ├── unit/

@@ -798,7 +798,7 @@ setup_multisite_stage_file_proxy() {
     while IFS=',' read -r blog_id site_url; do
         [[ -z "$blog_id" || -z "$site_url" ]] && continue
         site_count=$((site_count + 1))
-        printf "${CYAN}--- Configuring Site $site_count (ID: $blog_id): $site_url ---${RESET}\n"
+        printf -- "${CYAN}--- Configuring Site $site_count (ID: $blog_id): $site_url ---${RESET}\n"
 
         if get_validated_domain "Enter production domain for $site_url (press Enter to skip): "; then
             local source_domain="$VALIDATED_DOMAIN"
@@ -1336,7 +1336,7 @@ setup_multisite_stage_file_proxy_manual() {
         [[ -z "$blog_id" || -z "$site_url" ]] && continue
         site_count=$((site_count + 1))
 
-        printf "${CYAN}--- Configuring Site $site_count (ID: $blog_id): $site_url ---${RESET}\n"
+        printf -- "${CYAN}--- Configuring Site $site_count (ID: $blog_id): $site_url ---${RESET}\n"
 
         # Check if we already have a site mapping for this blog_id
         local existing_domain=""

@@ -890,10 +890,27 @@ ${subsite_line}"
 
   # 2. Flush rewrite rules (soft flush: updates the DB option only, never writes .htaccess/web.config)
   # Use execute_wp_cli for reliable command execution
-  if ! execute_wp_cli rewrite flush $network_flag &>/dev/null; then
-      printf "${YELLOW}  ⚠️  Failed to flush rewrite rule (Not always necessary/available).${RESET}\n"
+  # `wp rewrite flush` has no --network option (it fails with "unknown --network parameter"),
+  # and rewrite rules are stored per site: on a network, flush every site by its URL.
+  local rewrite_ok=true
+  if [[ -n "$network_flag" ]]; then
+    local site_url_list site_url_item
+    site_url_list=$(execute_wp_cli site list --field=url 2>/dev/null)
+    if [[ -z "$site_url_list" ]]; then
+      rewrite_ok=false
+    else
+      while IFS= read -r site_url_item; do
+        [[ -n "$site_url_item" ]] || continue
+        execute_wp_cli rewrite flush --url="$site_url_item" &>/dev/null || rewrite_ok=false
+      done <<< "$site_url_list"
+    fi
   else
+    execute_wp_cli rewrite flush &>/dev/null || rewrite_ok=false
+  fi
+  if [[ "$rewrite_ok" == "true" ]]; then
       printf "${GREEN}  ✅ Rewrite rule flushed.${RESET}\n"
+  else
+      printf "${YELLOW}  ⚠️  Failed to flush rewrite rule (Not always necessary/available).${RESET}\n"
   fi
 
   # 3. Delete transients
