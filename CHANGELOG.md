@@ -3,20 +3,34 @@
 ## [Unreleased]
 
 ### Added
+- **Unattended mode** ([#19](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/19)): `--yes`, `-y`, `--non-interactive` (any position) or `WPDB_ASSUME_YES=1`, for `wp-db-import` and `import_wp_db.sh`.
+  - Every prompt takes its default, exactly as if Enter was pressed. Confirmations are skipped and show the reason (`--yes` or `from config`).
+  - Nothing is read from stdin or the terminal, and stdin is closed for the whole run, so a script cannot hang (also with a stdin pipe that never ends).
+  - A prompt with no safe default fails with a clear message and exit code 1: SQL file name, old/new domain, the config-vs-database domain choice, "MySQL commands executed manually?", Stage File Proxy domain questions, and the `config-create` wizard values.
+  - Backups still run when `backup_before_import=ask`. `wp-db-import update` answers "no" to its uncommitted-changes question.
+  - New helpers `wpdb_assume_yes`, `wpdb_auto_proceed_reason`, `wpdb_read`, `wpdb_read_required` in `lib/core/utils.sh`; every prompt in the tool now uses them (a test rejects a raw `read -r`).
+  - `--help`, README, USAGE, CONTRIBUTING and the Bash/Zsh completions document the new options and the exit codes.
+- Unit test suite `test_yes_flag.sh`.
+- A warning when the mysql client and the server are different products (MariaDB client with a MySQL server, or the reverse), with the client path and how to fix it.
+- `WPDB_VERBOSE=1` prints which mysql client is used for the import.
+- Table cleanup and listing use the same mysql client and socket as the import, with `wp db query` (then `--defaults`) as fallback, because `wp db query` cannot connect in Local.
+- Server matrix fixture `dump_nodrop_mariadb11.sql` and unit tests for both fixes.
 - **Real end-to-end import test** ([#13](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/13)): `./run_tests.sh real-import` starts a throw-away MySQL, installs real WordPress sites with WP-CLI, runs the real tool and checks the database. Six scenarios: single site, `use_socket=false`, `.gz` dump, compatibility retry, multisite subdirectory and subdomain. Also checks the backup, cache flush, no leftover temp files and a clean console. Skipped with a reason when php, WP-CLI, a server binary or the network is missing.
 - `lib/tests/server_helpers.sh`: shared throw-away server code (falls back to a short socket path when the temp path is too long); the server matrix now uses it.
 - Unit tests for database domain detection, `execute_with_timeout` and a guard against `printf` formats that start with a dash.
 
-
 ### Changed
+- Exit code of an unknown command or option is now **2** (usage error) instead of 1. Exit codes are `0` success, `1` failure, `2` usage error.
 - Tests that printed "function not available" and skipped were rewritten against the real functions (`load_import_config`, `validate_config_file`, `run_search_replace`, ...) with real assertions: config loading and validation, the exact search-replace commands (two passes, `guid` skipped, `--dry-run`, `--network`/`--url`), the cleanup. A missing core function is now a **failure**. `./run_tests.sh --verbose` has zero "not available" warnings. Environment notes for optional tools (mysql client, git, curl) are shown as information.
 
 ### Fixed
+- **The environment's own mysql client is used again** ([#16](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/16)). The tool put `/opt/homebrew/bin` and `/usr/local/bin` **before** the user's `PATH`, so a Homebrew client could replace the right one (for example Local's MySQL client), which once caused a false "import successful". These directories are now only a fallback after the user's `PATH` (override with `WPDB_FALLBACK_PATH`). This applies to the import, WP-CLI calls, socket detection and the WP-CLI lookup.
+- **Retry is safe for dumps without `DROP TABLE IF EXISTS`** ([#27](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/27)). For such dumps the table list is saved before the import. Before any retry or fallback, only the tables (and views) created by the failed attempt are removed; tables that existed before are never touched. If the list cannot be saved, the tool does not retry and says why. Dumps that drop their own tables are unaffected.
+- `get_wp_db_credentials` returned the first value for every constant when several `define()` calls were on one line of `wp-config.php`.
 - **Console errors when colors are off** (CI, pipes, `NO_COLOR`): `printf: --: invalid option` in the revision cleanup and Stage File Proxy output. Formats that can start with `--` now use `printf --`.
 - **"Failed to flush rewrite rule" on every multisite import**: `wp rewrite flush --network` is not a valid option. On a network each site is now flushed by its URL.
 - **Multisite detection broke on Linux and with GNU coreutils**: `execute_with_timeout` passed a shell function to the external `timeout`, which cannot run functions, so detection fell back to defaults with "WP-CLI not responding". Functions now run directly (no new time limits).
 - **Domain validation was skipped for multisite imports**: right after an import `wp option get siteurl` cannot start (wp-config names the local network domain, the database still has the production one). The domain is now read from the database (`wp_site`, then `wp_options`) with a table-prefix safety check.
-
 
 ## [1.2.0] - 2026-10-08
 

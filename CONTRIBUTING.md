@@ -239,6 +239,7 @@ Run these before opening a pull request that touches import, backup, temp files 
 - New temp files go in `$(secure_tmpdir)`, never a fixed `/tmp/...` path.
 - `WPDB_MATRIX_SERVERS="/path/to/bin ..."` adds servers (directories containing `mysqld` or `mariadbd`) to the matrix test.
 - `WPDB_MYSQL_BIN=/path/to/mysql` makes the importer use a specific client (used by the tests with stubs).
+- Every prompt must use `wpdb_read VAR [tty]` (Enter = default) or `wpdb_read_required VAR "what it is" [tty]` (no safe default) from `lib/core/utils.sh`, never a raw `read -r`. This keeps `--yes` / `WPDB_ASSUME_YES=1` from ever hanging (a test enforces it). Use `wpdb_auto_proceed_reason` for confirmations.
 - A test that only prints "function not available" proves nothing: core functions that are missing must **fail** the test. Skips are for missing tools or platforms only.
 - Use `printf -- "..."` when a format can start with a dash (colors are empty in CI and pipes, so `printf "${CYAN}-- text"` breaks). A test enforces it.
 - Never call the external `timeout` on a shell function; use `execute_with_timeout` (it runs functions directly).
@@ -522,7 +523,8 @@ wp-db-import-and-domain-replacement-tool/
 │   │       ├── test_import_security.sh
 │   │       ├── test_new_modules.sh
 │   │       ├── test_socket_detection.sh
-│   │       └── test_update_uninstall.sh
+│   │       ├── test_update_uninstall.sh
+│   │       └── test_yes_flag.sh
 │   ├── utilities/
 │   │   ├── gitignore_manager.sh
 │   │   ├── revision_cleanup.sh

@@ -33,7 +33,7 @@ get_domains() {
             printf "🌍 OLD (production) domain: ${GREEN}%s${RESET} (from config)\n" "$search_domain"
             pause_script_timer
             printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
-            read -r domain_override
+            wpdb_read domain_override
             resume_script_timer
 
             if [[ -n "$domain_override" ]]; then
@@ -46,7 +46,7 @@ get_domains() {
         else
             pause_script_timer
             printf "🌍 Enter the OLD (production) domain to search for: "
-            read -r search_domain
+            wpdb_read_required search_domain "The old (production) domain (old_domain)" || return 1
             resume_script_timer
 
             if [[ -n "$search_domain" ]]; then
@@ -64,7 +64,7 @@ get_domains() {
             printf "🏠 NEW (local) domain: ${GREEN}%s${RESET} (from config)\n" "$replace_domain"
             pause_script_timer
             printf "   ${CYAN}Press Enter to use this domain, or type a new domain to override:${RESET} "
-            read -r domain_override
+            wpdb_read domain_override
             resume_script_timer
 
             if [[ -n "$domain_override" ]]; then
@@ -77,7 +77,7 @@ get_domains() {
         else
             pause_script_timer
             printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
-            read -r replace_domain
+            wpdb_read_required replace_domain "The new (local) domain (new_domain)" || return 1
             resume_script_timer
 
             if [[ -n "$replace_domain" ]]; then

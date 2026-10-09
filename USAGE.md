@@ -15,6 +15,7 @@ wp-db-import --help
 ### Main Commands
 ```bash
 wp-db-import                    # Run the main import function
+wp-db-import --yes              # Unattended: every prompt takes its default (also -y, --non-interactive)
 wp-db-import config-show        # Show unified configuration status
 wp-db-import config-create      # Create configuration with site mappings
 wp-db-import config-validate    # Validate configuration structure
@@ -31,6 +32,20 @@ wp-db-import --help             # Show this help message
 💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
 
 > **Note:** Autocomplete suggestions are automatically updated when you run `./install.sh`.
+
+### Unattended Mode (`--yes`)
+
+For scripts and CI. Every prompt takes its default (same as Enter), nothing is read from stdin, and stdin is closed for the whole run.
+
+```bash
+wp-db-import --yes                 # or -y, --non-interactive, or WPDB_ASSUME_YES=1
+bash import_wp_db.sh --yes         # direct script call
+```
+
+- A prompt with no safe default fails with a clear message (exit 1): SQL file name, old/new domain, the domain-mismatch choice, "MySQL commands executed manually?". Set them in `wpdb-import.conf`.
+- Backups run when `backup_before_import=ask`. `update` never overwrites local changes.
+- Keys missing from the config use the documented defaults (revision cleanup `Y`, all tables `Y`, dry-run `N`, Stage File Proxy `Y`): set them for predictable runs.
+- Exit codes: `0` success, `1` failure, `2` usage error.
 
 ### Example Workflow
 ```bash

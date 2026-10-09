@@ -338,7 +338,7 @@ import_wp_db() {
   else
     pause_script_timer
     printf "📦 Enter SQL file name (default: vip-db.sql): "
-    read -r sql_file
+    wpdb_read_required sql_file "The SQL file name (sql_file)" || return 1
     resume_script_timer
     sql_file=${sql_file:-vip-db.sql}
   fi
@@ -401,13 +401,14 @@ import_wp_db() {
   printf "\n"
 
   # Auto-proceed or prompt for confirmation
-  if [[ -n "$CONFIG_AUTO_PROCEED" ]] && is_config_true "$CONFIG_AUTO_PROCEED"; then
-    printf "${GREEN}✅ Auto-proceeding with database import (from config)${RESET}\n"
+  local auto_reason
+  if auto_reason=$(wpdb_auto_proceed_reason); then
+    printf "${GREEN}✅ Auto-proceeding with database import (%s)${RESET}\n" "$auto_reason"
     local confirm="y"
   else
     pause_script_timer
     printf "Proceed with database import? (Y/n): "
-    read -r confirm
+    wpdb_read confirm
     resume_script_timer
     confirm="${confirm:-y}"
     [[ "$confirm" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
@@ -460,7 +461,7 @@ import_wp_db() {
       printf "Clear ALL post revisions: ${GREEN}enabled${RESET} (from config)\n"
       pause_script_timer
       printf "   ${CYAN}Press Enter to confirm, or 'n' to skip revision cleanup:${RESET} "
-      read -r revision_override
+      wpdb_read revision_override
       resume_script_timer
 
       if [[ "$revision_override" == [Nn]* ]]; then
@@ -476,7 +477,7 @@ import_wp_db() {
       printf "Clear ALL post revisions: ${YELLOW}disabled${RESET} (from config)\n"
       pause_script_timer
       printf "   ${CYAN}Press Enter to keep disabled, or 'y' to enable revision cleanup:${RESET} "
-      read -r revision_override
+      wpdb_read revision_override
       resume_script_timer
 
       if [[ "$revision_override" == [Yy]* ]]; then
@@ -492,7 +493,7 @@ import_wp_db() {
   else
     pause_script_timer
     printf "Clear ALL post revisions? (improves search-replace speed) (Y/n): "
-    read -r cleanup_revisions
+    wpdb_read cleanup_revisions
     resume_script_timer
     cleanup_revisions="${cleanup_revisions:-y}"
 
@@ -580,7 +581,7 @@ import_wp_db() {
   else
     pause_script_timer
     printf "Include ${BOLD}--all-tables${RESET} (recommended for full DB imports)? (Y/n): "
-    read -r include_all
+    wpdb_read include_all
     resume_script_timer
     include_all="${include_all:-y}"
     all_tables_flag=""
@@ -610,7 +611,7 @@ import_wp_db() {
   else
     pause_script_timer
     printf "Run in ${BOLD}dry-run mode${RESET} (no data will be changed)? (y/N): "
-    read -r dry_run
+    wpdb_read dry_run
     resume_script_timer
     dry_run="${dry_run:-n}"
     dry_run_flag=""
@@ -810,13 +811,13 @@ ${subsite_line}"
 
       printf "\n"
       # Auto-proceed or prompt for confirmation
-      if [[ -n "$CONFIG_AUTO_PROCEED" ]] && is_config_true "$CONFIG_AUTO_PROCEED"; then
-        printf "${GREEN}✅ Auto-proceeding with search-replace for all sites (from config)${RESET}\n"
+      if auto_reason=$(wpdb_auto_proceed_reason); then
+        printf "${GREEN}✅ Auto-proceeding with search-replace for all sites (%s)${RESET}\n" "$auto_reason"
         local confirm_replace="y"
       else
         pause_script_timer
         printf "Proceed with search-replace for all sites? (Y/n): "
-        read -r confirm_replace
+        wpdb_read confirm_replace
         resume_script_timer
         confirm_replace="${confirm_replace:-y}"
         [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
@@ -842,13 +843,13 @@ ${subsite_line}"
     # 🧩 Single site logic
     printf "${CYAN}🧩 Single site detected.${RESET}\n"
     # Auto-proceed or prompt for confirmation
-    if [[ -n "$CONFIG_AUTO_PROCEED" ]] && is_config_true "$CONFIG_AUTO_PROCEED"; then
-      printf "${GREEN}✅ Auto-proceeding with search-replace (from config)${RESET}\n"
+    if auto_reason=$(wpdb_auto_proceed_reason); then
+      printf "${GREEN}✅ Auto-proceeding with search-replace (%s)${RESET}\n" "$auto_reason"
       local confirm_replace="y"
     else
       pause_script_timer
       printf "Proceed with search-replace now? (Y/n): "
-      read -r confirm_replace
+      wpdb_read confirm_replace
       resume_script_timer
       confirm_replace="${confirm_replace:-y}"
       [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
@@ -1079,7 +1080,10 @@ ${subsite_line}"
     printf "${CYAN}${BOLD}📋 MySQL Commands Confirmation${RESET}\n"
     pause_script_timer
     printf "Have you executed the above MySQL commands in phpMyAdmin/database? (Y/n): "
-    read -r sql_executed
+    if ! wpdb_read_required sql_executed "Confirmation that the MySQL commands above were executed"; then
+      printf "${YELLOW}⚠️  Run the MySQL commands shown above, then re-run the tool.${RESET}\n"
+      return 1
+    fi
     resume_script_timer
     sql_executed="${sql_executed:-y}"
 
@@ -1114,7 +1118,7 @@ ${subsite_line}"
       printf "${CYAN}${BOLD}📸 Stage File Proxy Setup${RESET}\n"
       pause_script_timer
       printf "Do you want to setup the stage file proxy plugin for media management? (Y/n): "
-      read -r setup_stage_proxy
+      wpdb_read setup_stage_proxy
       resume_script_timer
       setup_stage_proxy="${setup_stage_proxy:-y}"
 
@@ -1203,5 +1207,18 @@ ${subsite_line}"
 
 # Check if sourced or executed
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    import_wp_db "$@"
+    # Options: --yes / -y / --non-interactive (unattended mode, same as WPDB_ASSUME_YES=1)
+    for _wpdb_arg in "$@"; do
+        case "$_wpdb_arg" in
+            --yes|-y|--non-interactive) export WPDB_ASSUME_YES=1 ;;
+            *)
+                printf "${RED}❌ Unknown option: %s${RESET}\n" "$_wpdb_arg" >&2
+                printf "Usage: import_wp_db.sh [--yes | -y | --non-interactive]\n" >&2
+                exit 2
+                ;;
+        esac
+    done
+    # Unattended: nothing may wait for input (not even a child process)
+    wpdb_assume_yes && exec </dev/null
+    import_wp_db
 fi

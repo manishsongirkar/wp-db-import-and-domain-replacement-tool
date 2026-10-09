@@ -86,6 +86,17 @@ show_help() {
     printf "  wp-db-import test               Run test suite to validate tool functionality\n"
     printf "  wp-db-import --help             Show this help message\n\n"
 
+    printf "${BOLD}OPTIONS:${RESET}\n"
+    printf "  --yes, -y, --non-interactive    Unattended mode for scripts and CI: every prompt takes its\n"
+    printf "                                  default (same as pressing Enter) and nothing is read from\n"
+    printf "                                  stdin. A prompt with no safe default (SQL file, domains)\n"
+    printf "                                  fails with a clear message: set it in wpdb-import.conf.\n"
+    printf "                                  Same as WPDB_ASSUME_YES=1. Backups run when\n"
+    printf "                                  backup_before_import=ask.\n\n"
+
+    printf "${BOLD}EXIT CODES:${RESET}\n"
+    printf "  0 success   1 failure   2 usage error (unknown command or option)\n\n"
+
     printf "${BOLD}UPDATES:${RESET}\n"
     printf "  Since installation uses symlinks, running 'git pull' in the\n"
     printf "  repository directory automatically updates the global command.\n"
@@ -307,7 +318,7 @@ update_tool() {
     if repo_has_local_changes; then
         printf "${YELLOW}⚠️  Warning: You have uncommitted changes${RESET}\n"
         printf "Do you want to continue? This may overwrite local changes (y/N): "
-        read -r confirm_update
+        wpdb_read confirm_update
         if [[ "$confirm_update" != [Yy]* ]]; then
             printf "${YELLOW}Update cancelled${RESET}\n"
             return 0
@@ -370,6 +381,25 @@ update_tool() {
     fi
     return 0
 }
+
+# Global unattended flags, accepted in any position: --yes / -y / --non-interactive
+# (or the environment variable WPDB_ASSUME_YES=1). Every prompt then takes its default, a prompt
+# with no safe default fails with a clear message, and nothing is read from stdin.
+_wpdb_remaining_args=()
+for _wpdb_arg in "$@"; do
+    case "$_wpdb_arg" in
+        --yes|-y|--non-interactive) WPDB_ASSUME_YES=1 ;;
+        *) _wpdb_remaining_args+=("$_wpdb_arg") ;;
+    esac
+done
+set -- ${_wpdb_remaining_args[@]+"${_wpdb_remaining_args[@]}"}
+# (modules are loaded later, so the check is inline here)
+case "$(printf "%s" "${WPDB_ASSUME_YES:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+        export WPDB_ASSUME_YES=1
+        exec </dev/null
+        ;;
+esac
 
 # Parse command line arguments
 case "${1:-}" in
@@ -667,6 +697,6 @@ case "${1:-}" in
     *)
         printf "${RED}❌ Unknown command: ${1}${RESET}\n\n"
         show_help
-        exit 1
+        exit 2
         ;;
 esac

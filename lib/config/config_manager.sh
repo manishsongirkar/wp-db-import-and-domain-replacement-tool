@@ -757,37 +757,37 @@ prompt_and_save_config() {
         local sql_file old_domain new_domain all_tables dry_run clear_revisions setup_stage_proxy auto_proceed
 
         printf "📦 Enter SQL file name (default: vip-db.sql): "
-        read -r sql_file
+        wpdb_read_required sql_file "The SQL file name (sql_file)" || return 1
         sql_file=${sql_file:-vip-db.sql}
 
         printf "🌍 Enter the OLD (production) domain to search for: "
-        read -r old_domain
+        wpdb_read_required old_domain "The old (production) domain (old_domain)" || return 1
 
         printf "🏠 Enter the NEW (local) domain/base URL to replace with: "
-        read -r new_domain
+        wpdb_read_required new_domain "The new (local) domain (new_domain)" || return 1
 
         printf "Include --all-tables? (Y/n): "
-        read -r all_tables
+        wpdb_read all_tables
         all_tables=${all_tables:-y}
         [[ "$all_tables" == [Yy]* ]] && all_tables="true" || all_tables="false"
 
         printf "Run in dry-run mode by default? (y/N): "
-        read -r dry_run
+        wpdb_read dry_run
         dry_run=${dry_run:-n}
         [[ "$dry_run" == [Yy]* ]] && dry_run="true" || dry_run="false"
 
         printf "Clear post revisions by default? (Y/n): "
-        read -r clear_revisions
+        wpdb_read clear_revisions
         clear_revisions=${clear_revisions:-y}
         [[ "$clear_revisions" == [Yy]* ]] && clear_revisions="true" || clear_revisions="false"
 
         printf "Setup stage file proxy by default? (Y/n): "
-        read -r setup_stage_proxy
+        wpdb_read setup_stage_proxy
         setup_stage_proxy=${setup_stage_proxy:-y}
         [[ "$setup_stage_proxy" == [Yy]* ]] && setup_stage_proxy="true" || setup_stage_proxy="false"
 
         printf "Auto-proceed without confirmations? (y/N): "
-        read -r auto_proceed
+        wpdb_read auto_proceed
         auto_proceed=${auto_proceed:-n}
         [[ "$auto_proceed" == [Yy]* ]] && auto_proceed="true" || auto_proceed="false"        # Create the config file
         if ! create_config_file "$config_path" "$sql_file" "$old_domain" "$new_domain"; then
