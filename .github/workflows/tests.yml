@@ -1,0 +1,94 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: shellcheck and version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: |
+          for f in import_wp_db.sh wp-db-import uninstall.sh run_tests.sh $(find lib -name '*.sh'); do bash -n "$f"; done
+      - name: shellcheck (errors only)
+        run: shellcheck -S error -s bash import_wp_db.sh wp-db-import uninstall.sh run_tests.sh $(find lib -name '*.sh')
+      - name: VERSION matches CHANGELOG (and tag)
+        run: |
+          tag=""; [ "$GITHUB_REF_TYPE" = tag ] && tag="$GITHUB_REF_NAME"
+          lib/tests/check_version.sh "$tag"
+
+  unit:
+    name: unit (${{ matrix.os }}, ${{ matrix.bash }}, ${{ matrix.userland }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest,  bash: "3.2 (system)", userland: BSD }
+          - { os: macos-latest,  bash: "5.x (brew)",   userland: BSD }
+          - { os: macos-latest,  bash: "3.2 (system)", userland: GNU }
+          - { os: macos-latest,  bash: "5.x (brew)",   userland: GNU }
+          - { os: ubuntu-latest, bash: "5.x (system)", userland: GNU }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bash coreutils gnu-sed findutils grep gawk
+      - name: Select userland and Bash
+        run: |
+          if [ "${{ matrix.userland }}" = GNU ] && [ "$RUNNER_OS" = macOS ]; then
+            for p in coreutils gnu-sed findutils grep gawk; do echo "$(brew --prefix $p)/libexec/gnubin" >> "$GITHUB_PATH"; done
+          fi
+          case "${{ matrix.bash }}" in
+            3.2*) echo "WPDB_BASH=/bin/bash" >> "$GITHUB_ENV" ;;
+            *)    echo "WPDB_BASH=$(command -v bash || true)" >> "$GITHUB_ENV" ;;
+          esac
+      - name: Run unit and security suites
+        run: |
+          [ "${{ matrix.bash }}" = "5.x (brew)" ] && WPDB_BASH="$(brew --prefix)/bin/bash"
+          "$WPDB_BASH" --version | head -n 1
+          "$WPDB_BASH" ./run_tests.sh --ci --format json --output ./test-reports unit
+          "$WPDB_BASH" ./run_tests.sh --ci --format json --output ./test-reports security
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-${{ matrix.os }}-${{ strategy.job-index }}
+          path: test-reports/
+
+  matrix:
+    name: server matrix (${{ matrix.server }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [mysql, mariadb]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install one server (service stopped, tests start their own)
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.server }}" = mysql ]; then
+            sudo apt-get install -y mysql-server mysql-client
+          else
+            sudo apt-get install -y mariadb-server mariadb-client
+          fi
+          sudo systemctl stop mysql mariadb 2>/dev/null || true
+      - name: Run server matrix and real-import
+        env:
+          WPDB_MATRIX_SERVERS: /usr/sbin
+        run: |
+          ./run_tests.sh --ci --format json --output ./test-reports matrix
+          ./run_tests.sh --ci --format json --output ./test-reports real-import
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-matrix-${{ matrix.server }}
+          path: test-reports/
