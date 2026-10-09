@@ -426,8 +426,13 @@ test_mysql_client_selection() {
     printf 'SELECT 1;\n' > "$w/c.sql"
     out=$(WPDB_FALLBACK_PATH="$fb" PATH="$user:/usr/bin:/bin" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; perform_db_import_via_wpcli '$w/c.sql' '$w/c.log' false '$w/c_wp'; cat '$w/c.log'")
     _chk "wpcli import: WP-CLI sees the user's mysql"     grep -qxF "$user/mysql" <<< "$out"
-    out=$(WPDB_FALLBACK_PATH="$fb" PATH="$empty:/usr/bin:/bin" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; perform_db_import_via_wpcli '$w/c.sql' '$w/c.log' false '$w/c_wp'; cat '$w/c.log'")
-    _chk "wpcli import: fallback dir still helps when PATH has no mysql" grep -qxF "$fb/mysql" <<< "$out"
+    # Only meaningful when the system dirs have no mysql (CI runners ship one in /usr/bin)
+    if PATH="/usr/bin:/bin" command -v mysql >/dev/null 2>&1; then
+        printf "  ℹ️  system PATH has its own mysql: fallback-dir check skipped\n"
+    else
+        out=$(WPDB_FALLBACK_PATH="$fb" PATH="$empty:/usr/bin:/bin" bash -c "source '$_HARD_ROOT/lib/core/utils.sh' >/dev/null 2>&1; source '$_HARD_ROOT/lib/database/db_import.sh' >/dev/null 2>&1; perform_db_import_via_wpcli '$w/c.sql' '$w/c.log' false '$w/c_wp'; cat '$w/c.log'")
+        _chk "wpcli import: fallback dir still helps when PATH has no mysql" grep -qxF "$fb/mysql" <<< "$out"
+    fi
 
     # No production code may put Homebrew in front of the user's PATH again
     local hits
