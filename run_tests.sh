@@ -567,6 +567,10 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_domain_mappings.sh" ]]; then
+        run_test_suite "Unit Tests (Domain Mappings)" "$test_dir/test_domain_mappings.sh" "[domain_mappings]: anchoring, order, scopes, report, config"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
     if [[ -f "$test_dir/test_doctor.sh" ]]; then
         run_test_suite "Unit Tests (Doctor)" "$test_dir/test_doctor.sh" "wp-db-import doctor: tool, connection, config and backup checks, no secrets"
         [[ $? -ne 0 ]] && overall_result=1

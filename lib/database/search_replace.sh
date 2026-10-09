@@ -376,6 +376,9 @@ process_multisite_mappings() {
         # Start site processing
         start_site_processing "$blog_id" "$display_from_domain" "$new_domain" "false"
 
+        # Custom replacements for this site only ([site_domain_mappings]), before its domain
+        declare -F dm_run_site_scope >/dev/null 2>&1 && dm_run_site_scope "${WPDB_DM_CONFIG:-}" "$blog_id" "$(secure_tmpdir)/wp_custom_${blog_id}.log"
+
         # Execute search-replace
         if run_search_replace "$actual_domain" "$new_domain" "$SR_LOG_MULTI" "--url=$actual_domain" "$actual_path" ""; then
             update_step_status "1" "Standard URL replacement complete" "complete"
@@ -399,6 +402,8 @@ process_multisite_mappings() {
 
         # Start main site processing
         start_site_processing "$main_site_id" "$main_display_old" "$main_site_value" "true"
+
+        declare -F dm_run_site_scope >/dev/null 2>&1 && dm_run_site_scope "${WPDB_DM_CONFIG:-}" "$main_site_id" "$(secure_tmpdir)/wp_custom_${main_site_id}.log"
 
         # Execute main site search-replace
         if run_search_replace "$main_site_key" "$main_site_value" "$main_site_log" "--url=$main_site_key" "$main_site_path" ""; then

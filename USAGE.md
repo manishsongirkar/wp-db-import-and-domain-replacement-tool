@@ -124,6 +124,28 @@ backup_keep=5
 - The tool keeps no log files between runs: logs are in a private temp directory removed when the run ends, and are size-capped. When an import fails, the first error lines are printed on screen.
 - Restore: `gunzip -c ~/.wp-db-import/backups/<file>.sql.gz | wp db import -`
 
+### Custom URL Mappings (`[domain_mappings]`)
+
+Use it for strings that must not reach local or staging: a CDN host, a third-party API or webhook URL, a `www` variant. One pair per line, `search => replace`:
+
+```ini
+[domain_mappings]
+//cdn.example.com => //cdn.local.test
+//www.example.com => //local.test
+https://api.example.com/v2 => https://api.sandbox.example.net/v2
+```
+
+- **Anchor the search.** It must start with `//` or `http://` / `https://`. A bare `example.com` is rejected, because it would also match emails (`test@example.com`) and plain text.
+- `//host` replaces `http://host`, `https://host` and `//host` (and the JSON-escaped form). The replacement must also start with `//`.
+- `https://host/path` replaces only that exact text. The replacement starts with `//`, `http://` or `https://`.
+- Runs **before** the main domain replacement, longest search first. Serialized data stays valid.
+- Prefix match: `//example.com` also matches `//example.com.au`. End the search with `/` (`//example.com/`) for the exact host.
+- Single site: the whole database. Multisite: the whole network.
+- Multisite, one site only: `[site_domain_mappings]` with `blog_id: search => replace` (only that site's tables).
+- Not allowed (the run stops before anything changes): spaces and quotes, an empty side, search = replace, a replacement that contains another entry's search, a search that is a site's own domain.
+- **`www` and the main domain:** if `old_domain` has no `www.`, `//www.<old_domain>` is **not** replaced. If it starts with `www.`, both forms are. `wp-db-import --dry-run` shows the count of `//www.` URLs in the dump and suggests the line to add. It also lists the other hosts used in URLs (emails never appear), as candidates.
+- `wp-db-import config-validate`, `config-show` and `doctor` check the entries.
+
 ### Restoring a Backup
 
 ```bash

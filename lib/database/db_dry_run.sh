@@ -252,6 +252,9 @@ _dry_run_in_scratch() {
         [[ "$dom_tables" -gt 8 ]] && printf "      ${DIM}... and %d more tables${RESET}\n" "$((dom_tables - 8))"
     done < <(dry_run_domains "$old_domain" "$new_domain" "$config_path")
 
+    # URL findings (www variant, custom [domain_mappings] counts, other hosts): read from the dump only
+    declare -F dm_dry_run_report >/dev/null 2>&1 && dm_dry_run_report "$sql_file" "$old_domain" "$new_domain" "$config_path"
+
     printf "\n"
     if [[ "$any" == "true" && "$total_occ" -eq 0 ]]; then
         printf "   ${YELLOW}⚠️  The old domain does not appear in the dump: a real run would replace nothing.${RESET}\n"

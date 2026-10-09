@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **Custom URL mappings** ([#23](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/23)): `[domain_mappings]` in `wpdb-import.conf` adds any number of `search => replace` pairs for strings that must not reach local or staging (CDN hosts, third-party API URLs, a `www` variant). Works on single sites and multisite (whole network).
+  - The search must start with `//` or `http(s)://`; a bare host is rejected, so emails (`test@example.com`) and plain text are never matched. A `//host` search needs a `//newhost` replacement.
+  - Each entry runs plain and JSON-escaped (`\/`), longest search first, **before** the main domain replacement. Serialized data stays valid (WP-CLI). Duplicates are dropped with a warning; a replacement that contains another entry's search (double replacement) and a search equal to a site domain are errors.
+  - `[site_domain_mappings]` (`blog_id: search => replace`, multisite) limits an entry to one site's tables.
+  - Invalid entries stop the run before anything is changed. `config-validate`, `config-show`, `doctor` and the new-config template know the sections; the example configs show them.
+  - `--dry-run` reports the `//www.<old_domain>` count (the main domain does **not** replace it when `old_domain` has no `www.`; the report suggests the line to add), the count of each custom entry, and the other hosts found in the dump (emails never appear). Nothing is written to the config.
+  - No `[domain_mappings]` section = the same commands as before. Unit test `test_domain_mappings.sh` and real-import scenarios 8a (single site: third-party host, www URL, email untouched, idempotent, invalid entry) and 8b (subdirectory network: network-wide and per-site).
+  - `WPDB_TEST_WP_VERSION=<version>` makes the real-import test use the WP-CLI download cache (offline runs).
 - **`wp-db-import doctor`** ([#22](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/22)): checks the environment before an import and prints one row per item (`OK`, `WARN` or `FAIL`) with a fix for each problem. Exit code 1 if a required item fails.
   - Tools: Bash, git, curl/wget, gzip, unzip, bzip2, SHA-256 tool, WP-CLI (version, PHP notices), mysql client (path and version).
   - Site (inside a WordPress directory): wp-config credentials, `wp core is-installed`, MySQL socket, server version and connection, client/server product match, `CREATE DATABASE` permission (needed for `--dry-run`), `sql_mode`, backup folder and free space, config file validity.
@@ -34,6 +42,7 @@
 - Tests that printed "function not available" and skipped were rewritten against the real functions (`load_import_config`, `validate_config_file`, `run_search_replace`, ...) with real assertions: config loading and validation, the exact search-replace commands (two passes, `guid` skipped, `--dry-run`, `--network`/`--url`), the cleanup. A missing core function is now a **failure**. `./run_tests.sh --verbose` has zero "not available" warnings. Environment notes for optional tools (mysql client, git, curl) are shown as information.
 
 ### Fixed
+- `update_site_mapping` no longer treats a line such as `2: ...` in another section as an existing site mapping (it could skip adding the mapping of blog 2).
 - **Bugs found by the first Linux CI run** (#11):
   - WP-CLI could not load `mysqli` on Debian/Ubuntu because `PHP_INI_SCAN_DIR` was always cleared. It is now cleared on macOS only. On Linux the tool reported "No WordPress installation detected".
   - GNU `head` printed `error writing 'standard output': Broken pipe` when the dump was checked for `DROP TABLE` and when the import sample was cut. The message is silenced.

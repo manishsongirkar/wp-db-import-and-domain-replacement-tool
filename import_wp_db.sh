@@ -400,6 +400,23 @@ import_wp_db() {
   printf "    🔄 Replace with: ${GREEN}%s${RESET}\n" "$replace_domain"
   printf "\n"
 
+  # 🔁 Custom URL mappings ([domain_mappings]): an invalid entry stops the run BEFORE anything is changed
+  export WPDB_DM_CONFIG="${config_path:-}"
+  if [[ -n "$config_path" ]] && declare -F dm_load >/dev/null 2>&1; then
+    local dm_bad=0
+    dm_load "$config_path" "domain_mappings" || dm_bad=1
+    dm_print_problems "[domain_mappings]" || dm_bad=1
+    local dm_count=0
+    [[ -n "$DM_ENTRIES" ]] && dm_count=$(printf "%s\n" "$DM_ENTRIES" | grep -c .)
+    dm_load "$config_path" "site_domain_mappings" || dm_bad=1
+    dm_print_problems "[site_domain_mappings]" || dm_bad=1
+    if [[ "$dm_bad" -ne 0 ]]; then
+      printf "${YELLOW}💡 Fix the entries in %s (format: //old-host => //new-host). Nothing was changed.${RESET}\n" "$config_path"
+      return 1
+    fi
+    [[ "$dm_count" -gt 0 ]] && printf "    🔁 Custom URL mappings: ${CYAN}%s${RESET} (from [domain_mappings])\n\n" "$dm_count"
+  fi
+
   # 🧪 Dry run is decided BEFORE anything is imported: a dry run previews the whole import in a
   # temporary database and never changes the real one (no backup, no import, no replacement).
   decide_dry_run_mode "$config_path"
@@ -816,6 +833,17 @@ ${subsite_line}"
       local main_site_value=""
       local main_site_path=""
 
+      # --- Custom URL mappings, whole network, BEFORE the per-site replacements ---
+      if [[ -n "$config_path" ]] && declare -F dm_load >/dev/null 2>&1 \
+          && dm_load "$config_path" "domain_mappings" "" "${domain_keys[*]}" && [[ -n "$DM_ENTRIES" ]]; then
+        printf "\n${CYAN}${BOLD}🔁 Custom URL replacements (whole network)${RESET}\n"
+        dm_run "$WPDB_TMP_DIR/replace_custom.log" "--network" \
+          || printf "${RED}❌ A custom replacement failed. The site replacements continue; see %s${RESET}\n" "$WPDB_TMP_DIR/replace_custom.log"
+      elif [[ -n "$DM_ERRORS" ]]; then
+        dm_print_problems "[domain_mappings]"
+        printf "${RED}❌ Custom URL replacements were skipped. Fix the config and run the replacement again.${RESET}\n"
+      fi
+
       # --- Use modular search-replace processing ---
       # Call the extracted multisite processing function from search_replace module
       process_multisite_mappings "$main_site_id" domain_keys domain_values domain_blog_ids domain_paths
@@ -837,6 +865,14 @@ ${subsite_line}"
     fi
 
     printf "\n🔁 Running search-replace operations...\n"
+
+    # Custom URL mappings first (longest first), then the main domain
+    if [[ -n "$config_path" ]] && declare -F dm_load >/dev/null 2>&1 \
+        && dm_load "$config_path" "domain_mappings" && [[ -n "$DM_ENTRIES" ]]; then
+      printf "${CYAN}${BOLD}🔁 Custom URL replacements${RESET}\n"
+      dm_run "$WPDB_TMP_DIR/replace_custom.log" "" \
+        || printf "${RED}❌ A custom replacement failed. The main replacement continues; see %s${RESET}\n" "$WPDB_TMP_DIR/replace_custom.log"
+    fi
 
     # Execute search-replace for single site (Pass search_domain and replace_domain, with no --url flag)
     if run_search_replace "$search_domain" "$replace_domain" "$SR_LOG_SINGLE" ""; then

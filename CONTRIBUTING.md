@@ -239,6 +239,8 @@ Run these before opening a pull request that touches import, backup, temp files 
 - New temp files go in `$(secure_tmpdir)`, never a fixed `/tmp/...` path.
 - `WPDB_MATRIX_SERVERS="/path/to/bin ..."` adds servers (directories containing `mysqld` or `mariadbd`) to the matrix test.
 - `WPDB_MYSQL_BIN=/path/to/mysql` makes the importer use a specific client (used by the tests with stubs).
+- Custom URL replacements go through `dm_load` / `dm_run` / `dm_run_site_scope` (`lib/database/domain_mappings.sh`). A search must be anchored with `//` or `scheme://` (a bare host would match emails). Per-site entries use an explicit table list, never `--url` (with `--all-tables` it does not limit the replacement). `update_site_mapping` must only look at `[site_mappings]`: other sections can contain lines like `2: ...`.
+- `WPDB_TEST_WP_VERSION=7.1.3 ./run_tests.sh real-import` uses the WP-CLI download cache (offline). If WP-CLI runs out of memory while extracting, use `PHP_INI_SCAN_DIR=":/dir/with/memory.ini"`.
 - Every prompt must use `wpdb_read VAR [tty]` (Enter = default) or `wpdb_read_required VAR "what it is" [tty]` (no safe default) from `lib/core/utils.sh`, never a raw `read -r`. This keeps `--yes` / `WPDB_ASSUME_YES=1` from ever hanging (a test enforces it). Use `wpdb_auto_proceed_reason` for confirmations.
 - A test that only prints "function not available" proves nothing: core functions that are missing must **fail** the test. Skips are for missing tools or platforms only.
 - Use `printf -- "..."` when a format can start with a dash (colors are empty in CI and pipes, so `printf "${CYAN}-- text"` breaks). A test enforces it.
@@ -494,6 +496,7 @@ wp-db-import-and-domain-replacement-tool/
 │   ├── database/
 │   │   ├── db_backup.sh          # Pre-import backup (ask/true/false)
 │   │   ├── db_dry_run.sh         # --dry-run: preview in a temporary database
+│   │   ├── domain_mappings.sh    # [domain_mappings] / [site_domain_mappings]: custom search => replace
 │   │   ├── db_restore.sh         # wp-db-import restore (list, --last, <file>)
 │   │   ├── db_import.sh          # Socket / mysql / WP-CLI import, estimate, retry
 │   │   ├── search_replace.sh
@@ -527,6 +530,7 @@ wp-db-import-and-domain-replacement-tool/
 │   │       ├── test_import_security.sh
 │   │       ├── test_new_modules.sh
 │   │       ├── test_doctor.sh
+│   │       ├── test_domain_mappings.sh
 │   │       ├── test_restore.sh
 │   │       ├── test_socket_detection.sh
 │   │       ├── test_update_uninstall.sh

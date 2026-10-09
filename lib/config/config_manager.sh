@@ -229,6 +229,22 @@ backup_keep=5
 
 # Add your multisite mappings below:
 
+[domain_mappings]
+# Extra search => replace pairs for URLs that must not reach staging or local
+# (CDN hosts, third-party APIs, a www variant). Works for single sites and multisite
+# (applied to the whole network). One pair per line, "old => new".
+#
+# The search MUST start with // or http:// or https:// (a bare host would also match emails).
+#   //cdn.example.com => //cdn.target.test            http, https and protocol-relative URLs
+#   https://api.example.com/v2 => https://api.sandbox.example.net/v2   this exact text only
+#   //www.example.com => //target.test                www variant when old_domain has no www
+# A //host search needs a //newhost replacement. Longest search runs first, before old_domain.
+# End a search with / to match the exact host (//example.com/ does not match //example.com.au).
+
+[site_domain_mappings]
+# Multisite only: pairs for ONE site, "blog_id: old => new"
+#   2: //shop-cdn.example.com => //shop-cdn.target.test
+
 EOF
 
     if [[ $? -eq 0 ]]; then
@@ -398,7 +414,8 @@ update_site_mapping() {
     local temp_file="$config_path.tmp"
 
     # Check if the mapping already exists
-    if grep -q "^[[:space:]]*${blog_id}:" "$config_path" 2>/dev/null; then
+    # Only [site_mappings] counts: "2: //old => //new" in [site_domain_mappings] is not a site mapping
+    if get_site_mappings "$config_path" 2>/dev/null | grep -q "^[[:space:]]*${blog_id}:"; then
         # Update existing mapping
         awk -v blog_id="$blog_id" -v new_mapping="$mapping_line" '
             BEGIN {
@@ -618,6 +635,13 @@ validate_config_file() {
     setup_stage_proxy=$(parse_config_section "$config_path" "general" "setup_stage_proxy")
     auto_proceed=$(parse_config_section "$config_path" "general" "auto_proceed")
 
+    # Custom URL mappings: report every invalid entry
+    if declare -F dm_load >/dev/null 2>&1; then
+        local dm_line
+        dm_load "$config_path" "domain_mappings" || while IFS= read -r dm_line; do [[ -n "$dm_line" ]] && errors+=("[domain_mappings] $dm_line"); done <<< "$DM_ERRORS"
+        dm_load "$config_path" "site_domain_mappings" || while IFS= read -r dm_line; do [[ -n "$dm_line" ]] && errors+=("[site_domain_mappings] $dm_line"); done <<< "$DM_ERRORS"
+    fi
+
     [[ -z "$sql_file" ]] && errors+=("Missing or empty sql_file setting")
     [[ -z "$old_domain" ]] && errors+=("Missing or empty old_domain setting")
     [[ -z "$new_domain" ]] && errors+=("Missing or empty new_domain setting")
@@ -682,6 +706,19 @@ show_config() {
     printf "  Auto Proceed:      ${CYAN}%s${RESET}\n" "${auto_proceed:-false}"
 
     # Display site mappings
+    if declare -F dm_load >/dev/null 2>&1; then
+        local dm_old dm_new
+        if dm_load "$config_path" "domain_mappings" && [[ -n "$DM_ENTRIES" ]]; then
+            printf "\n${BOLD}Custom URL Mappings ([domain_mappings]):${RESET}\n"
+            while IFS=$'\t' read -r dm_old dm_new; do
+                [[ -n "$dm_old" ]] && printf "  ${YELLOW}%s${RESET} → ${GREEN}%s${RESET}\n" "$dm_old" "$dm_new"
+            done <<< "$DM_ENTRIES"
+        elif [[ -n "$DM_ERRORS" ]]; then
+            printf "\n${BOLD}Custom URL Mappings ([domain_mappings]):${RESET}\n"
+            dm_print_problems "[domain_mappings]"
+        fi
+    fi
+
     printf "\n${BOLD}Site Mappings:${RESET}\n"
     local mappings
     mappings=$(get_site_mappings "$config_path")
