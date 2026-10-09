@@ -791,6 +791,27 @@ detect_database_domain() {
         fi
     fi
 
+    # Multisite: right after an import, `wp option get` cannot start because wp-config.php
+    # names the local network domain while the imported database still has the production
+    # one ("Site ... not found"). Read the domain from the database directly instead.
+    if declare -F _import_db_query >/dev/null 2>&1; then
+        local prefix query value domain
+        prefix=$(get_wp_table_prefix "$wp_root/wp-config.php" 2>/dev/null)
+        prefix="${prefix:-wp_}"
+        # table prefixes are [A-Za-z0-9_]; refuse anything else before it goes into SQL
+        if [[ "$prefix" =~ ^[A-Za-z0-9_]+$ ]]; then
+            for query in "SELECT domain FROM \`${prefix}site\` ORDER BY id LIMIT 1" \
+                         "SELECT option_value FROM \`${prefix}options\` WHERE option_name = 'siteurl' LIMIT 1"; do
+                value=$(_import_db_query "$query" 2>/dev/null | head -1)
+                domain=$(printf "%s" "$value" | sed -E 's|^https?://([^/]+).*|\1|')
+                if [[ -n "$domain" ]]; then
+                    echo "$domain"
+                    return 0
+                fi
+            done
+        fi
+    fi
+
     return 1
 }
 

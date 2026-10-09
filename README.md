@@ -217,6 +217,7 @@ wp-db-import test
 - **Import Hardening** - Backup preference prompt, compressed dumps, compatibility filter, checksum verification, private temp files, benchmark safety
 - **Security Tests** - Penetration-style checks: command injection (file names, passwords, config), path traversal, symlink attacks, tampered downloads, gzip bombs, static scan
 - **Server Matrix (opt-in)** - Imports fixture dumps into real MySQL 8.x and MariaDB servers: `./run_tests.sh matrix`
+- **Real Import (opt-in)** - Runs the real tool on real WordPress sites (single site, multisite subdirectory and subdomain, `.gz`, compatibility retry) on a throw-away MySQL and checks the database: `./run_tests.sh real-import`
 
 ### 📊 Test Reports
 Tests generate comprehensive reports in multiple formats:

@@ -85,7 +85,8 @@ test_wordpress_detection() {
                 ((detection_issues++))
             fi
         else
-            printf "      ⚠️  find_wp_root function not available\n"
+            printf "      ❌ core function find_wp_root is missing\n"
+            ((detection_issues++))
         fi
     fi
 
@@ -249,92 +250,162 @@ test_config_file_handling() {
 
     printf "  Testing configuration file functionality...\n"
 
-    # Create a test configuration file
     cat > "test-config.conf" <<EOF
-# Test configuration for WordPress import
-OLD_DOMAIN="old-site.com"
-NEW_DOMAIN="new-site.local"
-OLD_URL="https://old-site.com"
-NEW_URL="http://new-site.local"
+[general]
+sql_file=production-db.sql
+old_domain=old-site.com
+new_domain=new-site.local
+all_tables=true
+dry_run=false
+clear_revisions=true
+setup_stage_proxy=false
+auto_proceed=false
+use_socket=false
+backup_before_import=false
+backup_keep=3
 
-# Database settings (optional - will be auto-detected)
-DB_NAME="test_database"
-DB_USER="test_user"
-DB_HOST="localhost"
-
-# WordPress installation settings
-MULTISITE="false"
-CLEANUP_REVISIONS="true"
-
-# Path mappings for file references
-declare -A DOMAIN_PATHS=(
-    ["old-site.com"]="/var/www/old-site"
-    ["new-site.local"]="/Users/test/local-sites/new-site"
-)
+[site_mappings]
+1:old-site.com:new-site.local
+2:blog.old-site.com:new-site.local/blog
 EOF
 
-    # Test configuration loading
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        if declare -F load_config >/dev/null 2>&1; then
-            if load_config "test-config.conf" >/dev/null 2>&1; then
-                printf "    ✅ Configuration file loading works\n"
-
-                # Test if variables are set correctly
-                if [[ "$OLD_DOMAIN" == "old-site.com" ]]; then
-                    printf "    ✅ Configuration variables set correctly\n"
-                else
-                    printf "    ❌ Configuration variables not set correctly\n"
-                    ((config_issues++))
-                fi
-            else
-                printf "    ❌ Configuration file loading failed\n"
-                ((config_issues++))
-            fi
-        else
-            printf "    ⚠️  load_config function not available\n"
+    if ! source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
+        cd / && cleanup_temp_test_dir "$temp_dir"
+        fail_test "Failed to load main script"
+        return 1
+    fi
+    local fn
+    for fn in load_import_config validate_config_file parse_config_section; do
+        if ! declare -F "$fn" >/dev/null 2>&1; then
+            printf "    ❌ core function %s is missing\n" "$fn"
+            ((config_issues++))
         fi
+    done
+
+    if declare -F load_import_config >/dev/null 2>&1; then
+        load_import_config "test-config.conf" >/dev/null 2>&1
+        [[ "$CONFIG_OLD_DOMAIN" == "old-site.com" && "$CONFIG_NEW_DOMAIN" == "new-site.local" ]] \
+            && printf "    ✅ domains loaded from the config file\n" \
+            || { printf "    ❌ domains not loaded (%s -> %s)\n" "$CONFIG_OLD_DOMAIN" "$CONFIG_NEW_DOMAIN"; ((config_issues++)); }
+        [[ "$CONFIG_USE_SOCKET" == "false" && "$CONFIG_BACKUP_BEFORE_IMPORT" == "false" && "$CONFIG_BACKUP_KEEP" == "3" ]] \
+            && printf "    ✅ import, backup and rotation settings loaded\n" \
+            || { printf "    ❌ settings not loaded (socket=%s backup=%s keep=%s)\n" "$CONFIG_USE_SOCKET" "$CONFIG_BACKUP_BEFORE_IMPORT" "$CONFIG_BACKUP_KEEP"; ((config_issues++)); }
     fi
 
-    # Test configuration validation
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        if declare -F validate_config >/dev/null 2>&1; then
-            if validate_config >/dev/null 2>&1; then
-                printf "    ✅ Configuration validation works\n"
-            else
-                printf "    ❌ Configuration validation failed\n"
-                ((config_issues++))
-            fi
-        else
-            printf "    ⚠️  validate_config function not available\n"
-        fi
+    if declare -F validate_config_file >/dev/null 2>&1; then
+        validate_config_file "test-config.conf" >/dev/null 2>&1 \
+            && printf "    ✅ configuration validation accepts a valid file\n" \
+            || { printf "    ❌ a valid configuration was rejected\n"; ((config_issues++)); }
     fi
 
-    # Test invalid configuration handling
+    # Invalid configuration handling
     printf "  Testing invalid configuration handling...\n"
     cat > "invalid-config.conf" <<EOF
-# Invalid configuration with syntax errors
-OLD_DOMAIN=  # Empty value
-INVALID_SYNTAX this line has no equals sign
-MULTISITE="maybe"  # Invalid boolean
+# no [general] section and no mappings
+OLD_DOMAIN=old-site.com
 EOF
-
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        if declare -F load_config >/dev/null 2>&1; then
-            if load_config "invalid-config.conf" >/dev/null 2>&1; then
-                printf "    ⚠️  Invalid configuration was loaded (should fail)\n"
-            else
-                printf "    ✅ Invalid configuration correctly rejected\n"
-            fi
+    if declare -F validate_config_file >/dev/null 2>&1; then
+        if validate_config_file "invalid-config.conf" >/dev/null 2>&1; then
+            printf "    ❌ an invalid configuration was accepted\n"
+            ((config_issues++))
+        else
+            printf "    ✅ invalid configuration correctly rejected\n"
         fi
     fi
 
-    # Cleanup
     cd / && cleanup_temp_test_dir "$temp_dir"
 
     if [[ $config_issues -eq 0 ]]; then
         pass_test "Configuration file handling tests passed"
     else
         fail_test "$config_issues configuration handling issues"
+    fi
+}
+
+# ===============================================
+# Test database domain detection (including multisite right after an import)
+# ===============================================
+#
+# Description:
+#   After an import into a multisite, `wp option get siteurl` cannot start because wp-config.php
+#   names the local network domain while the database still has the production one. The domain
+#   must then be read from the database directly (wp_site, then wp_options).
+#
+test_database_domain_detection() {
+    start_test "Database Domain Detection" "domain is found via WP-CLI, or from the database when WP-CLI cannot start"
+
+    if ! source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
+        fail_test "Failed to load main script"
+        return 1
+    fi
+    if ! declare -F detect_database_domain >/dev/null 2>&1; then
+        fail_test "core function detect_database_domain is missing"
+        return 1
+    fi
+
+    local issues=0 out queries
+    local root; root=$(create_temp_test_dir "domain_detect")
+    printf "<?php\n\$table_prefix = 'wpx_';\n" > "$root/wp-config.php"
+    export WP_COMMAND="/bin/true"
+    queries="$root/queries.log"; : > "$queries"
+
+    # 1) WP-CLI works: its answer is used
+    execute_wp_cli() { [[ "$1 $2" == "option get" && "$3" == "siteurl" ]] && { echo "https://wpcli.example.com/path"; return 0; }; return 1; }
+    out=$(detect_database_domain "$root")
+    [[ "$out" == "wpcli.example.com" ]] && printf "    ✅ domain read through WP-CLI\n" || { printf "    ❌ expected wpcli.example.com, got '%s'\n" "$out"; ((issues++)); }
+
+    # 2) WP-CLI cannot start (multisite after import): wp_site is read from the database
+    execute_wp_cli() { return 1; }
+    _import_db_query() { printf '%s\n' "$1" >> "$queries"; case "$1" in *"wpx_site"*) echo "prod.example.com";; esac; }
+    out=$(detect_database_domain "$root")
+    [[ "$out" == "prod.example.com" ]] && printf "    ✅ domain read from wp_site when WP-CLI cannot start\n" || { printf "    ❌ expected prod.example.com, got '%s'\n" "$out"; ((issues++)); }
+    grep -q 'FROM `wpx_site`' "$queries" && printf "    ✅ the table prefix from wp-config.php is used\n" || { printf "    ❌ prefix not used\n"; ((issues++)); }
+
+    # 3) wp_site is empty: wp_options siteurl is the next source (scheme and path are stripped)
+    _import_db_query() { case "$1" in *"wpx_options"*) echo "https://opts.example.com/blog";; esac; }
+    out=$(detect_database_domain "$root")
+    [[ "$out" == "opts.example.com" ]] && printf "    ✅ falls back to the siteurl option\n" || { printf "    ❌ expected opts.example.com, got '%s'\n" "$out"; ((issues++)); }
+
+    # 4) nothing works: failure (the caller prints its warning)
+    _import_db_query() { return 1; }
+    detect_database_domain "$root" >/dev/null 2>&1
+    [[ $? -ne 0 ]] && printf "    ✅ returns failure when no source works\n" || { printf "    ❌ should fail\n"; ((issues++)); }
+
+    # 5) a hostile table prefix never reaches SQL
+    printf "<?php\n\$table_prefix = 'wp_\`; DROP TABLE x; --';\n" > "$root/wp-config.php"
+    : > "$queries"; _import_db_query() { printf '%s\n' "$1" >> "$queries"; }
+    detect_database_domain "$root" >/dev/null 2>&1
+    [[ ! -s "$queries" ]] && printf "    ✅ an unsafe table prefix is refused before any SQL is built\n" || { printf "    ❌ unsafe prefix reached SQL: %s\n" "$(cat "$queries")"; ((issues++)); }
+
+    unset -f execute_wp_cli _import_db_query
+    cd / && cleanup_temp_test_dir "$root"
+    if [[ $issues -eq 0 ]]; then
+        pass_test "database domain detection works"
+    else
+        fail_test "$issues domain detection issue(s)"
+    fi
+}
+
+# ===============================================
+# Test: no printf format can be read as an option
+# ===============================================
+#
+# Description:
+#   `printf "${CYAN}-- text"` is fine on a terminal but, with colors off (CI, pipes, NO_COLOR),
+#   the format starts with "--" and printf fails with "invalid option". Such formats need `printf --`.
+#
+test_printf_dash_guard() {
+    start_test "printf Dash Guard" "no printf format starts with a dash after empty color variables"
+    local hits
+    hits=$(grep -rnE 'printf "(\$\{[A-Za-z_]+\}|\$[A-Za-z_]+)*-' \
+        "$PROJECT_ROOT_DIR/import_wp_db.sh" "$PROJECT_ROOT_DIR/wp-db-import" "$PROJECT_ROOT_DIR/uninstall.sh" "$PROJECT_ROOT_DIR/install.sh" \
+        "$PROJECT_ROOT_DIR"/lib/core "$PROJECT_ROOT_DIR"/lib/config "$PROJECT_ROOT_DIR"/lib/database "$PROJECT_ROOT_DIR"/lib/utilities 2>/dev/null \
+        | grep -vE ':[0-9]+:\s*#|printf --')
+    if [[ -z "$hits" ]]; then
+        pass_test "every printf that may start with a dash uses --"
+    else
+        printf "%s\n" "$hits" | sed 's/^/    /'
+        fail_test "printf formats that can start with a dash found (use printf --)"
     fi
 }
 
@@ -398,7 +469,8 @@ test_domain_sanitization() {
                 fi
             done
         else
-            printf "    ⚠️  sanitize_domain function not available\n"
+            printf "    ❌ core function sanitize_domain is missing\n"
+            ((sanitization_issues++))
         fi
     fi
 
@@ -435,43 +507,76 @@ test_search_replace() {
 
     printf "  Testing search and replace logic...\n"
 
-    # Test serialized data handling (common WordPress issue)
-    local test_serialized='a:2:{s:3:"url";s:20:"https://old-site.com";s:4:"name";s:8:"Old Site";}'
-    local expected_result='a:2:{s:3:"url";s:20:"http://new-site.local";s:4:"name";s:8:"Old Site";}'
-
-    # Load the main script to get search/replace functions
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        # Test if search/replace functions are available
-        if declare -F perform_search_replace >/dev/null 2>&1; then
-            printf "    ✅ Search/replace function available\n"
-        else
-            printf "    ⚠️  Search/replace function not directly available\n"
-        fi
-
-        # Test URL replacement patterns
-        local test_patterns=(
-            "https://old-site.com → http://new-site.local"
-            "//old-site.com → //new-site.local"
-            "old-site.com → new-site.local"
-        )
-
-        for pattern in "${test_patterns[@]}"; do
-            printf "    Testing pattern: $pattern\n"
-            # Basic pattern validation (actual testing would require database)
-        done
+    if ! source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
+        fail_test "Failed to load main script"
+        return 1
+    fi
+    if ! declare -F run_search_replace >/dev/null 2>&1; then
+        fail_test "core function run_search_replace is missing"
+        return 1
     fi
 
-    # Test dry-run capability
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        if declare -F dry_run_search_replace >/dev/null 2>&1; then
-            printf "    ✅ Dry-run functionality available\n"
-        else
-            printf "    ⚠️  Dry-run functionality not available\n"
-        fi
-    fi
+    # WP-CLI is replaced by a recorder, so the exact commands the tool would run can be checked
+    local log
+    log=$(mktemp "${TMPDIR:-/tmp}/wpdb-sr-test.XXXXXX")
+    execute_wp_cli() { printf 'CALL:'; printf ' [%s]' "$@"; printf '\n'; return "${SR_STUB_RC:-0}"; }
+
+    local all_tables_flag="--all-tables" dry_run_flag=""
+
+    # Plain domain: protocol-relative pass plus the escaped (serialized/JSON) pass
+    : > "$log"
+    run_search_replace "old-site.com" "new-site.local" "$log" "" >/dev/null 2>&1
+    local rc=$? calls; calls=$(grep -c '^CALL:' "$log")
+    [[ $rc -eq 0 ]] && printf "    ✅ search-replace succeeds\n" || { printf "    ❌ search-replace failed (rc=%s)\n" "$rc"; ((search_replace_issues++)); }
+    [[ "$calls" == "2" ]] && printf "    ✅ two passes: plain and escaped\n" || { printf "    ❌ expected 2 passes, got %s\n" "$calls"; ((search_replace_issues++)); }
+    grep -qF '[search-replace] [//old-site.com] [//new-site.local]' "$log" \
+        && printf "    ✅ protocol-independent pass (//old-site.com -> //new-site.local)\n" \
+        || { printf "    ❌ missing protocol-independent pass\n"; ((search_replace_issues++)); }
+    grep -qF '[\\//old-site.com] [\\//new-site.local]' "$log" \
+        && printf "    ✅ escaped pass for serialized and JSON data\n" \
+        || { printf "    ❌ missing escaped pass\n"; ((search_replace_issues++)); }
+    [[ "$(grep -c -- '--skip-columns=guid' "$log")" == "2" ]] && printf "    ✅ guid column is never changed\n" || { printf "    ❌ guid not skipped\n"; ((search_replace_issues++)); }
+    [[ "$(grep -c -- '--all-tables' "$log")" == "2" ]] && printf "    ✅ --all-tables is passed through\n" || { printf "    ❌ --all-tables missing\n"; ((search_replace_issues++)); }
+    ! grep -q -- '--dry-run' "$log" && printf "    ✅ no --dry-run in live mode\n" || { printf "    ❌ --dry-run present in live mode\n"; ((search_replace_issues++)); }
+
+    # Dry run
+    dry_run_flag="--dry-run"; : > "$log"
+    run_search_replace "old-site.com" "new-site.local" "$log" "" >/dev/null 2>&1
+    [[ "$(grep -c -- '--dry-run' "$log")" == "2" ]] && printf "    ✅ dry-run flag reaches every pass\n" || { printf "    ❌ dry-run flag missing\n"; ((search_replace_issues++)); }
+    dry_run_flag=""
+
+    # Without --all-tables
+    all_tables_flag=""; : > "$log"
+    run_search_replace "old-site.com" "new-site.local" "$log" "" >/dev/null 2>&1
+    ! grep -q -- '--all-tables' "$log" && printf "    ✅ --all-tables is optional\n" || { printf "    ❌ --all-tables forced\n"; ((search_replace_issues++)); }
+    all_tables_flag="--all-tables"
+
+    # www domain gets its own passes
+    : > "$log"
+    run_search_replace "www.old-site.com" "new-site.local" "$log" "" >/dev/null 2>&1
+    calls=$(grep -c '^CALL:' "$log")
+    [[ "$calls" -ge 4 ]] && printf "    ✅ www domain adds extra passes (%s)\n" "$calls" || { printf "    ❌ www domain: expected 4+ passes, got %s\n" "$calls"; ((search_replace_issues++)); }
+
+    # Multisite context: --url and --network are honored
+    : > "$log"
+    run_search_replace "old-site.com" "new-site.local" "$log" "--network" >/dev/null 2>&1
+    grep -q -- '--network' "$log" && printf "    ✅ --network is passed for multisite\n" || { printf "    ❌ --network missing\n"; ((search_replace_issues++)); }
+    : > "$log"
+    run_search_replace "old-site.com" "new-site.local" "$log" "--url=blog.old-site.com" "/blog/" "/blog/" >/dev/null 2>&1
+    grep -q -- '--url=blog.old-site.com' "$log" && printf "    ✅ --url is passed for a subsite\n" || { printf "    ❌ --url missing\n"; ((search_replace_issues++)); }
+
+    # Failure and bad input
+    : > "$log"
+    SR_STUB_RC=1 run_search_replace "old-site.com" "new-site.local" "$log" "" >/dev/null 2>&1
+    [[ $? -ne 0 ]] && printf "    ✅ a failing WP-CLI call makes the function fail\n" || { printf "    ❌ failure was swallowed\n"; ((search_replace_issues++)); }
+    run_search_replace "" "new-site.local" "$log" "" >/dev/null 2>&1
+    [[ $? -ne 0 ]] && printf "    ✅ missing domain is rejected\n" || { printf "    ❌ missing domain accepted\n"; ((search_replace_issues++)); }
+
+    unset -f execute_wp_cli
+    rm -f "$log"
 
     if [[ $search_replace_issues -eq 0 ]]; then
-        pass_test "Search/replace tests passed (logic validation)"
+        pass_test "Search/replace tests passed"
     else
         fail_test "$search_replace_issues search/replace issues"
     fi
@@ -689,30 +794,39 @@ test_cleanup_functions() {
 
     printf "  Testing cleanup functionality...\n"
 
-    # Load the main script
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-
-        # Test revision cleanup command generation
-        if declare -F show_revision_cleanup_commands >/dev/null 2>&1; then
-            printf "    ✅ Revision cleanup function available\n"
-        else
-            printf "    ⚠️  Revision cleanup function not available\n"
-        fi
-
-        # Test cache clearing functions
-        if declare -F clear_wp_cache >/dev/null 2>&1; then
-            printf "    ✅ Cache clearing function available\n"
-        else
-            printf "    ⚠️  Cache clearing function not available\n"
-        fi
-
-        # Test temporary file cleanup
-        if declare -F cleanup_temp_files >/dev/null 2>&1; then
-            printf "    ✅ Temporary file cleanup function available\n"
-        else
-            printf "    ⚠️  Temporary file cleanup function not available\n"
-        fi
+    if ! source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
+        fail_test "Failed to load main script"
+        return 1
     fi
+
+    local fn
+    for fn in show_revision_cleanup_commands clean_revisions_silent cleanup secure_tmpdir secure_tmpdir_cleanup; do
+        if declare -F "$fn" >/dev/null 2>&1; then
+            printf "    ✅ %s is available\n" "$fn"
+        else
+            printf "    ❌ core function %s is missing\n" "$fn"
+            ((cleanup_issues++))
+        fi
+    done
+
+    # The temp-file cleanup really removes the private directory and logs
+    if declare -F cleanup >/dev/null 2>&1 && declare -F secure_tmpdir >/dev/null 2>&1; then
+        local base d
+        base=$(mktemp -d "${TMPDIR:-/tmp}/wpdb-cleanup-test.XXXXXX")
+        d=$(TMPDIR="$base" secure_tmpdir)
+        echo "log" > "$d/db_import.log"
+        ( export TMPDIR="$base"; DB_LOG="$d/db_import.log" cleanup >/dev/null 2>&1 )
+        if [[ -z "$(ls -A "$base")" ]]; then
+            printf "    ✅ cleanup removes temporary logs and the private directory\n"
+        else
+            printf "    ❌ cleanup left files behind: %s\n" "$(ls -A "$base")"
+            ((cleanup_issues++))
+        fi
+        rm -rf "$base"
+    fi
+
+    # Cache and rewrite flushing run inside the import itself; they are verified by the real
+    # end-to-end import test (lib/tests/integration/test_real_import.sh).
 
     if [[ $cleanup_issues -eq 0 ]]; then
         pass_test "Cleanup function tests passed"
@@ -751,6 +865,8 @@ run_wordpress_tests() {
     test_config_file_handling
 
     # Domain and URL handling tests
+    test_database_domain_detection
+    test_printf_dash_guard
     test_domain_sanitization
     test_search_replace
 

@@ -90,10 +90,10 @@ show_revision_cleanup_commands() {
 
           if [ "$blog_id" = "1" ]; then
             site_prefix="${table_prefix}"
-            printf "${CYAN}-- Blog ID %s (Main Site) - Tables: %sposts, %spostmeta${RESET}\n" "$blog_id" "$site_prefix" "$site_prefix"
+            printf -- "${CYAN}-- Blog ID %s (Main Site) - Tables: %sposts, %spostmeta${RESET}\n" "$blog_id" "$site_prefix" "$site_prefix"
           else
             site_prefix="${table_prefix}${blog_id}_"
-            printf "${CYAN}-- Blog ID %s (Subsite) - Tables: %sposts, %spostmeta${RESET}\n" "$blog_id" "$site_prefix" "$site_prefix"
+            printf -- "${CYAN}-- Blog ID %s (Subsite) - Tables: %sposts, %spostmeta${RESET}\n" "$blog_id" "$site_prefix" "$site_prefix"
           fi
 
           # Use backticks for table names for compatibility
