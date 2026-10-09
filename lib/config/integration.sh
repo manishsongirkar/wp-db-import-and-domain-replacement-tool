@@ -371,7 +371,7 @@ handle_missing_mappings() {
         # Pause timer for user input
         pause_script_timer
         # Read from stdin (terminal) explicitly to avoid CSV input conflicts
-        read -r new_domain_input < /dev/tty
+        wpdb_read new_domain_input tty
         # Resume timer after user input
         resume_script_timer
         new_domain_input="${new_domain_input:-$default_url}"
@@ -542,7 +542,7 @@ get_config_prompt_value() {
         # No config value, prompt user
         printf "%s" "$prompt_text"
         local user_input
-        read -r user_input
+        wpdb_read user_input
         echo "${user_input:-$default_value}"
     fi
 }
@@ -705,7 +705,9 @@ validate_config_domains() {
 
         local choice
         printf "Enter your choice (1-4): "
-        read -r choice
+        if ! wpdb_read_required choice "A choice between the config domain and the database domain"; then
+            return 1
+        fi
 
         case "$choice" in
             1)

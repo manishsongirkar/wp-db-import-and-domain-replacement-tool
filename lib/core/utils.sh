@@ -746,6 +746,10 @@ if is_sourced; then
         export -f detect_multisite_filesystem_indicators
         export -f get_wp_db_credentials
         export -f secure_tmpdir
+        export -f wpdb_assume_yes
+        export -f wpdb_auto_proceed_reason
+        export -f wpdb_read
+        export -f wpdb_read_required
         export -f secure_tmpdir_cleanup
     } 2>/dev/null
 fi
@@ -1147,6 +1151,67 @@ check_wpcli_availability() {
         export WP_COMMAND
     fi
     return 0
+}
+
+# ===============================================
+# Unattended mode (--yes / --non-interactive / WPDB_ASSUME_YES=1)
+# ===============================================
+#
+# Description:
+#   In unattended mode every prompt takes its default, exactly as if the user pressed Enter,
+#   and nothing is read from stdin or the terminal. A prompt that has no safe default
+#   (SQL file name, domains, "did you run the SQL manually?") fails with a clear message.
+#
+# Functions:
+#   wpdb_assume_yes                     returns 0 when unattended mode is on
+#   wpdb_auto_proceed_reason            prints "--yes" or "from config" and returns 0 when
+#                                       confirmations should be skipped; returns 1 otherwise
+#   wpdb_read VAR [tty]                 like `read -r VAR` (optionally from /dev/tty);
+#                                       unattended: VAR is set to "" (the default) without reading
+#   wpdb_read_required VAR "what" [tty] like wpdb_read, but unattended: prints an error and returns 1
+#
+wpdb_assume_yes() {
+    case "$(printf "%s" "${WPDB_ASSUME_YES:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) return 0 ;;
+    esac
+    return 1
+}
+
+wpdb_auto_proceed_reason() {
+    if wpdb_assume_yes; then
+        printf "%s" "--yes"
+        return 0
+    fi
+    case "$(printf "%s" "${CONFIG_AUTO_PROCEED:-}" | tr '[:upper:]' '[:lower:]')" in
+        true|yes|1|on) printf "%s" "from config"; return 0 ;;
+    esac
+    return 1
+}
+
+wpdb_read() {
+    local __wpdb_var="$1" __wpdb_src="${2:-}"
+    if wpdb_assume_yes; then
+        printf "%s\n" "(--yes: using the default)"
+        printf -v "$__wpdb_var" "%s" ""
+        return 0
+    fi
+    if [[ "$__wpdb_src" == "tty" ]]; then
+        read -r "$__wpdb_var" < /dev/tty
+    else
+        read -r "$__wpdb_var"
+    fi
+}
+
+wpdb_read_required() {
+    local __wpdb_var="$1" __wpdb_what="$2" __wpdb_src="${3:-}"
+    if wpdb_assume_yes; then
+        printf "\n"
+        printf "${RED:-}❌ %s is required, but unattended mode (--yes) cannot ask for it.${RESET:-}\n" "$__wpdb_what" >&2
+        printf "${YELLOW:-}💡 Set it in wpdb-import.conf (wp-db-import config-create), or run without --yes.${RESET:-}\n" >&2
+        printf -v "$__wpdb_var" "%s" ""
+        return 1
+    fi
+    wpdb_read "$__wpdb_var" "$__wpdb_src"
 }
 
 # ===============================================

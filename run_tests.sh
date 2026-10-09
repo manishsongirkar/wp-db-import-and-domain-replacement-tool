@@ -566,6 +566,11 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_yes_flag.sh" ]]; then
+        run_test_suite "Unit Tests (Unattended --yes)" "$test_dir/test_yes_flag.sh" "--yes / --non-interactive: helpers, flags, no-hang, required values"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
     if [[ -f "$test_dir/test_update_uninstall.sh" ]]; then
         run_test_suite "Unit Tests (Update/Uninstall)" "$test_dir/test_update_uninstall.sh" "wp-db-import update and uninstall.sh in a sandbox"
         [[ $? -ne 0 ]] && overall_result=1

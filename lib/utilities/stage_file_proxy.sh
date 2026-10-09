@@ -286,7 +286,7 @@ get_validated_domain() {
 
     while true; do
         printf "%s" "$prompt"
-        read -r domain < /dev/tty
+        wpdb_read_required domain "The Stage File Proxy source domain" tty || return 1
 
         # Store original input for user feedback
         original_input="$domain"
@@ -344,7 +344,7 @@ get_validated_domain() {
             # Check for localhost patterns
             if [[ "$clean_domain" =~ (localhost|127\.0\.0\.1|0\.0\.0\.0) ]]; then
                 printf "${YELLOW}⚠️  Warning: Localhost pattern detected. Continue? (y/n): ${RESET}"
-                read -r continue_localhost < /dev/tty
+                wpdb_read_required continue_localhost "A decision about the localhost domain" tty || return 1
                 if [[ ! "$continue_localhost" =~ ^[Yy] ]]; then
                     continue
                 fi
@@ -1364,7 +1364,7 @@ setup_multisite_stage_file_proxy_manual() {
         if [[ -n "$existing_domain" ]]; then
             printf "${GREEN}✓ Found existing mapping: %s${RESET}\n" "$existing_domain"
             printf "${CYAN}Press Enter to use this domain, or type a new domain to override: ${RESET}"
-            read -r domain_override < /dev/tty
+            wpdb_read domain_override tty
 
             if [[ -n "$domain_override" ]]; then
                 if get_validated_domain_with_input "$domain_override"; then

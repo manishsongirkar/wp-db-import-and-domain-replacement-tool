@@ -22,7 +22,7 @@
 # Check bash version compatibility
 if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     # Minimal completion for Bash 3.x
-    complete -W "config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test --help" wp-db-import
+    complete -W "config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test --help --yes -y --non-interactive" wp-db-import
     return 0
 fi
 
@@ -51,11 +51,24 @@ _wp_db_import_completion() {
 
     # Define all available wp-db-import commands
     opts="config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test --help"
+    # Global options (accepted in any position): unattended mode for scripts and CI
+    local flags="--yes -y --non-interactive"
+
+    # Typing a dash: offer the options
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags --help" -- "$cur"))
+        return 0
+    fi
 
     # Generate completions based on current input
     case "$prev" in
         "wp-db-import")
             # Complete main commands
+            COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+            return 0
+            ;;
+        --yes|-y|--non-interactive)
+            # An option was already typed: the command can follow
             COMPREPLY=($(compgen -W "$opts" -- "$cur"))
             return 0
             ;;

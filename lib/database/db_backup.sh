@@ -100,8 +100,11 @@ backup_database_before_import() {
     if [[ "$mode" == "ask" || -z "$mode" ]]; then
         local auto_proceed
         auto_proceed=$(printf "%s" "${CONFIG_AUTO_PROCEED:-}" | tr '[:upper:]' '[:lower:]')
-        if [[ "$auto_proceed" == "true" || "$auto_proceed" == "yes" || "$auto_proceed" == "1" || "$auto_proceed" == "on" ]]; then
-            printf "${DIM}ℹ️  Unattended run (auto_proceed): backing up before import.${RESET}\n"
+        local assume_yes
+        assume_yes=$(printf "%s" "${WPDB_ASSUME_YES:-}" | tr '[:upper:]' '[:lower:]')
+        if [[ "$auto_proceed" == "true" || "$auto_proceed" == "yes" || "$auto_proceed" == "1" || "$auto_proceed" == "on" \
+           || "$assume_yes" == "1" || "$assume_yes" == "true" || "$assume_yes" == "yes" || "$assume_yes" == "on" ]]; then
+            printf "${DIM}ℹ️  Unattended run (auto_proceed / --yes): backing up before import.${RESET}\n"
         else
             local answer=""
             declare -F pause_script_timer >/dev/null 2>&1 && pause_script_timer

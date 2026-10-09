@@ -87,6 +87,7 @@ Tests individual functions and components:
 
 - Core utility functions
 - Import hardening: pre-import backup preference (`ask`/`true`/`false`), compressed dumps, SQL compatibility filter, checksum-verified downloads, private temp directory, benchmark in a scratch database
+- Unattended mode (`--yes`): helpers, flag parsing in any position, exit codes, no raw prompts, runs with a never-ending stdin pipe and a hang watchdog, required values fail clearly
 - Security (penetration-style, `./run_tests.sh security`): command injection through file names, passwords, config values and DB names; path traversal; symlink and temp-file attacks; tampered downloads; gzip bombs and huge lines; static scan
 - Module loading system
 - Configuration management
@@ -125,7 +126,8 @@ lib/tests/
 │   ├── test_import_security.sh    # Penetration-style security tests
 │   ├── test_new_modules.sh        # Module loading
 │   ├── test_socket_detection.sh   # MySQL socket detection
-│   └── test_update_uninstall.sh   # wp-db-import update + uninstall.sh (sandboxed)
+│   ├── test_update_uninstall.sh   # wp-db-import update + uninstall.sh (sandboxed)
+│   └── test_yes_flag.sh           # --yes / --non-interactive (unattended mode)
 ├── fixtures/                   # Test fixtures and sample data
 │   └── README.md              # Fixture documentation
 └── reports/                    # Test reports (generated)

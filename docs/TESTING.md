@@ -74,7 +74,8 @@ lib/tests/
 │   ├── test_import_security.sh
 │   ├── test_new_modules.sh
 │   ├── test_socket_detection.sh
-│   └── test_update_uninstall.sh   # update command and uninstall.sh in a sandbox
+│   ├── test_update_uninstall.sh   # update command and uninstall.sh in a sandbox
+│   └── test_yes_flag.sh           # --yes / --non-interactive: helpers, flags, no-hang, required values
 ├── fixtures/
 │   ├── README.md
 │   ├── dump_legacy.sql         # accepted by every server version

@@ -25,7 +25,7 @@
 ## @param $@ Standard Zsh completion arguments.
 _wp_db_import() {
     local context state state_descr line
-    local -a commands
+    local -a commands options
 
     commands=(
         'config-show:Show current configuration'
@@ -41,9 +41,20 @@ _wp_db_import() {
         '--help:Show help'
     )
 
+    options=(
+        '--yes:Unattended mode for scripts and CI (every prompt takes its default)'
+        '-y:Same as --yes'
+        '--non-interactive:Same as --yes'
+        '--help:Show help'
+    )
+
     case $words[1] in
         wp-db-import)
-            _describe 'wp-db-import commands' commands
+            if [[ "$words[CURRENT]" == -* ]]; then
+                _describe 'wp-db-import options' options
+            else
+                _describe 'wp-db-import commands' commands
+            fi
             ;;
     esac
 }

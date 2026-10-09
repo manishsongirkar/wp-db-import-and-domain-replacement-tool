@@ -133,10 +133,36 @@ wp-db-import update        # git installations: fast-forward update, shows versi
 - `update` only fast-forwards (it never merges or rewrites your history). If it fails it prints the cause and how to fix it, for example when your installed branch was deleted after a merge (`git checkout main && git pull`).
 - `uninstall.sh` removes the command, the Bash/Zsh completions and stale private temp directories. It **never deletes your saved database backups unless you answer yes** (or pass `--delete-backups`). If anything cannot be removed it prints the exact error, the path, its permissions and a hint, lists every problem in the summary, and exits non-zero. Per-project `wpdb-import.conf` files and the cloned repository folder are not removed.
 
+### 🤖 Unattended Mode (`--yes`) for Scripts and CI
+
+```bash
+wp-db-import --yes                     # or: -y, --non-interactive
+WPDB_ASSUME_YES=1 wp-db-import         # same, through the environment
+bash import_wp_db.sh --yes             # when running the script directly
+```
+
+In unattended mode:
+- **Every prompt takes its default**, exactly as if you pressed Enter. Confirmations (`Proceed with database import?`, `Proceed with search-replace?`) are skipped with the reason shown, like `auto_proceed=true`. Values you set in `wpdb-import.conf` are used as before.
+- **Nothing is read from stdin or the terminal**, and stdin is closed for the whole run, so a script can never hang waiting for input (even if its stdin is a pipe that never ends).
+- **A prompt without a safe default fails** with a clear message and exit code 1: the SQL file name (`sql_file`), the old and new domains, the choice when the config and database domains differ, and "have you run the MySQL commands manually?". Put these in `wpdb-import.conf` first (`wp-db-import config-create`, or copy an example config).
+- **Backups still run** when `backup_before_import=ask` (the default). `false` skips them, `true` always runs them.
+- `wp-db-import update` answers "no" to its "uncommitted changes" question, so it never overwrites local changes.
+- Prompts that are not configured in `wpdb-import.conf` use their documented defaults (for example revision cleanup `Y`, `--all-tables` `Y`, dry-run `N`, Stage File Proxy setup `Y`). **Set these keys in the config** for a predictable CI run.
+
+**Exit codes:** `0` success, `1` failure (including a missing required value), `2` usage error (unknown command or option).
+
+```bash
+# Example CI step (config file already contains sql_file, old_domain, new_domain)
+cd /path/to/wordpress && wp-db-import --yes
+```
+
 ### 📋 Available Commands
 ```bash
 # Run main interactive import wizard
 wp-db-import
+
+# Unattended (scripts, CI): every prompt takes its default, nothing is read from stdin
+wp-db-import --yes              # also: -y, --non-interactive, WPDB_ASSUME_YES=1
 
 # Configuration management
 wp-db-import config-show        # Show unified configuration status

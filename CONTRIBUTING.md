@@ -238,6 +238,7 @@ Run these before opening a pull request that touches import, backup, temp files 
 - New temp files go in `$(secure_tmpdir)`, never a fixed `/tmp/...` path.
 - `WPDB_MATRIX_SERVERS="/path/to/bin ..."` adds servers (directories containing `mysqld` or `mariadbd`) to the matrix test.
 - `WPDB_MYSQL_BIN=/path/to/mysql` makes the importer use a specific client (used by the tests with stubs).
+- Every prompt must use `wpdb_read VAR [tty]` (Enter = default) or `wpdb_read_required VAR "what it is" [tty]` (no safe default) from `lib/core/utils.sh`, never a raw `read -r`. This keeps `--yes` / `WPDB_ASSUME_YES=1` from ever hanging (a test enforces it). Use `wpdb_auto_proceed_reason` for confirmations.
 - Never put Homebrew or `/usr/local/bin` **before** `$PATH`. Use `PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"` so the user's environment wins (a test enforces this).
 - Anything that runs SQL outside the import should use `_import_db_query` (mysql client with wp-config credentials, then WP-CLI): `wp db query` cannot connect in Local.
 
@@ -516,7 +517,8 @@ wp-db-import-and-domain-replacement-tool/
 │   │       ├── test_import_security.sh
 │   │       ├── test_new_modules.sh
 │   │       ├── test_socket_detection.sh
-│   │       └── test_update_uninstall.sh
+│   │       ├── test_update_uninstall.sh
+│   │       └── test_yes_flag.sh
 │   ├── utilities/
 │   │   ├── gitignore_manager.sh
 │   │   ├── revision_cleanup.sh
