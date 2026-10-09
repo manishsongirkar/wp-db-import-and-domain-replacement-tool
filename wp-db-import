@@ -81,6 +81,9 @@ show_help() {
     printf "  wp-db-import show-links         Show local site links\n"
     printf "  wp-db-import setup-proxy        Auto-setup Stage File Proxy (uses config)\n"
     printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
+    printf "  wp-db-import restore --last     Restore the newest backup of this site's database\n"
+    printf "  wp-db-import restore --list     List backups (add --all for every database)\n"
+    printf "  wp-db-import restore <file>     Restore a specific backup (.sql, .sql.gz, .zip, .sql.bz2)\n"
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
     printf "  wp-db-import test               Run test suite to validate tool functionality\n"
@@ -420,6 +423,19 @@ case "${1:-}" in
         ;;
     update|--update)
         update_tool
+        exit $?
+        ;;
+    restore)
+        shift
+        if ! check_wordpress_directory; then
+            exit 1
+        fi
+        if ! load_main_script; then
+            exit 1
+        fi
+        # the restore creates private temp files (log, table lists): remove them on exit
+        trap 'secure_tmpdir_cleanup 2>/dev/null' EXIT
+        restore_cli "$@"
         exit $?
         ;;
     show-links)

@@ -35,6 +35,7 @@ _wp_db_import() {
         'show-links:Show local site links'
         'setup-proxy:Setup stage file proxy'
         'show-cleanup:Generate revision cleanup commands'
+        'restore:Restore a database backup (--list, --last or a file)'
         'update:Update to latest version'
         'version:Show version info'
         'test:Run test suite to validate tool functionality'
