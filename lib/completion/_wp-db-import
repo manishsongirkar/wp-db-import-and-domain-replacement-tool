@@ -36,6 +36,7 @@ _wp_db_import() {
         'setup-proxy:Setup stage file proxy'
         'show-cleanup:Generate revision cleanup commands'
         'restore:Restore a database backup (--list, --last or a file)'
+        'doctor:Check the environment (tools, WP-CLI, database, backups, config)'
         'update:Update to latest version'
         'version:Show version info'
         'test:Run test suite to validate tool functionality'

@@ -22,7 +22,7 @@
 # Check bash version compatibility
 if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     # Minimal completion for Bash 3.x
-    complete -W "config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test restore --help --yes -y --non-interactive --dry-run" wp-db-import
+    complete -W "config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test restore doctor --help --yes -y --non-interactive --dry-run" wp-db-import
     return 0
 fi
 
@@ -50,7 +50,7 @@ _wp_db_import_completion() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     # Define all available wp-db-import commands
-    opts="config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test restore --help"
+    opts="config-show config-create config-validate config-edit show-links setup-proxy show-cleanup update version test restore doctor --help"
     # Global options (accepted in any position): unattended mode for scripts and CI
     local flags="--yes -y --non-interactive --dry-run"
 

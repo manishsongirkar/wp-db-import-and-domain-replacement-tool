@@ -97,6 +97,7 @@ lib/tests/
 │   ├── test_import_performance.sh
 │   ├── test_import_security.sh
 │   ├── test_new_modules.sh
+│   ├── test_doctor.sh             # wp-db-import doctor: tools, connection, config, backup folder, no secrets
 │   ├── test_restore.sh            # wp-db-import restore: listing, flow, safety backup, rotation protection
 │   ├── test_socket_detection.sh
 │   ├── test_update_uninstall.sh   # update command and uninstall.sh in a sandbox
