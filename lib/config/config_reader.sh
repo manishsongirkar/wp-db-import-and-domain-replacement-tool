@@ -408,7 +408,7 @@ EOF
             END {
                 if (in_section && !found) print key "=" value
             }
-        ' "$config_path" > "$temp_file" && mv "$temp_file" "$config_path"
+        ' "$config_path" > "$temp_file" && cat "$temp_file" > "$config_path" && rm -f "$temp_file"
     fi
 }
 
@@ -494,7 +494,8 @@ EOF
             echo "$blog_id:$old_domain:$new_domain" >> "$temp_file"
         fi
 
-        mv "$temp_file" "$config_path"
+        # cat keeps the file's mode and owner (mv would replace them with the temp file's)
+        cat "$temp_file" > "$config_path" && rm -f "$temp_file"
     fi
 }
 

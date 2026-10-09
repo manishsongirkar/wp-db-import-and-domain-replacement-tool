@@ -146,6 +146,19 @@ https://api.example.com/v2 => https://api.sandbox.example.net/v2
 - **`www` and the main domain:** if `old_domain` has no `www.`, `//www.<old_domain>` is **not** replaced. If it starts with `www.`, both forms are. `wp-db-import --dry-run` shows the count of `//www.` URLs in the dump and suggests the line to add. It also lists the other hosts used in URLs (emails never appear), as candidates.
 - `wp-db-import config-validate`, `config-show` and `doctor` check the entries.
 
+### Config Upgrade (automatic)
+
+When you import with a config file made by an older version, the tool adds the settings it is missing. This happens at the start of the import, and the tool prints what it added:
+
+```
+✅ Updated existing config with new settings (existing values are not changed): backup_before_import, backup_dir, backup_keep, [domain_mappings], [site_domain_mappings]
+```
+
+- Each added key comes with its explanation comment (the same text as a new config) and its default: `use_socket=auto`, `mysql_socket=` (blank), `import_optimizations=auto`, `parallel_import=false`, `backup_before_import=ask`, `backup_dir=` (blank, so `~/.wp-db-import/backups`), `backup_keep=5`.
+- The sections `[domain_mappings]` and `[site_domain_mappings]` are appended at the end of the file, with comments only (no active entry).
+- Nothing that is already in the file is changed, moved or removed. A key or section you already have (any letter case) is never added twice. The file mode is kept.
+- Run it again and nothing changes. The defaults behave like a missing key did, so an upgraded config imports exactly as before.
+
 ### Restoring a Backup
 
 ```bash

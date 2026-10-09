@@ -113,44 +113,15 @@ config_file_exists() {
 }
 
 # ===============================================
-# Create Config File
+# Template of the optional [general] settings
 # ===============================================
 #
-# Description: Creates a new configuration file with a basic structure and default settings.
+# Description: Prints the optional settings (socket, import optimizations, backup) with their
+#              comments and defaults. Used for new config files, and by
+#              ensure_socket_config_settings to add the comment of each key it adds.
 #
-# Parameters:
-#	- $1: Path where the config file should be created.
-#	- $2: Optional. Default SQL file name.
-#	- $3: Optional. Default old domain.
-#	- $4: Optional. Default new domain.
-#
-# Returns:
-#	- 0 (Success) on successful creation
-#	- 1 (Failure) on error
-#
-create_config_file() {
-    local config_path="$1"
-    local sql_file="${2:-vip-db.sql}"
-    local old_domain="$(sanitize_domain "${3:-}")"
-    local new_domain="$(sanitize_domain "${4:-}")"
-
-    cat > "$config_path" << EOF
-# ===============================================
-# WordPress Database Import Configuration
-# ===============================================
-# This file stores your import settings to avoid re-entering them each time.
-# Edit this file to customize your import settings.
-
-[general]
-sql_file=$sql_file
-old_domain=$old_domain
-new_domain=$new_domain
-all_tables=true
-dry_run=false
-clear_revisions=true
-setup_stage_proxy=true
-auto_proceed=false
-
+config_general_settings_template() {
+    cat <<'TEMPLATE_EOF'
 # -----------------------------------------------
 # MySQL Socket Settings (optional)
 # -----------------------------------------------
@@ -219,16 +190,26 @@ backup_dir=
 # oldest ones beyond this number are deleted (rotation), so the folder cannot grow forever.
 # Use 0 to keep every backup.
 backup_keep=5
+TEMPLATE_EOF
+}
 
-[site_mappings]
-# Format:
-# blog_id:old_domain:new_domain
+# Prints the comment block above one key of the template (nothing if the key has none)
+config_key_comment() {
+    config_general_settings_template | awk -v key="$1" '
+        /^[[:space:]]*$/ { buf = ""; next }
+        $0 ~ "^" key "=" { printf "%s", buf; exit }
+        { buf = buf $0 "\n" }'
+}
 
-# Example:
-# 1:production-site.com:local-site.test
-
-# Add your multisite mappings below:
-
+# ===============================================
+# Template of the custom URL mapping sections
+# ===============================================
+#
+# Description: Prints the [domain_mappings] and [site_domain_mappings] sections (comments only).
+#              Used for new config files and added to existing ones by ensure_socket_config_settings.
+#
+config_mapping_sections_template() {
+    cat <<'TEMPLATE_EOF'
 [domain_mappings]
 # Extra search => replace pairs for URLs that must not reach staging or local
 # (CDN hosts, third-party APIs, a www variant). Works for single sites and multisite
@@ -244,6 +225,60 @@ backup_keep=5
 [site_domain_mappings]
 # Multisite only: pairs for ONE site, "blog_id: old => new"
 #   2: //shop-cdn.example.com => //shop-cdn.target.test
+TEMPLATE_EOF
+}
+
+# ===============================================
+# Create Config File
+# ===============================================
+#
+# Description: Creates a new configuration file with a basic structure and default settings.
+#
+# Parameters:
+#	- $1: Path where the config file should be created.
+#	- $2: Optional. Default SQL file name.
+#	- $3: Optional. Default old domain.
+#	- $4: Optional. Default new domain.
+#
+# Returns:
+#	- 0 (Success) on successful creation
+#	- 1 (Failure) on error
+#
+create_config_file() {
+    local config_path="$1"
+    local sql_file="${2:-vip-db.sql}"
+    local old_domain="$(sanitize_domain "${3:-}")"
+    local new_domain="$(sanitize_domain "${4:-}")"
+
+    cat > "$config_path" << EOF
+# ===============================================
+# WordPress Database Import Configuration
+# ===============================================
+# This file stores your import settings to avoid re-entering them each time.
+# Edit this file to customize your import settings.
+
+[general]
+sql_file=$sql_file
+old_domain=$old_domain
+new_domain=$new_domain
+all_tables=true
+dry_run=false
+clear_revisions=true
+setup_stage_proxy=true
+auto_proceed=false
+
+$(config_general_settings_template)
+
+[site_mappings]
+# Format:
+# blog_id:old_domain:new_domain
+
+# Example:
+# 1:production-site.com:local-site.test
+
+# Add your multisite mappings below:
+
+$(config_mapping_sections_template)
 
 EOF
 
@@ -294,7 +329,8 @@ parse_config_section() {
             }
             next
         }
-        in_section && $0 ~ key "[[:space:]]*=" {
+        in_section && !/^[[:space:]]*[#;]/ && $0 ~ key "[[:space:]]*=" {
+            # (comment lines are skipped: "# Example: mysql_socket=/path" is not a setting)
             # Find position of first equals sign
             match($0, /=/)
             if (RSTART > 0) {
@@ -470,7 +506,8 @@ update_site_mapping() {
     fi
 
     if [[ -f "$temp_file" ]]; then
-        mv "$temp_file" "$config_path"
+        # cat keeps the file's mode and owner (mv would replace them with the temp file's)
+        cat "$temp_file" > "$config_path" && rm -f "$temp_file"
         return 0
     else
         return 1
@@ -496,6 +533,7 @@ update_config_general() {
     local config_path="$1"
     local key="$2"
     local value="$3"
+    local comment="${4:-}"   # optional: comment lines written above the key when it is ADDED
 
     # Sanitize domains if the key is old_domain or new_domain
     if [[ "$key" == "old_domain" || "$key" == "new_domain" ]]; then
@@ -508,40 +546,52 @@ update_config_general() {
 
     local temp_file="$config_path.tmp"
 
-    awk -v key="$key" -v value="$value" '
+    WPDB_CFG_COMMENT="$comment" awk -v key="$key" -v value="$value" '
+        # blank lines at the end of [general] are held back, so an added key (with its comment)
+        # lands right after the last setting and the blank lines stay in front of the next section
+        function flush() { while (pend > 0) { print ""; pend-- } }
+        function add_key() {
+            if (comment != "") { print ""; print comment }
+            print key "=" value
+            flush()
+        }
         BEGIN {
             in_section = 0
             updated = 0
+            pend = 0
             IGNORECASE = 1
+            comment = ENVIRON["WPDB_CFG_COMMENT"]
         }
         /^\[.*\]/ {
             if ($0 ~ "\\[general\\]") {
                 in_section = 1
             } else {
-                if (in_section && !updated) {
-                    print key "=" value
-                    updated = 1
+                if (in_section) {
+                    if (!updated) { add_key(); updated = 1 } else { flush() }
                 }
                 in_section = 0
             }
             print $0
             next
         }
+        in_section && /^[[:space:]]*$/ { pend++; next }
         in_section && $0 ~ "^[[:space:]]*" key "=" {
+            flush()
             print key "=" value
             updated = 1
             next
         }
-        { print $0 }
+        { if (in_section) flush(); print $0 }
         END {
-            if (!updated && in_section) {
-                print key "=" value
+            if (in_section) {
+                if (!updated) { add_key() } else { flush() }
             }
         }
     ' "$config_path" > "$temp_file"
 
     if [[ -f "$temp_file" ]]; then
-        mv "$temp_file" "$config_path"
+        # cat keeps the file's mode and owner (mv would replace them with the temp file's)
+        cat "$temp_file" > "$config_path" && rm -f "$temp_file"
         return 0
     else
         return 1
@@ -567,6 +617,7 @@ ensure_socket_config_settings() {
     local updated=false
 
     CONFIG_SOCKET_SETTINGS_MIGRATED="false"
+    CONFIG_SETTINGS_MIGRATED_ITEMS=""
 
     if [[ ! -f "$config_path" ]]; then
         return 1
@@ -579,12 +630,39 @@ ensure_socket_config_settings() {
         key="${pair%%=*}"
         default="${pair#*=}"
         if ! grep -qi "^[[:space:]]*${key}[[:space:]]*=" "$config_path" 2>/dev/null; then
-            if ! update_config_general "$config_path" "$key" "$default"; then
+            if ! update_config_general "$config_path" "$key" "$default" "$(config_key_comment "$key")"; then
                 return 1
             fi
             updated=true
+            CONFIG_SETTINGS_MIGRATED_ITEMS="${CONFIG_SETTINGS_MIGRATED_ITEMS:+$CONFIG_SETTINGS_MIGRATED_ITEMS, }${key}"
         fi
     done
+
+    # Sections added in later versions: appended at the end (comments only, no active entry),
+    # so nothing that is already in the file is moved or changed
+    local sec missing=""
+    for sec in domain_mappings site_domain_mappings; do
+        if ! grep -qi "^[[:space:]]*\\[[[:space:]]*${sec}[[:space:]]*\\]" "$config_path" 2>/dev/null; then
+            missing="${missing:+$missing }${sec}"
+        fi
+    done
+    if [[ -n "$missing" ]]; then
+        {
+            # a file without a final newline: finish its last line first
+            [[ -s "$config_path" && -n "$(tail -c1 "$config_path" 2>/dev/null)" ]] && printf "\n"
+            for sec in $missing; do
+                printf "\n"
+                config_mapping_sections_template | awk -v want="[$sec]" '
+                    /^\[.*\]/ { on = ($0 == want) }
+                    on && /^[[:space:]]*$/ { pend++; next }
+                    on { while (pend > 0) { print ""; pend-- }; print }'
+            done
+        } >> "$config_path" 2>/dev/null || return 1
+        updated=true
+        for sec in $missing; do
+            CONFIG_SETTINGS_MIGRATED_ITEMS="${CONFIG_SETTINGS_MIGRATED_ITEMS:+$CONFIG_SETTINGS_MIGRATED_ITEMS, }[$sec]"
+        done
+    fi
 
     if [[ "$updated" == "true" ]]; then
         CONFIG_SOCKET_SETTINGS_MIGRATED="true"

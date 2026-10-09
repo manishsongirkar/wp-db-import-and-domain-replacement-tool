@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- **Automatic config upgrade for the new sections**: when an import starts with an existing `wpdb-import.conf`, the tool now also appends `[domain_mappings]` and `[site_domain_mappings]` (comments only) if they are missing, next to the keys it already added (`backup_before_import=ask`, `backup_dir=`, `backup_keep=5`, socket and optimization settings). Each added key comes with its explanation comment. Only missing parts are added; existing values, sections (any letter case) and the file mode are kept; a second run changes nothing.
+  - The message now lists what was really added, instead of a fixed list.
+  - New-config template and migration use the same text (`config_general_settings_template`, `config_mapping_sections_template`).
 - **Custom URL mappings** ([#23](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/23)): `[domain_mappings]` in `wpdb-import.conf` adds any number of `search => replace` pairs for strings that must not reach local or staging (CDN hosts, third-party API URLs, a `www` variant). Works on single sites and multisite (whole network).
   - The search must start with `//` or `http(s)://`; a bare host is rejected, so emails (`test@example.com`) and plain text are never matched. A `//host` search needs a `//newhost` replacement.
   - Each entry runs plain and JSON-escaped (`\/`), longest search first, **before** the main domain replacement. Serialized data stays valid (WP-CLI). Duplicates are dropped with a warning; a replacement that contains another entry's search (double replacement) and a search equal to a site domain are errors.
@@ -42,6 +45,8 @@
 - Tests that printed "function not available" and skipped were rewritten against the real functions (`load_import_config`, `validate_config_file`, `run_search_replace`, ...) with real assertions: config loading and validation, the exact search-replace commands (two passes, `guid` skipped, `--dry-run`, `--network`/`--url`), the cleanup. A missing core function is now a **failure**. `./run_tests.sh --verbose` has zero "not available" warnings. Environment notes for optional tools (mysql client, git, curl) are shown as information.
 
 ### Fixed
+- `parse_config_section` also read commented lines. A config made by `config-create` therefore read `mysql_socket` as the example path from its own comment (`# Example: mysql_socket=/opt/homebrew/var/mysql/mysql.sock`). Comment lines (`#`, `;`) are skipped.
+- Updating a config key or a site mapping replaced the file through a temp file, so the file's mode was reset (a `chmod 640` config became `644`, or `600` in the fallback path). The mode and owner are now kept.
 - `update_site_mapping` no longer treats a line such as `2: ...` in another section as an existing site mapping (it could skip adding the mapping of blog 2).
 - **Bugs found by the first Linux CI run** (#11):
   - WP-CLI could not load `mysqli` on Debian/Ubuntu because `PHP_INI_SCAN_DIR` was always cleared. It is now cleared on macOS only. On Linux the tool reported "No WordPress installation detected".

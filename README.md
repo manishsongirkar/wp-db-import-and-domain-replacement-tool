@@ -504,6 +504,8 @@ cp backup-*.sql.gz ~/wp-backups/$(basename $(pwd))/
 
 ## ⚡ Configuration Options
 
+> **Upgrading from an older config?** Nothing to do. At the start of an import the tool adds the settings it is missing (backup options, `[domain_mappings]`, `[site_domain_mappings]`) with their defaults, prints what it added, and never changes a value you already set. See [USAGE.md](USAGE.md#config-upgrade-automatic).
+
 ### Configuration File Settings
 
 All options can be pre-configured in your `wpdb-import.conf` file, eliminating the need for manual input on subsequent runs:
