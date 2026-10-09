@@ -526,6 +526,7 @@ wp-db-import-and-domain-replacement-tool/
 │   │       ├── test_import_performance.sh
 │   │       ├── test_import_security.sh
 │   │       ├── test_new_modules.sh
+│   │       ├── test_doctor.sh
 │   │       ├── test_restore.sh
 │   │       ├── test_socket_detection.sh
 │   │       ├── test_update_uninstall.sh
@@ -533,6 +534,7 @@ wp-db-import-and-domain-replacement-tool/
 │   ├── utilities/
 │   │   ├── gitignore_manager.sh
 │   │   ├── revision_cleanup.sh
+│   │   ├── doctor.sh             # wp-db-import doctor: environment check
 │   │   ├── site_links.sh
 │   │   └── stage_file_proxy.sh
 ├── reports/

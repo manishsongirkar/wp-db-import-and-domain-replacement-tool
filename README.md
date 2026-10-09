@@ -199,6 +199,10 @@ wp-db-import
 # Preview the import without changing the database (temporary database, nothing replaced)
 wp-db-import --dry-run
 
+# Check the environment before an import: tools, WP-CLI, database access, backups, config
+# (OK / WARN / FAIL with a fix for each item; exit 1 if a required item fails; never prints passwords)
+wp-db-import doctor
+
 # Unattended (scripts, CI): every prompt takes its default, nothing is read from stdin
 wp-db-import --yes              # also: -y, --non-interactive, WPDB_ASSUME_YES=1
 

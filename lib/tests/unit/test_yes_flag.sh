@@ -228,7 +228,7 @@ test_yes_completions() {
     start_test "Completions" "Bash and Zsh completions offer --yes / -y / --non-interactive"
     local errors=0
     _chk "bash completion file has valid syntax"       bash -n "$_Y_ROOT/lib/completion/wp-db-import.bash"
-    _chk "Bash 3.x list includes the options"          grep -q 'update version test restore --help --yes -y --non-interactive --dry-run' "$_Y_ROOT/lib/completion/wp-db-import.bash"
+    _chk "Bash 3.x list includes the options"          grep -q 'update version test restore doctor --help --yes -y --non-interactive --dry-run' "$_Y_ROOT/lib/completion/wp-db-import.bash"
     if command -v zsh >/dev/null 2>&1; then
         _chk "zsh completion file has valid syntax"    zsh -n "$_Y_ROOT/lib/completion/_wp-db-import"
     fi

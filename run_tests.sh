@@ -567,6 +567,10 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_doctor.sh" ]]; then
+        run_test_suite "Unit Tests (Doctor)" "$test_dir/test_doctor.sh" "wp-db-import doctor: tool, connection, config and backup checks, no secrets"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
     if [[ -f "$test_dir/test_ci_workflow.sh" ]]; then
         run_test_suite "Unit Tests (CI Workflow)" "$test_dir/test_ci_workflow.sh" "CI workflow file and VERSION/CHANGELOG/tag check"
         [[ $? -ne 0 ]] && overall_result=1

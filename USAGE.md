@@ -24,6 +24,7 @@ wp-db-import config-edit        # Open configuration in editor
 wp-db-import show-links         # Show local site links
 wp-db-import setup-proxy        # Auto-setup Stage File Proxy (uses config)
 wp-db-import show-cleanup       # Show revision cleanup commands
+wp-db-import doctor           # Check tools, WP-CLI, database access, backups, config
 wp-db-import restore --last     # Restore the newest backup of this site's database
 wp-db-import restore --list     # List backups (--all: every database)
 wp-db-import restore <file>     # Restore a specific backup file
@@ -260,3 +261,11 @@ import_wp_db
 ```
 
 ---
+
+## Doctor: check the environment
+
+```bash
+wp-db-import doctor      # in a WordPress directory: tools and site checks
+```
+
+Each row shows `OK`, `WARN` or `FAIL`, and a `fix:` line when something is wrong. `WARN` means a feature will not work (for example no `unzip` for `.zip` dumps). `FAIL` means the import cannot work, and the exit code is 1. Passwords are never printed. The only server write is a scratch database (`wpdb_doctor_<pid>`) that is dropped at once. Outside a WordPress directory only the tool checks run.

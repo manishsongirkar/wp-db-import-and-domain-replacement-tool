@@ -320,6 +320,11 @@ load_utilities_modules() {
     if [[ -f "$utilities_dir/revision_cleanup.sh" ]]; then
         source "$utilities_dir/revision_cleanup.sh" 2>/dev/null
     fi
+
+    # Load the doctor (environment check)
+    if [[ -f "$utilities_dir/doctor.sh" ]]; then
+        source "$utilities_dir/doctor.sh" 2>/dev/null
+    fi
 }
 
 # ===============================================
