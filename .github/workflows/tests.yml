@@ -57,6 +57,9 @@ jobs:
           "$WPDB_BASH" --version | head -n 1
           "$WPDB_BASH" ./run_tests.sh --ci --format json --output ./test-reports unit
           "$WPDB_BASH" ./run_tests.sh --ci --format json --output ./test-reports security
+      - name: TEMP debug
+        if: failure()
+        run: bash lib/tests/unit/test_import_hardening.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -B3 -A6 '❌' | head -60
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -81,6 +84,11 @@ jobs:
             sudo apt-get install -y mariadb-server mariadb-client
           fi
           sudo systemctl stop mysql mariadb 2>/dev/null || true
+      - name: Install WP-CLI
+        run: |
+          curl -fsSL -o wp-cli.phar https://github.com/wp-cli/wp-cli/releases/latest/download/wp-cli.phar
+          sudo install -m 755 wp-cli.phar /usr/local/bin/wp
+          wp --info | head -n 3
       - name: Run server matrix and real-import
         env:
           WPDB_MATRIX_SERVERS: /usr/sbin

@@ -66,7 +66,8 @@ srv_start() {
     local base daemon client datadir sock log label
     base="$(cd "$bindir/.." && pwd)"
     if [[ -x "$bindir/mariadbd" ]]; then daemon="$bindir/mariadbd"; else daemon="$bindir/mysqld"; fi
-    for client in "$bindir/mariadb" "$bindir/mysql"; do [[ -x "$client" ]] && break; done
+    # Debian/Ubuntu keep the daemon in /usr/sbin and the clients in /usr/bin: fall back to PATH
+    for client in "$bindir/mariadb" "$bindir/mysql" "$(command -v mariadb)" "$(command -v mysql)"; do [[ -x "$client" ]] && break; done
     [[ -x "$client" ]] || return 1
     label=$(srv_label "$bindir")
     datadir="$SRV_WORK/data$idx"; sock="$SRV_WORK/s$idx.sock"; log="$SRV_WORK/s$idx.log"
@@ -80,7 +81,7 @@ srv_start() {
 
     if [[ "$label" == MariaDB* ]]; then
         local inst=""
-        for inst in "$bindir/mariadb-install-db" "$bindir/mysql_install_db" "$base/scripts/mariadb-install-db" "$base/scripts/mysql_install_db"; do [[ -x "$inst" ]] && break; done
+        for inst in "$bindir/mariadb-install-db" "$bindir/mysql_install_db" "$base/scripts/mariadb-install-db" "$base/scripts/mysql_install_db" "$(command -v mariadb-install-db)" "$(command -v mysql_install_db)"; do [[ -x "$inst" ]] && break; done
         [[ -x "$inst" ]] || return 1
         "$inst" --no-defaults --datadir="$datadir" --basedir="$base" --auth-root-authentication-method=normal >"$log" 2>&1 || return 1
     else
