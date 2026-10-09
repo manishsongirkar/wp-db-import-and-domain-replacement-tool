@@ -84,9 +84,15 @@ show_help() {
     printf "  wp-db-import update             Update to latest version\n"
     printf "  wp-db-import version            Show version and git info\n"
     printf "  wp-db-import test               Run test suite to validate tool functionality\n"
+    printf "  wp-db-import --dry-run          Preview the import without changing the database\n"
     printf "  wp-db-import --help             Show this help message\n\n"
 
     printf "${BOLD}OPTIONS:${RESET}\n"
+    printf "  --dry-run                       Preview only: imports the dump into a temporary database,\n"
+    printf "                                  counts tables, rows and what search-replace would change,\n"
+    printf "                                  then drops it. The real database is never touched. Needs the\n"
+    printf "                                  mysql client and the right to CREATE DATABASE. Same as\n"
+    printf "                                  dry_run=true in the config or WPDB_DRY_RUN=1.\n"
     printf "  --yes, -y, --non-interactive    Unattended mode for scripts and CI: every prompt takes its\n"
     printf "                                  default (same as pressing Enter) and nothing is read from\n"
     printf "                                  stdin. A prompt with no safe default (SQL file, domains)\n"
@@ -389,6 +395,7 @@ _wpdb_remaining_args=()
 for _wpdb_arg in "$@"; do
     case "$_wpdb_arg" in
         --yes|-y|--non-interactive) WPDB_ASSUME_YES=1 ;;
+        --dry-run) export WPDB_DRY_RUN=1 ;;
         *) _wpdb_remaining_args+=("$_wpdb_arg") ;;
     esac
 done

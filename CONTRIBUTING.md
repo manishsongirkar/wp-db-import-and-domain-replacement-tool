@@ -493,6 +493,7 @@ wp-db-import-and-domain-replacement-tool/
 │   │   └── wp_detection.sh
 │   ├── database/
 │   │   ├── db_backup.sh          # Pre-import backup (ask/true/false)
+│   │   ├── db_dry_run.sh         # --dry-run: preview in a temporary database
 │   │   ├── db_import.sh          # Socket / mysql / WP-CLI import, estimate, retry
 │   │   ├── search_replace.sh
 │   │   ├── socket_detector.sh    # MySQL socket auto-detection
@@ -518,6 +519,7 @@ wp-db-import-and-domain-replacement-tool/
 │   │   │   └── test_environment.sh
 │   │   └── unit/
 │   │       ├── test_core_functions.sh
+│   │       ├── test_dry_run.sh
 │   │       ├── test_import_hardening.sh
 │   │       ├── test_import_performance.sh
 │   │       ├── test_import_security.sh

@@ -104,10 +104,10 @@ EOF
 
 # Runs the tool in a site directory (stdin closed, own temp dir). Sets _RI_OUT and _RI_RC.
 _ri_run_tool() {
-    local dir="$1" f
+    local dir="$1" f; shift
     f=$(mktemp "$SRV_WORK/out.XXXXXX")
     mkdir -p "$SRV_WORK/tmp"
-    ( cd "$dir" && TMPDIR="$SRV_WORK/tmp" bash "$_RI_ROOT/import_wp_db.sh" < /dev/null > "$f" 2>&1 )
+    ( cd "$dir" && TMPDIR="$SRV_WORK/tmp" bash "$_RI_ROOT/import_wp_db.sh" "$@" < /dev/null > "$f" 2>&1 )
     _RI_RC=$?
     _RI_OUT=$(_ri_strip < "$f" | tr '\r' '\n')
     rm -f "$f"
@@ -167,6 +167,98 @@ _ri_multisite_scenario() {
     _chk "serialized option replaced on the main site"   bash -c "cd '$tgt' && test \"\$(wp eval 'echo get_option(\"widget_probe\")[\"list\"][0];' 2>/dev/null)\" = 'https://$new_domain/a'"
     _chk "no occurrence of the old domain is left (all tables of both sites)" bash -c "cd '$tgt' && test \"\$(wp db query \"SELECT (SELECT COUNT(*) FROM wp_posts WHERE post_content LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_2_posts WHERE post_content LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_options WHERE option_value LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_2_options WHERE option_value LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_blogs WHERE domain LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_site WHERE domain LIKE '%$old_domain%')\" --skip-column-names 2>/dev/null)\" = 0"
     _chk "no temp directory left behind"                 test -z "$(ls -A "$SRV_WORK/tmp" 2>/dev/null)"
+}
+
+
+# Everything that identifies the state of a database: table list, per-table checksums, and the list of
+# databases on the server (a leftover scratch database would show up here)
+_ri_state() {
+    local db="$1" t
+    _ri_q -N -e "SHOW DATABASES"
+    while IFS= read -r t; do
+        [[ -n "$t" ]] && _ri_q -N -e "CHECKSUM TABLE \`$db\`.\`$t\`"
+    done < <(_ri_q -N -e "SELECT table_name FROM information_schema.tables WHERE table_schema = '$db' ORDER BY table_name")
+}
+_ri_fingerprint() {
+    _ri_state "$1" | { md5sum 2>/dev/null || md5; } | awk '{print $1}'
+}
+# Prints which tables (or databases) differ between two saved states
+_ri_state_diff() { diff <(printf '%s\n' "$1") <(printf '%s\n' "$2") | grep '^[<>]' | head -6 | sed 's/^/     differs: /'; }
+
+_ri_no_scratch_db() { ! _ri_q -N -e 'SHOW DATABASES' | grep -q 'wpdb_dry_'; }
+
+# Exact row count of every table of a database
+_ri_row_total() {
+    local db="$1" t total=0 n
+    while IFS= read -r t; do
+        [[ -n "$t" ]] || continue
+        n=$(_ri_q -N -e "SELECT COUNT(*) FROM \`$db\`.\`$t\`")
+        total=$((total + n))
+    done < <(_ri_q -N -e "SELECT table_name FROM information_schema.tables WHERE table_schema = '$db' AND table_type = 'BASE TABLE'")
+    printf "%s" "$total"
+}
+
+# Dry-run scenario. Parameters: label dump old_domain site_dir db flag(--dry-run|config) [expected_filter yes|no|skip]
+_ri_dry_run_scenario() {
+    local label="$1" dump="$2" old="$3" dir="$4" db="$5" how="$6" filter="${7:-no}" extra_map="${8:-}"
+    printf "\n  -- %s\n" "$label"
+    local before after backups_before dbs_before
+    local state_before; state_before=$(_ri_state "$db")
+    before=$(_ri_fingerprint "$db")
+    backups_before=$(ls "$SRV_WORK/backups" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$how" == "config" ]]; then
+        _ri_write_config "$dir" "$dump" "$old" target.test auto "$extra_map"
+        sed -i.bak 's/^dry_run=false/dry_run=true/' "$dir/wpdb-import.conf" && rm -f "$dir/wpdb-import.conf.bak"
+        _ri_run_tool "$dir"
+    else
+        _ri_write_config "$dir" "$dump" "$old" target.test auto "$extra_map"
+        _ri_run_tool "$dir" --dry-run
+    fi
+    after=$(_ri_fingerprint "$db")
+    [[ "$before" != "$after" ]] && _ri_state_diff "$state_before" "$(_ri_state "$db")"
+
+    local expect_tables expect_occ
+    expect_tables=$(grep -c '^CREATE TABLE' "$dump")
+    expect_occ=$(grep -o -F "$old" "$dump" | wc -l | tr -d ' ')
+
+    _chk "exit code 0"                                    test "$_RI_RC" -eq 0
+    _chk "says the database was not changed"              grep -q 'Your database was not changed' <<< "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"              _ri_console_clean
+    _chk "REAL DATABASE UNCHANGED (all table checksums + database list)" test "$before" = "$after"
+    _chk "no scratch database is left on the server"      _ri_no_scratch_db
+    _chk "no backup was made (nothing is replaced)"       test "$(ls "$SRV_WORK/backups" 2>/dev/null | wc -l | tr -d ' ')" = "$backups_before"
+    _chk "nothing was imported (no import step ran)"      bash -c "! grep -q 'Database import successful' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\""
+    _chk "reports $expect_tables tables"                  bash -c "grep -qE 'Would import: +$expect_tables tables /' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\""
+    if [[ "$how" != "multisite" ]]; then
+        local expect_rows
+        expect_rows=$(_ri_row_total "$_RI_SRC_DB")
+        [[ -n "$expect_rows" ]] && _chk "reports the exact row count ($expect_rows)" bash -c "grep -qE 'tables / $expect_rows rows' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\""
+    fi
+    _chk "reports $expect_occ occurrences of $old (matches grep on the dump)" bash -c "grep -qE 'Would replace: +$expect_occ occurrences' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\""
+    if [[ "$filter" == "yes" ]]; then
+        _chk "reports that the compatibility filter is needed" bash -c "grep -qE 'Compatibility filter: +yes' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\""
+    elif [[ "$filter" == "no" ]]; then
+        _chk "reports that no compatibility filter is needed"  bash -c "grep -qE 'Compatibility filter: +no' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\""
+    fi
+    _chk "no temp directory left behind"                  test -z "$(ls -A "$SRV_WORK/tmp" 2>/dev/null)"
 }
 
 # ================================================================
@@ -318,6 +410,70 @@ test_real_import() {
 
     _ri_multisite_scenario "Scenario 5: multisite, subdirectory network (2 sites)" subdirectory
     _ri_multisite_scenario "Scenario 6: multisite, subdomain network (2 sites)" subdomain
+    # ---------------- Scenario 7: dry run (real database must stay untouched)
+    _ri_install_site "$SRV_WORK/t7" target7 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); }
+    _ri_wp "$SRV_WORK/t7" post create --post_title="Target Original" --post_status=publish --post_content="keep me" >/dev/null 2>&1
+    _RI_SRC_DB=prod
+    _ri_dry_run_scenario "Scenario 7a: --dry-run on a single site" "$SRV_WORK/prod.sql" prod.example.com "$SRV_WORK/t7" target7 --dry-run no
+    _chk "target content is still the original"            bash -c "cd '$SRV_WORK/t7' && wp post list --field=post_title 2>/dev/null | grep -q 'Target Original' && test \"\$(wp option get siteurl 2>/dev/null)\" = 'http://target.test'"
+    _ri_dry_run_scenario "Scenario 7b: dry_run=true in the config (no flag)" "$SRV_WORK/prod.sql" prod.example.com "$SRV_WORK/t7" target7 config no
+    LC_ALL=C sed -E 's/(COLLATE[= ])utf8mb4_[a-z0-9_]+/\1utf8mb4_uca1400_ai_ci/g' "$SRV_WORK/prod.sql" > "$SRV_WORK/prod_mariadb7.sql"
+    if [[ "$_RI_SERVER_LABEL" == MariaDB* ]]; then
+        _ri_dry_run_scenario "Scenario 7c: MariaDB collations" "$SRV_WORK/prod_mariadb7.sql" prod.example.com "$SRV_WORK/t7" target7 --dry-run skip
+    else
+        _ri_dry_run_scenario "Scenario 7c: MariaDB collations -> compatibility filter reported" "$SRV_WORK/prod_mariadb7.sql" prod.example.com "$SRV_WORK/t7" target7 --dry-run yes
+    fi
+    # a dump made with --databases must not be able to reach another database
+    { printf 'CREATE DATABASE /*!32312 IF NOT EXISTS*/ `target7` /*!40100 DEFAULT CHARACTER SET utf8mb4 */;\nUSE `target7`;\nDROP DATABASE IF EXISTS `target7`;\n'; cat "$SRV_WORK/prod.sql"; } > "$SRV_WORK/prod_dbstmts.sql"
+    _ri_dry_run_scenario "Scenario 7d: dump with CREATE/USE/DROP DATABASE (must not touch the real database)" "$SRV_WORK/prod_dbstmts.sql" prod.example.com "$SRV_WORK/t7" target7 --dry-run no
+    _chk "the real database still has its tables"          test "$(_ri_q -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='target7'")" -gt 5
+
+    # a database user that may not create databases: a clear message, nothing changed
+    _ri_q -e "CREATE USER 'limuser'@'localhost' IDENTIFIED BY 'limpass123'; GRANT ALL ON \`target7b\`.* TO 'limuser'@'localhost'" >/dev/null 2>&1
+    local save_user="$_RI_DB_USER" save_pass="$_RI_DB_PASS"
+    _RI_DB_USER=limuser; _RI_DB_PASS=limpass123
+    _ri_install_site "$SRV_WORK/t7b" target7b "http://target.test" || { printf "  ❌ limited-user site install failed\n"; ((errors++)); }
+    _RI_DB_USER="$save_user"; _RI_DB_PASS="$save_pass"
+    printf "\n  -- Scenario 7e: database user without CREATE DATABASE privilege\n"
+    # warm up WordPress once: its first load after the installation may write options by itself
+    _ri_wp "$SRV_WORK/t7b" option get home >/dev/null 2>&1; _ri_wp "$SRV_WORK/t7b" cron event list >/dev/null 2>&1
+    local before7b state7b; state7b=$(_ri_state target7b); before7b=$(_ri_fingerprint target7b)
+    _ri_write_config "$SRV_WORK/t7b" "$SRV_WORK/prod.sql" prod.example.com target.test auto
+    _ri_run_tool "$SRV_WORK/t7b" --dry-run
+    _chk "exit code is 1 (the preview could not run)"      test "$_RI_RC" -eq 1
+    _chk "explains the missing CREATE DATABASE permission" grep -q 'needs permission to create a temporary database' <<< "$_RI_OUT"
+    _chk "shows the server's error"                        grep -qi 'denied' <<< "$_RI_OUT"
+    _chk "suggests the GRANT"                              grep -q 'GRANT CREATE' <<< "$_RI_OUT"
+    _chk "says nothing was changed"                        grep -q 'Nothing was changed' <<< "$_RI_OUT"
+    _chk "the database is unchanged"                       test "$before7b" = "$(_ri_fingerprint target7b)"
+    [[ "$before7b" != "$(_ri_fingerprint target7b)" ]] && _ri_state_diff "$state7b" "$(_ri_state target7b)"
+    _chk "console shows no shell/PHP errors"               _ri_console_clean
+
+    # multisite dry run on the network imported in scenario 5 (its dump and a target network)
+    printf "\n  -- Scenario 7f: multisite dry run (main site and subsite mapping)\n"
+    local msdb=target_subdirectory msdump="$SRV_WORK/prod_subdirectory.sql" msbefore
+    msbefore=$(_ri_fingerprint "$msdb")
+    _ri_write_config "$SRV_WORK/t_subdirectory" "$msdump" prod.example.com target.test auto "1:prod.example.com:target.test
+2:prod.example.com/news:target.test/news"
+    _ri_run_tool "$SRV_WORK/t_subdirectory" --dry-run
+    _chk "exit code 0"                                     test "$_RI_RC" -eq 0
+    _chk "REAL DATABASE UNCHANGED (all table checksums + database list)" test "$msbefore" = "$(_ri_fingerprint "$msdb")"
+    _chk "the subsite mapping is listed first (longest domain)" bash -c "test \$(grep -n 'prod.example.com/news →' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\" | head -1 | cut -d: -f1) -lt \$(grep -n '^ *prod.example.com →' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\" | head -1 | cut -d: -f1)"
+    _chk "subsite occurrences match grep on the dump ($(grep -o -F 'prod.example.com/news' "$msdump" | wc -l | tr -d ' '))" bash -c "grep -A1 'prod.example.com/news →' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\" | grep -qE 'Would replace: +$(grep -o -F 'prod.example.com/news' "$msdump" | wc -l | tr -d ' ') occurrences'"
+    _chk "main domain occurrences match grep on the dump ($(grep -o -F 'prod.example.com' "$msdump" | wc -l | tr -d ' '))" bash -c "grep -A1 '^ *prod.example.com →' <<< \"\$(cat <<'EOT'
+$_RI_OUT
+EOT
+)\" | grep -qE 'Would replace: +$(grep -o -F 'prod.example.com' "$msdump" | wc -l | tr -d ' ') occurrences'"
+    _chk "console shows no shell/PHP errors"               _ri_console_clean
 
     srv_cleanup
     if [[ "$errors" -eq 0 ]]; then

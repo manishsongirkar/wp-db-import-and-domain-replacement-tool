@@ -15,6 +15,7 @@ wp-db-import --help
 ### Main Commands
 ```bash
 wp-db-import                    # Run the main import function
+wp-db-import --dry-run          # Preview only: nothing is changed (temporary database)
 wp-db-import --yes              # Unattended: every prompt takes its default (also -y, --non-interactive)
 wp-db-import config-show        # Show unified configuration status
 wp-db-import config-create      # Create configuration with site mappings
@@ -32,6 +33,14 @@ wp-db-import --help             # Show this help message
 💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
 
 > **Note:** Autocomplete suggestions are automatically updated when you run `./install.sh`.
+
+### Dry Run (`--dry-run`)
+
+```bash
+wp-db-import --dry-run             # or dry_run=true in the config, or WPDB_DRY_RUN=1
+```
+
+Imports the dump into a **temporary database**, reports `Would import: N tables / M rows`, whether the compatibility filter is needed, and how many occurrences of the old domain (and of every site-mapping domain) would be replaced per table, then drops the temporary database. Your database is not changed: no backup, no import, no replacement. Needs the mysql client and permission to `CREATE DATABASE` (a clear message is shown if missing). Before this change `dry_run=true` still imported the dump; now it imports nothing.
 
 ### Unattended Mode (`--yes`)
 

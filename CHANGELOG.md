@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **Real dry run** ([#20](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/20)): `--dry-run` (also `dry_run=true`, `WPDB_DRY_RUN=1`, or answering `y` at the prompt) previews the whole import **without changing the database**. The dump is imported into a temporary database that is dropped afterwards; the tool reports the tables and rows it would import, whether the compatibility filter is needed, and the occurrences of the old domain (and of every site-mapping domain) per table, with a clear summary. A missing mysql client or `CREATE DATABASE` privilege, and a dump that cannot be imported, are explained and nothing is changed. `CREATE/USE/DROP/ALTER DATABASE` lines are removed from the preview stream so a dump can never reach another database. New module `lib/database/db_dry_run.sh`, `--dry-run` in `--help` and the completions, unit suite `test_dry_run.sh`, and real-server scenarios in `test_real_import.sh` (table checksums and the database list are identical before and after; counts match independent counts from the dump).
 - **Unattended mode** ([#19](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/19)): `--yes`, `-y`, `--non-interactive` (any position) or `WPDB_ASSUME_YES=1`, for `wp-db-import` and `import_wp_db.sh`.
   - Every prompt takes its default, exactly as if Enter was pressed. Confirmations are skipped and show the reason (`--yes` or `from config`).
   - Nothing is read from stdin or the terminal, and stdin is closed for the whole run, so a script cannot hang (also with a stdin pipe that never ends).
@@ -20,6 +21,7 @@
 - Unit tests for database domain detection, `execute_with_timeout` and a guard against `printf` formats that start with a dash.
 
 ### Changed
+- **`dry_run=true` no longer imports the dump.** Before, a dry run still replaced your real database with the dump and only previewed the search-replace, which contradicted "no data will be changed". The question "Run in dry-run mode?" is now asked **before** the import.
 - Exit code of an unknown command or option is now **2** (usage error) instead of 1. Exit codes are `0` success, `1` failure, `2` usage error.
 - Tests that printed "function not available" and skipped were rewritten against the real functions (`load_import_config`, `validate_config_file`, `run_search_replace`, ...) with real assertions: config loading and validation, the exact search-replace commands (two passes, `guid` skipped, `--dry-run`, `--network`/`--url`), the cleanup. A missing core function is now a **failure**. `./run_tests.sh --verbose` has zero "not available" warnings. Environment notes for optional tools (mysql client, git, curl) are shown as information.
 

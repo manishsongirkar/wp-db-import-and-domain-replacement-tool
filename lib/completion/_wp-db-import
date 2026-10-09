@@ -45,6 +45,7 @@ _wp_db_import() {
         '--yes:Unattended mode for scripts and CI (every prompt takes its default)'
         '-y:Same as --yes'
         '--non-interactive:Same as --yes'
+        '--dry-run:Preview the import without changing the database'
         '--help:Show help'
     )
 

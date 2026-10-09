@@ -400,6 +400,14 @@ import_wp_db() {
   printf "    🔄 Replace with: ${GREEN}%s${RESET}\n" "$replace_domain"
   printf "\n"
 
+  # 🧪 Dry run is decided BEFORE anything is imported: a dry run previews the whole import in a
+  # temporary database and never changes the real one (no backup, no import, no replacement).
+  decide_dry_run_mode "$config_path"
+  if [[ "$WPDB_DRY_RUN_ACTIVE" == "true" ]]; then
+    dry_run_preview "$sql_file" "$search_domain" "$replace_domain" "$wp_root" "$config_path"
+    return $?
+  fi
+
   # Auto-proceed or prompt for confirmation
   local auto_reason
   if auto_reason=$(wpdb_auto_proceed_reason); then
@@ -597,35 +605,8 @@ import_wp_db() {
     fi
   fi
 
-  # ⚙️ Configure dry-run mode (from config or prompt)
-  local dry_run dry_run_flag
-  printf "\n"
-  if [[ -n "$CONFIG_DRY_RUN" ]]; then
-    if is_config_true "$CONFIG_DRY_RUN"; then
-      dry_run_flag="--dry-run"
-      printf "Run in ${BOLD}dry-run mode${RESET}: ${YELLOW}enabled${RESET} (from config)\n\n"
-    else
-      dry_run_flag=""
-      printf "Run in ${BOLD}dry-run mode${RESET}: ${GREEN}live mode${RESET} (from config)\n\n"
-    fi
-  else
-    pause_script_timer
-    printf "Run in ${BOLD}dry-run mode${RESET} (no data will be changed)? (y/N): "
-    wpdb_read dry_run
-    resume_script_timer
-    dry_run="${dry_run:-n}"
-    dry_run_flag=""
-    if [[ "$dry_run" =~ ^[Yy]$ ]]; then
-      dry_run_flag="--dry-run"
-      printf "${YELLOW}🧪 Running in dry-run mode (preview only).${RESET}\n\n"
-      # Save to config for future use
-      update_config_general "$config_path" "dry_run" "true"
-    else
-      printf "${GREEN}🚀 Running in live mode (changes will be applied).${RESET}\n\n"
-      # Save to config for future use
-      update_config_general "$config_path" "dry_run" "false"
-    fi
-  fi
+  # Live mode only: a dry run returned earlier. The flag is kept for the search-replace code.
+  local dry_run_flag=""
 
   # 🌐 Handle Multisite (Logic for site list, mapping, and per-site replacement)
   if [[ "$is_multisite" == "yes" ]]; then
@@ -1211,9 +1192,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     for _wpdb_arg in "$@"; do
         case "$_wpdb_arg" in
             --yes|-y|--non-interactive) export WPDB_ASSUME_YES=1 ;;
+            --dry-run) export WPDB_DRY_RUN=1 ;;
             *)
                 printf "${RED}❌ Unknown option: %s${RESET}\n" "$_wpdb_arg" >&2
-                printf "Usage: import_wp_db.sh [--yes | -y | --non-interactive]\n" >&2
+                printf "Usage: import_wp_db.sh [--yes | -y | --non-interactive] [--dry-run]\n" >&2
                 exit 2
                 ;;
         esac
