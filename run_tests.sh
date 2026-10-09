@@ -567,6 +567,10 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_completions.sh" ]]; then
+        run_test_suite "Unit Tests (Completions)" "$test_dir/test_completions.sh" "Bash/Zsh completions: syntax, sync with --help, behavior in Bash 3.2 and 5"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
     if [[ -f "$test_dir/test_domain_mappings.sh" ]]; then
         run_test_suite "Unit Tests (Domain Mappings)" "$test_dir/test_domain_mappings.sh" "[domain_mappings]: anchoring, order, scopes, report, config"
         [[ $? -ne 0 ]] && overall_result=1

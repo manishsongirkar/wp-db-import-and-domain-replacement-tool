@@ -98,6 +98,7 @@ lib/tests/
 │   ├── test_import_security.sh
 │   ├── test_new_modules.sh
 │   ├── test_domain_mappings.sh    # [domain_mappings]: anchoring, order, scopes, report, config, regression guards
+│   ├── test_completions.sh        # Bash/Zsh completions: syntax, sync with --help, behavior in Bash 3.2 and 5
 │   ├── test_doctor.sh             # wp-db-import doctor: tools, connection, config, backup folder, no secrets
 │   ├── test_restore.sh            # wp-db-import restore: listing, flow, safety backup, rotation protection
 │   ├── test_socket_detection.sh

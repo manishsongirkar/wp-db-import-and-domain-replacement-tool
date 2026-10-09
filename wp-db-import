@@ -81,6 +81,7 @@ show_help() {
     printf "  wp-db-import show-links         Show local site links\n"
     printf "  wp-db-import setup-proxy        Auto-setup Stage File Proxy (uses config)\n"
     printf "  wp-db-import show-cleanup       Show revision cleanup commands\n"
+    printf "  wp-db-import detect [--verbose|--quiet] [dir]  Detect single site or multisite\n"
     printf "  wp-db-import doctor             Check tools, WP-CLI, database access, backup folder, config\n"
     printf "  wp-db-import restore --last     Restore the newest backup of this site's database\n"
     printf "  wp-db-import restore --list     List backups (add --all for every database)\n"
