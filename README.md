@@ -327,6 +327,22 @@ backup_keep=5
 - `parallel_import=false` remains the safe default because generic SQL dumps are order-sensitive. Turning it on currently logs a warning and continues with safe single-stream import.
 - For dumps of 100 MB or more the tool prints an import time estimate. It benchmarks a sample in a **temporary scratch database** (dropped afterwards), so your real database is never touched. If the account cannot create databases, or the sample has no `INSERT` rows, a size-based estimate is shown instead.
 
+### 🔁 Custom URL Mappings
+
+Add extra `search => replace` pairs for URLs that must not reach local or staging (CDN hosts, third-party APIs, a `www` variant). Works on single sites and multisite (whole network, or one site with `[site_domain_mappings]`).
+
+```ini
+[domain_mappings]
+//cdn.example.com => //cdn.local.test
+//www.example.com => //local.test
+https://api.example.com/v2 => https://api.sandbox.example.net/v2
+```
+
+- The search must start with `//` or `https://`, so **emails and plain text are never matched** (a bare host is rejected).
+- Runs before the main domain replacement, longest search first; plain and JSON-escaped; serialized data stays valid.
+- `--dry-run` shows the `//www.` count (not covered by an `old_domain` without `www.`), the count per entry, the other hosts found in the dump, and suggested lines.
+- Full rules and examples: [USAGE.md](USAGE.md#custom-url-mappings-domain_mappings).
+
 ### 💾 Pre-Import Backup
 
 Before the current database is replaced, the tool can save a compressed copy so a bad import can be undone.

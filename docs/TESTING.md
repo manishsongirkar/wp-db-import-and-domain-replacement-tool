@@ -47,7 +47,7 @@ What it does:
 3. Installs a separate "target" WordPress and runs `import_wp_db.sh` with a config file.
 4. Checks `siteurl`/`home`, replaced links and serialized options, that no old domain is left, the pre-import backup (valid gzip, original data, mode 600), cache and rewrite flush, no temp files left, and that the console shows no shell or PHP errors.
 
-Scenarios: single site (socket), `use_socket=false` (WP-CLI path), `.sql.gz` dump, MariaDB collations (compatibility retry), multisite subdirectory, multisite subdomain, and **dry run** (`--dry-run` and `dry_run=true`): every table checksum and the database list must be identical before and after, reported tables/rows/occurrences must equal independent counts from the dump, a dump with `CREATE/USE/DROP DATABASE` must not touch the real database, a user without `CREATE DATABASE` gets a clear message, and a multisite dry run lists the subsite mapping first.
+Scenarios: single site (socket), `use_socket=false` (WP-CLI path), `.sql.gz` dump, MariaDB collations (compatibility retry), multisite subdirectory, multisite subdomain, and **dry run** (`--dry-run` and `dry_run=true`): every table checksum and the database list must be identical before and after, reported tables/rows/occurrences must equal independent counts from the dump, a dump with `CREATE/USE/DROP DATABASE` must not touch the real database, a user without `CREATE DATABASE` gets a clear message, and a multisite dry run lists the subsite mapping first. **Custom mappings** (8a, 8b): a third-party host, a `www` URL and a serialized option are replaced, an email on the main domain is not, a second run changes nothing, an invalid entry stops the run before anything changes, and on a subdirectory network a `[domain_mappings]` entry applies to every site while a `[site_domain_mappings]` entry applies to one site only. Offline: `WPDB_TEST_WP_VERSION=<cached version>`.
 
 Needs: a MySQL/MariaDB server binary (found automatically in Local and Homebrew), `php` with `mysqli`, WP-CLI, and network access for `wp core download` (WP-CLI caches it). The suite is skipped with a reason when something is missing.
 
@@ -97,6 +97,7 @@ lib/tests/
 │   ├── test_import_performance.sh
 │   ├── test_import_security.sh
 │   ├── test_new_modules.sh
+│   ├── test_domain_mappings.sh    # [domain_mappings]: anchoring, order, scopes, report, config, regression guards
 │   ├── test_doctor.sh             # wp-db-import doctor: tools, connection, config, backup folder, no secrets
 │   ├── test_restore.sh            # wp-db-import restore: listing, flow, safety backup, rotation protection
 │   ├── test_socket_detection.sh

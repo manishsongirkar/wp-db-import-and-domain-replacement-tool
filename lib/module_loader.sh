@@ -268,6 +268,9 @@ load_database_modules() {
     if [[ -f "$database_dir/db_dry_run.sh" ]]; then
         source "$database_dir/db_dry_run.sh" 2>/dev/null
     fi
+    if [[ -f "$database_dir/domain_mappings.sh" ]]; then
+        source "$database_dir/domain_mappings.sh" 2>/dev/null
+    fi
     if [[ -f "$database_dir/db_restore.sh" ]]; then
         source "$database_dir/db_restore.sh" 2>/dev/null
     fi

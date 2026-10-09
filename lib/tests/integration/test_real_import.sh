@@ -170,6 +170,53 @@ _ri_multisite_scenario() {
 }
 
 
+# Replaces $2 with $3 (plain text) in file $1 (portable: no sed -i, no regex)
+_ri_inject() {
+    local f="$1" from="$2" to="$3"
+    awk -v from="$from" -v to="$to" '{ out = ""; while ((i = index($0, from)) > 0) { out = out substr($0, 1, i - 1) to; $0 = substr($0, i + length(from)) } print out $0 }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
+# Scenario 8b: multisite (subdirectory) with [domain_mappings] (network) and [site_domain_mappings] (blog 2 only)
+_ri_custom_multisite_scenario() {
+    local prod="$SRV_WORK/prod_cm" tgt="$SRV_WORK/t_cm" dump="$SRV_WORK/prod_cm.sql"
+    printf "\n  -- Scenario 8b: multisite, [domain_mappings] (network) and [site_domain_mappings] (blog 2)\n"
+    _ri_install_site "$prod" "prod_cm" "https://prod.example.com" subdirectory || { printf "  ❌ production network install failed\n"; ((errors++)); return; }
+    _ri_wp "$prod" site create --slug=news --title=News >/dev/null 2>&1 || { printf "  ❌ could not create the second site\n"; ((errors++)); return; }
+    _ri_add_content "$prod" "prod.example.com"
+    _ri_add_content "$prod" "prod.example.com/news" "--url=https://prod.example.com/news/"
+    _ri_wp "$prod" db export "$dump" --add-drop-table >/dev/null 2>&1 || { printf "  ❌ dump export failed\n"; ((errors++)); return; }
+    # a third-party URL in both sites, a site-2-only URL in both sites, an email, and a www URL
+    _ri_inject "$dump" '//prod.example.com/news/y' '//prod.example.com/news/y <img src="https://cdn.thirdparty.x/i.png"> https://s2only.thirdparty.x/z mail info@prod.example.com //www.prod.example.com/news/w'
+    _ri_inject "$dump" '//prod.example.com/y' '//prod.example.com/y <img src="https://cdn.thirdparty.x/i.png"> https://s2only.thirdparty.x/z mail info@prod.example.com'
+
+    _ri_install_site "$tgt" "target_cm" "http://target.test" subdirectory || { printf "  ❌ target network install failed\n"; ((errors++)); return; }
+    _ri_write_config "$tgt" "$dump" prod.example.com target.test auto "1:prod.example.com:target.test
+2:prod.example.com/news:target.test/news
+
+[domain_mappings]
+//cdn.thirdparty.x => //cdn.target.test
+
+[site_domain_mappings]
+2: //s2only.thirdparty.x => //s2only.target.test"
+    _ri_run_tool "$tgt"
+    _chk "exit code 0"                                       test "$_RI_RC" -eq 0
+    _chk "the network-wide custom replacement ran"           grep -q 'Custom URL replacements (whole network)' <<< "$_RI_OUT"
+    _chk "the site-2 custom replacement ran"                 grep -q 'Custom replacements for site 2 only' <<< "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"                 _ri_console_clean
+    local c1 c2
+    c1=$(_ri_wp "$tgt" post list --post_type=post --field=post_content 2>/dev/null)
+    c2=$(_ri_wp "$tgt" --url="http://target.test/news/" post list --post_type=post --field=post_content 2>/dev/null)
+    [[ -z "$c2" ]] && c2=$(_ri_wp "$tgt" --url="https://target.test/news/" post list --post_type=post --field=post_content 2>/dev/null)
+    _chk "main site: third-party host replaced"              grep -qF 'https://cdn.target.test/i.png' <<< "$c1"
+    _chk "subsite: third-party host replaced (whole network)" grep -qF 'https://cdn.target.test/i.png' <<< "$c2"
+    _chk "main site: the site-2-only mapping did NOT apply"  grep -qF 'https://s2only.thirdparty.x/z' <<< "$c1"
+    _chk "subsite: the site-2-only mapping applied"          grep -qF 'https://s2only.target.test/z' <<< "$c2"
+    _chk "emails on the main domain are not touched"         grep -qF 'info@prod.example.com' <<< "$c1"
+    _chk "main domain still replaced"                        grep -qF 'https://target.test/x' <<< "$c1"
+    _chk "no third-party host is left on the main site except the site-2-only one" bash -c '! grep -qF "cdn.thirdparty.x" <<< "$0"' "$c1"
+    _chk "no temp directory left behind"                     test -z "$(ls -A "$SRV_WORK/tmp" 2>/dev/null)"
+}
+
 # Everything that identifies the state of a database: table list, per-table checksums, and the list of
 # databases on the server (a leftover scratch database would show up here)
 _ri_state() {
@@ -297,8 +344,11 @@ _ri_setup() {
     _ri_q -e "CREATE USER '$_RI_DB_USER'@'localhost' IDENTIFIED BY '$_RI_DB_PASS'; GRANT ALL ON *.* TO '$_RI_DB_USER'@'localhost'" \
         || { _RI_SKIP="could not create the test database user"; return 1; }
 
-    if ! wp core download --path="$SRV_WORK/core" --quiet >/dev/null 2>&1; then
-        _RI_SKIP="wp core download failed (no network and no WP-CLI cache?)"
+    # Offline: WPDB_TEST_WP_VERSION=7.1.3 uses the WP-CLI download cache (~/.wp-cli/cache/core)
+    local -a core_args=("--path=$SRV_WORK/core" "--quiet")
+    [[ -n "${WPDB_TEST_WP_VERSION:-}" ]] && core_args+=("--version=$WPDB_TEST_WP_VERSION")
+    if ! wp core download "${core_args[@]}" >/dev/null 2>&1; then
+        _RI_SKIP="wp core download failed (no network and no WP-CLI cache? set WPDB_TEST_WP_VERSION to a cached version)"
         return 1
     fi
     return 0
@@ -450,6 +500,42 @@ test_real_import() {
     _chk "console shows no shell/PHP errors"               _ri_console_clean
 
     # multisite dry run on the network imported in scenario 5 (its dump and a target network)
+    # ---------------- Scenario 8a: custom [domain_mappings] on a single site
+    printf "\n  -- Scenario 8a: custom [domain_mappings] (third-party host, www variant, email untouched)\n"
+    local dump8="$SRV_WORK/prod8.sql"
+    cp "$SRV_WORK/prod.sql" "$dump8"
+    _ri_inject "$dump8" '//prod.example.com/y' '//prod.example.com/y <img src="https://cdn.thirdparty.x/i.png"> mail info@prod.example.com <a href="//www.prod.example.com/w">w</a>'
+    # same length as https://prod.example.com/a, so the serialized string stays valid before the replacement
+    _ri_inject "$dump8" 'https://prod.example.com/a' 'https://cdn.thirdparty.x/a'
+    _ri_install_site "$SRV_WORK/t8" target8 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); }
+    _ri_write_config "$SRV_WORK/t8" "$dump8" prod.example.com target.test auto
+    printf '\n[domain_mappings]\n//cdn.thirdparty.x => //cdn.target.test\n//www.prod.example.com => //target.test\n' >> "$SRV_WORK/t8/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t8"
+    _chk "exit code 0"                                       test "$_RI_RC" -eq 0
+    _chk "custom replacements ran before the main one"       bash -c 'a=$(grep -n "Custom URL replacements" <<< "$0" | head -1 | cut -d: -f1); b=$(grep -n "Search-replace completed successfully" <<< "$0" | head -1 | cut -d: -f1); [[ -n "$a" && -n "$b" && "$a" -lt "$b" ]]' "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"                 _ri_console_clean
+    local c8; c8=$(_ri_wp "$SRV_WORK/t8" post list --post_type=post --field=post_content 2>/dev/null)
+    _chk "third-party URL replaced"                          grep -qF 'https://cdn.target.test/i.png' <<< "$c8"
+    _chk "www URL replaced by the custom entry"              grep -qF '//target.test/w' <<< "$c8"
+    _chk "the email on the main domain is NOT touched"       grep -qF 'info@prod.example.com' <<< "$c8"
+    _chk "main domain link replaced"                         grep -qF 'https://target.test/x' <<< "$c8"
+    _chk "serialized option: third-party URL replaced and still valid" bash -c "cd '$SRV_WORK/t8' && test \"\$(wp eval 'echo get_option(\"widget_probe\")[\"list\"][0];' 2>/dev/null)\" = 'https://cdn.target.test/a'"
+    _chk "no third-party host is left in the database"       bash -c "cd '$SRV_WORK/t8' && test \"\$(wp db query \"SELECT (SELECT COUNT(*) FROM wp_posts WHERE post_content LIKE '%thirdparty%') + (SELECT COUNT(*) FROM wp_options WHERE option_value LIKE '%thirdparty%')\" --skip-column-names 2>/dev/null)\" = 0"
+    # a second run changes nothing more (idempotent): the content is identical after the same import again
+    local ct8a ct8b
+    ct8a=$(_ri_q -N -e "SELECT post_content FROM target8.wp_posts ORDER BY ID; SELECT option_value FROM target8.wp_options WHERE option_name IN ('siteurl','home','widget_probe') ORDER BY option_name" | { md5sum 2>/dev/null || md5; } | awk '{print $1}')
+    _ri_run_tool "$SRV_WORK/t8"
+    ct8b=$(_ri_q -N -e "SELECT post_content FROM target8.wp_posts ORDER BY ID; SELECT option_value FROM target8.wp_options WHERE option_name IN ('siteurl','home','widget_probe') ORDER BY option_name" | { md5sum 2>/dev/null || md5; } | awk '{print $1}')
+    _chk "second run: exit 0 and the content is unchanged"   bash -c 'test "$1" -eq 0 && test -n "$2" && test "$2" = "$3"' _ "$_RI_RC" "$ct8a" "$ct8b"
+
+    # an invalid entry stops the run before anything is changed
+    local fpbad; fpbad=$(_ri_fingerprint target8)
+    printf '\n[domain_mappings]\ncdn.thirdparty.x => cdn.target.test\n' >> "$SRV_WORK/t8/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t8"
+    _chk "invalid entry: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "must start with //" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fpbad" "$(_ri_fingerprint target8)"
+
+    _ri_custom_multisite_scenario
+
     printf "\n  -- Scenario 7f: multisite dry run (main site and subsite mapping)\n"
     local msdb=target_subdirectory msdump="$SRV_WORK/prod_subdirectory.sql" msbefore
     msbefore=$(_ri_fingerprint "$msdb")
