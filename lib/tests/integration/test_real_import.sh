@@ -418,6 +418,8 @@ test_real_import() {
     _chk "old target content is gone (replaced by the dump)" bash -c "cd '$SRV_WORK/t1' && ! wp post list --field=post_title 2>/dev/null | grep -q 'Target Original'"
     _chk "no temp directory left behind"            test -z "$(ls -A "$SRV_WORK/tmp" 2>/dev/null)"
     _chk "no wpdb-import.conf side effects other than the config" test -f "$SRV_WORK/t1/wpdb-import.conf"
+    _chk "the config was upgraded: both new sections added, old values kept" bash -c 'c="$0/t1/wpdb-import.conf"; grep -q "^\[domain_mappings\]" "$c" && grep -q "^\[site_domain_mappings\]" "$c" && grep -qx "old_domain=prod.example.com" "$c" && grep -qx "backup_keep=5" "$c"' "$SRV_WORK"
+    _chk "the upgrade is reported with the real item list"   grep -q 'Updated existing config with new settings.*\[domain_mappings\]' <<< "$_RI_OUT"
 
     # ---------------- Scenario 2: WP-CLI path (use_socket=false)
     printf "\n  -- Scenario 2: WP-CLI import path (use_socket=false)\n"

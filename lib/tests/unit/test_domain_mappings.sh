@@ -260,6 +260,74 @@ test_config_integration() {
 }
 
 # ----------------------------------------------------------------
+test_config_migration() {
+    start_test "Config migration" "an existing config gets the new keys and sections at import time, nothing else changes"
+    _m_load
+    local errors=0 old="$_M_WORK/old.conf" run="$_M_WORK/old.run.conf" a b
+    # a config written by an older version: no backup keys, no mapping sections, custom values and comments
+    printf '%s\n' '# my notes' '[general]' 'sql_file=dump.sql' 'old_domain=prod.com' 'new_domain=local.test' 'all_tables=true' 'dry_run=false' 'auto_proceed=true' 'use_socket=false' 'mysql_socket=' 'import_optimizations=auto' 'parallel_import=false' '' '[site_mappings]' '# comment' '1:prod.com:local.test' > "$old"
+    cp "$old" "$run"; chmod 640 "$run"
+    ensure_socket_config_settings "$run" >/dev/null 2>&1; local rc=$?
+    _chk "migration succeeds and reports it"               test "$rc" -eq 0 -a "$CONFIG_SOCKET_SETTINGS_MIGRATED" = true
+    _chk "the item list names only what was added"         test "$CONFIG_SETTINGS_MIGRATED_ITEMS" = "backup_before_import, backup_dir, backup_keep, [domain_mappings], [site_domain_mappings]"
+    _chk "no line of the old file was removed or changed"  bash -c '! diff "$0" "$1" | grep -q "^<"' "$old" "$run"
+    _chk "every old value reads the same"                  bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; for k in sql_file old_domain new_domain all_tables dry_run auto_proceed use_socket mysql_socket import_optimizations parallel_import; do [[ "$(parse_config_section "$0" general $k)" == "$(parse_config_section "$1" general $k)" ]] || exit 1; done' "$old" "$run"
+    _chk "new keys get the defaults (ask, blank, 5)"       bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; [[ "$(parse_config_section "$0" general backup_before_import)" == ask && -z "$(parse_config_section "$0" general backup_dir)" && "$(parse_config_section "$0" general backup_keep)" == 5 ]]' "$run"
+    _chk "both sections were added, after [site_mappings]" bash -c 'l=$(grep -n "^\[" "$0" | cut -d: -f2 | tr "\n" " "); [[ "$l" == "[general] [site_mappings] [domain_mappings] [site_domain_mappings] " ]]' "$run"
+    _chk "the sections hold comments only (no active entry)" bash -c '[[ -z "$(awk "/^\[(domain_mappings|site_domain_mappings)\]/{s=1;next} /^\[/{s=0} s && !/^#/ && NF" "$0")" ]]' "$run"
+    _chk "the site mapping is untouched"                   bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; [[ "$(get_site_mappings "$0")" == "1:prod.com:local.test" ]]' "$run"
+    _chk "the file mode is kept"                           bash -c '[[ "$(stat -c %a "$0" 2>/dev/null || stat -f %Lp "$0")" == 640 ]]' "$run"
+    _chk "the migrated config validates and has no entries" bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/database/sql_source.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/database/domain_mappings.sh" >/dev/null 2>&1; validate_config_file "$0" >/dev/null && dm_load "$0" domain_mappings && test -z "$DM_ENTRIES"' "$run"
+
+    a=$(cksum < "$run")
+    ensure_socket_config_settings "$run" >/dev/null 2>&1
+    _chk "a second run changes nothing and reports nothing" test "$CONFIG_SOCKET_SETTINGS_MIGRATED" = false -a -z "$CONFIG_SETTINGS_MIGRATED_ITEMS" -a "$a" = "$(cksum < "$run")"
+
+    # regression: a comment such as "# Example: mysql_socket=/path" is not a setting
+    printf '[general]\n# Example: mysql_socket=/from/a/comment\n# backup_keep=99\nmysql_socket=\n; old_domain=commented.com\nold_domain=real.com\n' > "$_M_WORK/cm.conf"
+    _chk "parse_config_section ignores commented lines"    bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; [[ -z "$(parse_config_section "$0" general mysql_socket)" && -z "$(parse_config_section "$0" general backup_keep)" && "$(parse_config_section "$0" general old_domain)" == real.com ]]' "$_M_WORK/cm.conf"
+    create_config_file "$_M_WORK/fresh.conf" a.sql a.com b.test >/dev/null 2>&1
+    _chk "a fresh config reads mysql_socket as empty (not the comment's example path)" bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; [[ -z "$(parse_config_section "$0" general mysql_socket)" ]]' "$_M_WORK/fresh.conf"
+    # the comment of each added key comes with it (same text as the new-config template)
+    _chk "every migrated key has its template comment"     bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; for k in use_socket mysql_socket import_optimizations parallel_import backup_before_import backup_dir backup_keep; do c=$(config_key_comment $k); [[ -n "$c" ]] || exit 1; done; t=$(cat "$0"); [[ "$t" == *"$(config_key_comment backup_keep)"*"backup_keep=5"* && "$t" == *"$(config_key_comment backup_before_import)"*"backup_before_import=ask"* ]]' "$run"
+    local min="$_M_WORK/min.conf"
+    printf '[general]\nsql_file=a.sql\nold_domain=a.com\nnew_domain=b.test\n\n[site_mappings]\n1:a.com:b.test\n' > "$min"
+    ensure_socket_config_settings "$min" >/dev/null 2>&1
+    _chk "a minimal config: all 7 keys + comments + both sections" bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; t=$(cat "$0"); for k in use_socket mysql_socket import_optimizations parallel_import backup_before_import backup_dir backup_keep; do [[ "$t" == *"$(config_key_comment $k)"*"${k}="* ]] || exit 1; done; grep -q "^\[domain_mappings\]" "$0" && grep -q "^\[site_domain_mappings\]" "$0"' "$min"
+    _chk "the added keys are inside [general], before [site_mappings]" bash -c 'g=$(grep -n "^\[general\]" "$0" | cut -d: -f1); m=$(grep -n "^\[site_mappings\]" "$0" | cut -d: -f1); k=$(grep -n "^backup_keep=" "$0" | cut -d: -f1); [[ "$g" -lt "$k" && "$k" -lt "$m" ]]' "$min"
+    _chk "a blank line still separates [general] from [site_mappings]" bash -c 'm=$(grep -n "^\[site_mappings\]" "$0" | cut -d: -f1); [[ -z "$(sed -n "$((m - 1))p" "$0")" ]]' "$min"
+    _chk "no double blank lines and no trailing blank line"  bash -c '! awk "/^$/{b++; if (b>1) bad=1; next} {b=0} END{exit bad?0:1}" "$0" && [[ -n "$(tail -n1 "$0")" ]]' "$min"
+    _chk "the minimal config still validates"              bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/database/sql_source.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/database/domain_mappings.sh" >/dev/null 2>&1; validate_config_file "$0" >/dev/null' "$min"
+
+    # a later site-mapping update still lands inside [site_mappings]
+    update_site_mapping "$run" 2 "shop.prod.com" "shop.local.test" >/dev/null 2>&1
+    _chk "update_site_mapping adds blog 2 to [site_mappings]" bash -c 'source "'"$_M_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_M_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; get_site_mappings "$0" | grep -q "^2:shop.prod.com:shop.local.test"' "$run"
+
+    # a file without a final newline
+    printf '[general]\nsql_file=a.sql\n\n[site_mappings]\n1:a.com:b.test' > "$run"
+    ensure_socket_config_settings "$run" >/dev/null 2>&1
+    _chk "no final newline: the last line is kept intact"  bash -c 'grep -qx "1:a.com:b.test" "$0" && grep -q "^\[domain_mappings\]$" "$0"' "$run"
+
+    # entries the user already wrote are never touched or duplicated
+    printf '[general]\nsql_file=a.sql\n\n[site_mappings]\n\n[Domain_Mappings]\n//cdn.a.com => //cdn.b.test\n' > "$run"
+    a=$(cksum < "$run")
+    ensure_socket_config_settings "$run" >/dev/null 2>&1
+    _chk "an existing [domain_mappings] (any case) is not duplicated and keeps its entry" bash -c 'test "$(grep -ci "^\[domain_mappings\]" "$0")" -eq 1 && grep -qx "//cdn.a.com => //cdn.b.test" "$0" && grep -q "^\[site_domain_mappings\]" "$0"' "$run"
+    _chk "only the missing section is reported and added"  test "$(printf '%s' "$CONFIG_SETTINGS_MIGRATED_ITEMS" | grep -o '\[site_domain_mappings\]\|\[domain_mappings\]' | tr '\n' ' ')" = "[site_domain_mappings] "
+
+    # the new-config template and the migration use the same text
+    create_config_file "$_M_WORK/new.conf" >/dev/null 2>&1
+    config_mapping_sections_template > "$_M_WORK/tpl.txt"
+    _chk "create_config_file contains the exact template text" bash -c '[[ "$(sed -n "/^\[domain_mappings\]/,\$p" "$0")" == "$(cat "$1")" ]]' "$_M_WORK/new.conf" "$_M_WORK/tpl.txt"
+    ensure_socket_config_settings "$_M_WORK/new.conf" >/dev/null 2>&1
+    _chk "a freshly created config needs no migration"      test "$CONFIG_SOCKET_SETTINGS_MIGRATED" = false
+
+    # the import path prints the real list
+    _chk "the import message uses the real item list"      grep -q 'CONFIG_SETTINGS_MIGRATED_ITEMS' "$_M_ROOT/import_wp_db.sh"
+    _finish "config migration is safe and idempotent"
+}
+
+# ----------------------------------------------------------------
 test_wiring() {
     start_test "Wiring" "module loaded, used by import, per-site and dry-run hooks"
     local errors=0
@@ -284,6 +352,7 @@ run_domain_mappings_tests() {
     test_commands
     test_report
     test_config_integration
+    test_config_migration
     test_wiring
 
     finalize_test_session

@@ -273,7 +273,7 @@ import_wp_db() {
       if declare -F ensure_socket_config_settings >/dev/null 2>&1; then
         ensure_socket_config_settings "$config_path" >/dev/null 2>&1 || true
         if [[ "$CONFIG_SOCKET_SETTINGS_MIGRATED" == "true" ]]; then
-          printf "${GREEN}✅ Updated existing config with import settings:${RESET} use_socket, mysql_socket, import_optimizations, parallel_import, backup_before_import, backup_dir, backup_keep\n\n"
+          printf "${GREEN}✅ Updated existing config with new settings (existing values are not changed):${RESET} %s\n\n" "${CONFIG_SETTINGS_MIGRATED_ITEMS:-import settings}"
         fi
       fi
 
