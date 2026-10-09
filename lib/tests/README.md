@@ -125,6 +125,7 @@ lib/tests/
 │   ├── test_import_performance.sh # Import estimate, optimizations, config keys
 │   ├── test_import_security.sh    # Penetration-style security tests
 │   ├── test_new_modules.sh        # Module loading
+│   ├── test_restore.sh            # wp-db-import restore (stubbed WP-CLI/importer)
 │   ├── test_socket_detection.sh   # MySQL socket detection
 │   ├── test_update_uninstall.sh   # wp-db-import update + uninstall.sh (sandboxed)
 │   └── test_yes_flag.sh           # --yes / --non-interactive (unattended mode)

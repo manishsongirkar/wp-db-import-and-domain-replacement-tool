@@ -306,7 +306,24 @@ Before the current database is replaced, the tool can save a compressed copy so 
 The tool does not keep log files between runs. Import and search-replace logs live in a private temporary directory that is **removed when the run ends** (on success and on failure). Each import log is also size-capped (first and last 128 KB are kept) so a failing import cannot fill the disk, and the first error lines are printed on screen when an import fails. The only data that persists is your backups, which are rotated as described above.
 
 Some MySQL/MariaDB clients exit with code 0 even when statements fail. The tool also scans the import output for `ERROR nnnn` lines, so such an import is reported as failed (and retried with the compatibility filter when appropriate) instead of showing a false "successful".
-- Restore with: `gunzip -c <backup-file> | wp db import -`
+- **Restore in one command:** `wp-db-import restore --last` (see below). The manual way still works: `gunzip -c <backup-file> | wp db import -`
+
+#### ♻️ Restoring a Backup
+
+```bash
+wp-db-import restore --list            # backups of this site's database, newest first
+wp-db-import restore --list --all      # backups of every database in the backup folder
+wp-db-import restore --last            # restore the newest backup of this database
+wp-db-import restore <file>            # restore a specific file (.sql, .sql.gz, .zip, .sql.bz2)
+wp-db-import --yes restore --last      # no question (scripts, CI)
+```
+
+- The backup is **checked first** (a corrupt archive is refused and nothing is changed).
+- You are **asked to confirm** (default No) unless you use `--yes` or `WPDB_ASSUME_YES=1`.
+- The **current database is backed up first**, so a restore can be undone (`Undo with: wp-db-import restore "<safety backup>"` is printed). `backup_before_import=false` is honored. `backup_keep` rotation never deletes the file being restored.
+- The import uses the same fast path as a normal import (socket, mysql, WP-CLI), checks the output for errors and retries with the compatibility filter when needed.
+- After a successful import, **tables that did not exist when the backup was made** are removed (views are never removed, and nothing is removed if the backup's table list cannot be read). The object cache is flushed.
+- Exit codes: `0` success or cancelled, `1` failure (no backup found, corrupt archive, import failed), `2` usage error.
 
 ### 🗜️ Compressed Dumps
 

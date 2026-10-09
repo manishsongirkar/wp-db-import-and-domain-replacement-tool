@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **`wp-db-import restore`** ([#18](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/18)): restore a backup in one command. `--list` (newest first, `--all` for every database), `--last`, or a file path (`.sql`, `.sql.gz`, `.zip`, `.sql.bz2`). The archive is verified first, the user confirms (default No, `--yes` skips), the current database is backed up first so the restore can be undone, the import uses the normal fast path with error checks and compatibility retry, and tables that did not exist in the backup are removed afterwards (never views; never when the backup's table list cannot be read). `backup_keep` rotation never deletes the file being restored (`WPDB_BACKUP_PROTECT`). New module `lib/database/db_restore.sh`; documented in `--help`, README, USAGE and the completions. Unit test suite `test_restore.sh`.
 - **Unattended mode** ([#19](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/19)): `--yes`, `-y`, `--non-interactive` (any position) or `WPDB_ASSUME_YES=1`, for `wp-db-import` and `import_wp_db.sh`.
   - Every prompt takes its default, exactly as if Enter was pressed. Confirmations are skipped and show the reason (`--yes` or `from config`).
   - Nothing is read from stdin or the terminal, and stdin is closed for the whole run, so a script cannot hang (also with a stdin pipe that never ends).

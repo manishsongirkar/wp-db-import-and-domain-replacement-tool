@@ -52,7 +52,8 @@ prune_old_backups() {
             f="$dir/$base"
             [[ "$base" == "${db}-"* ]] || continue
             [[ "${base#"${db}"-}" =~ ^[0-9]{8}-[0-9]{6}(-[0-9]+)?\.sql\.gz$ ]] || continue
-            if [[ "$f" == "$current" ]] || [[ "$kept" -lt "$keep" ]]; then
+            # WPDB_BACKUP_PROTECT: a file that is being restored must survive the rotation
+            if [[ "$f" == "$current" || "$f" == "${WPDB_BACKUP_PROTECT:-}" ]] || [[ "$kept" -lt "$keep" ]]; then
                 kept=$((kept + 1))
             elif rm -f "$f" 2>/dev/null; then
                 removed=$((removed + 1))
@@ -69,6 +70,9 @@ prune_old_backups() {
 # Parameters:
 #   $1: WordPress root (used to read the database name)
 #   $2: Config file path (optional; where a "no" answer is saved)
+#
+# Sets WPDB_LAST_BACKUP_FILE to the new backup file. WPDB_BACKUP_PROTECT (a file path) is
+# never deleted by the rotation.
 #
 # Returns:
 #   0 if the backup was written, skipped by config, or there is nothing to back up.
@@ -180,6 +184,7 @@ backup_database_before_import() {
     fi
 
     mv "$partial" "$backup_file" || { rm -f "$partial"; printf "${RED}❌ Could not finalize the backup file.${RESET}\n"; return 1; }
+    WPDB_LAST_BACKUP_FILE="$backup_file"
 
     local size_kb
     size_kb=$(( $(_sql_file_size_bytes "$backup_file") / 1024 ))
