@@ -663,8 +663,9 @@ execute_wp_cli() {
         # Append common paths (Homebrew, /usr/local) AFTER the current PATH: the active
         # environment's tools (for example Local's mysql) must win over Homebrew ones
         export PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"
-        # Disable OPcache warnings that can interfere with output parsing
-        export PHP_INI_SCAN_DIR=""
+        # Disable OPcache warnings that can interfere with output parsing. macOS only: on
+        # Debian/Ubuntu the scan dir is where PHP loads mysqli, so clearing it breaks WP-CLI
+        [[ "$(uname -s)" == "Darwin" ]] && export PHP_INI_SCAN_DIR=""
         # Suppress PHP startup errors to prevent pollution of output parsing
         export WP_CLI_PHP_ARGS="${WP_CLI_PHP_ARGS:-} -d display_startup_errors=0"
         # Execute the command passed as arguments

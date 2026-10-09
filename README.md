@@ -2,7 +2,7 @@
 
 # 🧩 WordPress Database Import & Domain Replacement Tool
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![GitHub issues](https://img.shields.io/github/issues/manishsongirkar/wp-db-import-and-domain-replacement-tool)
+[![Tests](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/actions/workflows/tests.yml/badge.svg)](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/actions/workflows/tests.yml) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![GitHub issues](https://img.shields.io/github/issues/manishsongirkar/wp-db-import-and-domain-replacement-tool)
 
 Accelerate your local development setup with this advanced WP-CLI wrapper. Built for reliable WordPress migration automation, it effortlessly manages database imports and performs accurate database search and replace (including serialized data) to synchronize production data with local or staging environments.
 

@@ -230,7 +230,7 @@ cap_log_file() {
 # If the DROP statements appear only later, this returns 1: the caller then takes the
 # safe path (snapshot tables, remove new ones before a retry).
 sql_has_drop_table() {
-    sql_open_stream "$1" 2>/dev/null | head -c 262144 | LC_ALL=C grep -qiE '^[[:space:]]*(/\*![0-9]+[[:space:]]+)?DROP[[:space:]]+TABLE[[:space:]]+IF[[:space:]]+EXISTS'
+    sql_open_stream "$1" 2>/dev/null | head -c 262144 2>/dev/null | LC_ALL=C grep -qiE '^[[:space:]]*(/\*![0-9]+[[:space:]]+)?DROP[[:space:]]+TABLE[[:space:]]+IF[[:space:]]+EXISTS'
 }
 
 # ===============================================

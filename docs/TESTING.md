@@ -91,6 +91,7 @@ lib/tests/
 │   └── test_wordpress.sh
 ├── unit/
 │   ├── test_core_functions.sh
+│   ├── test_ci_workflow.sh        # CI workflow file and VERSION/CHANGELOG/tag check
 │   ├── test_dry_run.sh            # --dry-run: helpers, decision, stubbed preview, wiring
 │   ├── test_import_hardening.sh
 │   ├── test_import_performance.sh
@@ -121,12 +122,25 @@ Reports are saved to `lib/tests/reports/` (or custom output dir) and auto-cleane
 
 ## CI/CD Integration
 
-### GitHub Actions Example
+### GitHub Actions (this repository)
+`.github/workflows/tests.yml` runs on every pull request, on pushes to `main` and on `v*` tags:
+
+| Job | What it runs |
+|-----|--------------|
+| `lint` | `bash -n`, `shellcheck -S error -s bash`, `lib/tests/check_version.sh` (VERSION = newest CHANGELOG release; on tags, tag = VERSION) |
+| `unit` | `./run_tests.sh --ci unit` and `security` on macOS (system Bash 3.2 and Homebrew Bash 5, BSD and GNU userland) and Ubuntu (Bash 5, GNU) |
+| `matrix` | `./run_tests.sh matrix` and `real-import` on Ubuntu with MySQL and with MariaDB (installed from apt, `WPDB_MATRIX_SERVERS=/usr/sbin`) |
+
+Reports (`test-reports/`) are uploaded as workflow artifacts. Run the version check locally with `lib/tests/check_version.sh [tag]`.
+
+Not covered yet: Bash 4.4 and the older MySQL/MariaDB versions (the Ubuntu runner installs one distribution version of each). Add them to `WPDB_MATRIX_SERVERS` when needed.
+
+### Generic example
 ```yaml
 - name: Run Tests
   run: ./run_tests.sh --ci --format json --output ./test-reports
 - name: Upload Results
-  uses: actions/upload-artifact@v3
+  uses: actions/upload-artifact@v4
   with:
     name: test-reports
     path: test-reports/

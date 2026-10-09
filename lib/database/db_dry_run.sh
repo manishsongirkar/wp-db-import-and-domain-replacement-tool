@@ -153,7 +153,8 @@ dry_run_preview() {
     local create_err
     if ! create_err=$(MYSQL_PWD="${WP_DB_PASSWORD:-}" "$mysql_bin" "${admin_args[@]}" -e "CREATE DATABASE \`${scratch}\`" 2>&1); then
         printf "${RED}❌ Dry run needs permission to create a temporary database, and the server refused:${RESET}\n"
-        printf "   %s\n" "$(printf '%s' "$create_err" | head -2 | tr '\n' ' ' | cut -c1-200)"
+        # MariaDB's client echoes the statement before the error: show the ERROR line(s)
+        printf "   %s\n" "$(printf '%s\n' "$create_err" | { grep -i 'error' || cat; } | head -2 | tr '\n' ' ' | cut -c1-200)"
         printf "${YELLOW}💡 Grant CREATE to the database user (for example GRANT CREATE ON \`wpdb_dry_%%\`.* TO '%s'@'...'), or run without dry run. Nothing was changed.${RESET}\n" "$WP_DB_USER"
         return 1
     fi

@@ -119,7 +119,7 @@ _ri_run_tool() {
 
 # The console must not show shell or PHP errors: invalid options, missing commands, notices...
 _ri_console_clean() {
-    ! grep -qiE 'invalid option|command not found|syntax error|unbound variable|unexpected (token|EOF)|bad substitution|No such file or directory|Permission denied|illegal (option|byte)|Traceback|PHP (Warning|Notice|Deprecated|Fatal)|^(Warning|Notice|Deprecated|Fatal error):' <<< "$_RI_OUT"
+    ! grep -qiE 'invalid option|command not found|syntax error|unbound variable|unexpected (token|EOF)|bad substitution|No such file or directory|Permission denied|illegal (option|byte)|Traceback|Broken pipe|error writing|PHP (Warning|Notice|Deprecated|Fatal)|^(Warning|Notice|Deprecated|Fatal error):' <<< "$_RI_OUT"
 }
 
 # Multisite scenario. Parameters: label mode(subdirectory|subdomain)
