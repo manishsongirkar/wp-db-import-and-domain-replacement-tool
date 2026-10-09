@@ -132,7 +132,7 @@ test_bash_behavior() {
     start_test "Bash behavior" "the function completes correctly in Bash 3.2 and the running Bash"
     local errors=0 bin out
     mkdir -p "$_CP_WORK/dir_a" "$_CP_WORK/bk"
-    : > "$_CP_WORK/bk/site-20261009.sql.gz"; : > "$_CP_WORK/bk/dump.sql"; : > "$_CP_WORK/bk/notes.txt"; : > "$_CP_WORK/bk/pack.zip"; : > "$_CP_WORK/bk/old.sql.bz2"
+    : > "$_CP_WORK/bk/site-20261009.sql.gz"; : > "$_CP_WORK/bk/dump.sql"; : > "$_CP_WORK/bk/notes.txt"; : > "$_CP_WORK/bk/pack.zip"; : > "$_CP_WORK/bk/old.sql.bz2"; : > "$_CP_WORK/bk/site-20261009.sql.gz.gpg"
 
     for bin in /bin/bash "$BASH"; do
         local tag="[$(basename "$bin") $("$bin" -c 'echo ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}')]"
@@ -152,7 +152,7 @@ test_bash_behavior() {
         out=$(_cp_complete "$bin" "wp-db-import restore -")
         _chk "$tag restore: --list --last --all"           bash -c 'for f in --list --last --all; do grep -qxF -- "$f" <<< "$0" || exit 1; done' "$out"
         out=$(_cp_complete "$bin" "wp-db-import restore bk/")
-        _chk "$tag restore: .sql .sql.gz .zip .sql.bz2 offered" bash -c 'for f in bk/site-20261009.sql.gz bk/dump.sql bk/pack.zip bk/old.sql.bz2; do grep -qxF "$f" <<< "$0" || exit 1; done' "$out"
+        _chk "$tag restore: .sql .sql.gz .zip .sql.bz2 .gpg offered" bash -c 'for f in bk/site-20261009.sql.gz bk/dump.sql bk/pack.zip bk/old.sql.bz2 bk/site-20261009.sql.gz.gpg; do grep -qxF "$f" <<< "$0" || exit 1; done' "$out"
         _chk "$tag restore: other files are not offered"   bash -c '! grep -qF "notes.txt" <<< "$0"' "$out"
         out=$(_cp_complete "$bin" "wp-db-import restore --yes bk/s")
         _chk "$tag restore after an option still completes files" bash -c 'grep -qxF bk/site-20261009.sql.gz <<< "$0"' "$out"
@@ -209,7 +209,7 @@ test_zsh_behavior() {
     out=$(_cp_zsh_ctx wp-db-import "" wp-db-import)
     _chk "global options: --yes -y --non-interactive --dry-run --help" bash -c 'for f in --yes -y --non-interactive --dry-run --help; do grep -qF -- "$f" <<< "$0" || exit 1; done' "$out"
     out=$(_cp_zsh_ctx wp-db-import args restore)
-    _chk "restore: --list --last --all and backup files" bash -c 'grep -q -- "--list" <<< "$0" && grep -q -- "--last" <<< "$0" && grep -q -- "--all" <<< "$0" && grep -q "sql|gz|zip|bz2" <<< "$0"' "$out"
+    _chk "restore: --list --last --all and backup files" bash -c 'grep -q -- "--list" <<< "$0" && grep -q -- "--last" <<< "$0" && grep -q -- "--all" <<< "$0" && grep -q "sql|gz|zip|bz2|gpg" <<< "$0"' "$out"
     out=$(_cp_zsh_ctx wp-db-import args test)
     _chk "test: runner options, --format values, suites"  bash -c 'for f in --verbose --quick --parallel --ci --format --output "(json html text all)"; do grep -qF -- "$f" <<< "$0" || exit 1; done; grep -q "suite:" <<< "$0"' "$out"
     out=$(_cp_zsh_ctx wp-db-import args detect)

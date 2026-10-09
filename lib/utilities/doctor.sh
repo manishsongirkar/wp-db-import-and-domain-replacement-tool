@@ -187,6 +187,28 @@ doctor_site_checks() {
         fi
     fi
 
+    # Backup encryption (only shown when it is turned on)
+    local enc rec
+    if [[ -n "$config_path" && -f "$config_path" ]]; then
+        enc=$(parse_config_section "$config_path" "general" "backup_encrypt" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        rec=$(parse_config_section "$config_path" "general" "backup_gpg_recipient" 2>/dev/null)
+        case "$enc" in
+            ""|false|no|0|off|none) ;;
+            gpg)
+                if ! command -v gpg >/dev/null 2>&1; then
+                    _doc_row FAIL "Backup encryption" "backup_encrypt=gpg but gpg is not installed" "install GnuPG, or set backup_encrypt=false"
+                elif [[ -z "$rec" ]]; then
+                    _doc_row FAIL "Backup encryption" "backup_gpg_recipient is empty" "set backup_gpg_recipient to a key id, fingerprint or e-mail"
+                elif ! gpg --batch --list-keys -- "$rec" >/dev/null 2>&1; then
+                    _doc_row FAIL "Backup encryption" "no gpg public key for '$rec'" "list keys with: gpg --list-keys   import one with: gpg --import <file>"
+                else
+                    _doc_row OK "Backup encryption" "gpg, recipient '$rec'"
+                fi
+                ;;
+            *) _doc_row FAIL "Backup encryption" "unknown backup_encrypt value '$enc'" "use false or gpg" ;;
+        esac
+    fi
+
     # Config file
     if [[ -n "$config_path" && -f "$config_path" ]]; then
         local out

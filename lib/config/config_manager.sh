@@ -190,6 +190,24 @@ backup_dir=
 # oldest ones beyond this number are deleted (rotation), so the folder cannot grow forever.
 # Use 0 to keep every backup.
 backup_keep=5
+
+# backup_keep_days also deletes backups older than this many days (in addition to
+# backup_keep). The backup just made is never deleted. Use 0 to turn it off.
+backup_keep_days=0
+
+# backup_encrypt encrypts new backups with GnuPG (the file name ends in .sql.gz.gpg).
+#
+# Values:
+#   false — Off (default): backups are gzip files, readable by the owner only (mode 600)
+#   gpg   — Encrypt with the public key named in backup_gpg_recipient. If gpg or the key
+#           is missing, the backup (and so the import) is cancelled. It never falls back
+#           to an unencrypted file.
+#
+# Restore: wp-db-import restore <file>.sql.gz.gpg   (gpg asks for your passphrase)
+backup_encrypt=false
+
+# backup_gpg_recipient is the key id, fingerprint or e-mail of the public key to encrypt to.
+backup_gpg_recipient=
 TEMPLATE_EOF
 }
 
@@ -626,7 +644,8 @@ ensure_socket_config_settings() {
     # key=default pairs added to configs created before these settings existed
     local pair key default
     for pair in "use_socket=auto" "mysql_socket=" "import_optimizations=auto" \
-                "parallel_import=false" "backup_before_import=ask" "backup_dir=" "backup_keep=5"; do
+                "parallel_import=false" "backup_before_import=ask" "backup_dir=" "backup_keep=5" \
+                "backup_keep_days=0" "backup_encrypt=false" "backup_gpg_recipient="; do
         key="${pair%%=*}"
         default="${pair#*=}"
         if ! grep -qi "^[[:space:]]*${key}[[:space:]]*=" "$config_path" 2>/dev/null; then

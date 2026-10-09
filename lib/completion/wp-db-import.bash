@@ -13,7 +13,7 @@
 #   wp-db-import <TAB>              the subcommands
 #   wp-db-import -<TAB>             global options (--yes -y --non-interactive --dry-run --help)
 #   wp-db-import --yes res<TAB>     a global option before the subcommand is fine
-#   wp-db-import restore <TAB>      --list --last --all, and backup files (.sql .gz .zip .bz2)
+#   wp-db-import restore <TAB>      --list --last --all, and backup files (.sql .gz .zip .bz2 .gpg)
 #   wp-db-import test <TAB>         test suite names, and the test runner options
 #   wp-db-import test --format <TAB>  json html text all
 #   wp-db-import detect -<TAB>      --verbose --quiet
@@ -77,7 +77,7 @@ _wp_db_import_completion() {
                 COMPREPLY=($(compgen -d -S / -- "$cur"))
                 for f in $(compgen -f -- "$cur"); do
                     case "$f" in
-                        *.sql|*.gz|*.zip|*.bz2) [[ -d "$f" ]] || COMPREPLY+=("$f") ;;
+                        *.sql|*.gz|*.zip|*.bz2|*.gpg) [[ -d "$f" ]] || COMPREPLY+=("$f") ;;
                     esac
                 done
             fi

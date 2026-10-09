@@ -10,7 +10,7 @@
 #   wp-db-import <TAB>                 the subcommands (with a description)
 #   wp-db-import -<TAB>                global options (--yes -y --non-interactive --dry-run --help)
 #   wp-db-import --yes res<TAB>        a global option before the subcommand is fine
-#   wp-db-import restore <TAB>         --list --last --all, and backup files (.sql .gz .zip .bz2)
+#   wp-db-import restore <TAB>         --list --last --all, and backup files (.sql .gz .zip .bz2 .gpg)
 #   wp-db-import test <TAB>            test suite names, and the test runner options
 #   wp-db-import test --format <TAB>   json html text all
 #   wp-db-import detect -<TAB>         --verbose --quiet
@@ -69,7 +69,7 @@ _wp_db_import() {
                         '--list[list backups, newest first]' \
                         '--last[restore the newest backup of this database]' \
                         '--all[with --list: backups of every database]' \
-                        '*:backup file:_files -g "*.(sql|gz|zip|bz2)"'
+                        '*:backup file:_files -g "*.(sql|gz|zip|bz2|gpg)"'
                     ;;
                 test)
                     _arguments \

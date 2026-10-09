@@ -39,7 +39,7 @@ wp-db-import --help             # Show this help message
 | You type | TAB offers |
 |----------|------------|
 | `wp-db-import -` | `--yes -y --non-interactive --dry-run --help` (also before the command: `wp-db-import --yes res`) |
-| `wp-db-import restore ` | `--list --last --all` and backup files (`.sql`, `.sql.gz`, `.zip`, `.sql.bz2`) |
+| `wp-db-import restore ` | `--list --last --all` and backup files (`.sql`, `.sql.gz`, `.zip`, `.sql.bz2`, `.sql.gz.gpg`) |
 | `wp-db-import test ` | the suite names (`unit`, `security`, `matrix`, `real-import`, ...) and the runner options; `--format ` offers `json html text all` |
 | `wp-db-import detect -` | `--verbose --quiet` |
 | `wp-db-import show-cleanup ` | directories |
@@ -105,6 +105,9 @@ parallel_import=false
 backup_before_import=ask
 backup_dir=
 backup_keep=5
+backup_keep_days=0
+backup_encrypt=false
+backup_gpg_recipient=
 
 [site_mappings]
 1:production-site.com:local-site.test
@@ -132,6 +135,10 @@ backup_keep=5
 - With `auto_proceed=true`, `ask` backs up without prompting. If a requested backup fails, the import is cancelled.
 - Backups are written to `~/.wp-db-import/backups/<dbname>-<timestamp>.sql.gz` (owner-only). Override with `backup_dir=`.
 - `backup_keep=5` keeps the newest 5 backups per database and deletes older ones after each backup (rotation). `0` keeps all.
+- `backup_keep_days=30` also deletes backups older than 30 days (either rule deletes; the backup just made and a file being restored are never deleted). `0` = off (default).
+- **Free space:** the database size is compared with the free space in the backup folder before the export starts. If the compressed backup (estimated at half the database size) will not fit, the backup and the import are cancelled before anything is written. A tight fit only warns. Unknown size or space: no check.
+- **Progress:** a long backup shows the size written so far (terminal only).
+- **Encryption:** `backup_encrypt=gpg` with `backup_gpg_recipient=<key id, fingerprint or e-mail>` writes `<dbname>-<timestamp>.sql.gz.gpg` (mode 600). Off by default. If gpg or the key is missing, the backup and the import are cancelled, never replaced by an unencrypted file. `wp-db-import restore <file>.sql.gz.gpg` decrypts once to a private temp file (gpg asks for the passphrase; with `--yes` it runs in batch mode and needs an unlocked key or agent) and deletes it afterwards. Imports of other encrypted files are refused with a pointer to `restore`.
 - The tool keeps no log files between runs: logs are in a private temp directory removed when the run ends, and are size-capped. When an import fails, the first error lines are printed on screen.
 - Restore: `gunzip -c ~/.wp-db-import/backups/<file>.sql.gz | wp db import -`
 
