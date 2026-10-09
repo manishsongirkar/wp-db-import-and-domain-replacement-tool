@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+
 ### Added
 - **Unattended mode** ([#19](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/19)): `--yes`, `-y`, `--non-interactive` (any position) or `WPDB_ASSUME_YES=1`, for `wp-db-import` and `import_wp_db.sh`.
   - Every prompt takes its default, exactly as if Enter was pressed. Confirmations are skipped and show the reason (`--yes` or `from config`).
