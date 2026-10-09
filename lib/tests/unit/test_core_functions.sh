@@ -197,39 +197,64 @@ test_module_loading() {
 #   - Checks if the `$OLD_DOMAIN` variable is set correctly after loading.
 #
 test_configuration_system() {
-    start_test "Configuration System" "Test configuration loading and validation"
+    start_test "Configuration System" "Test configuration file reading and validation"
 
-    local temp_dir=$(create_temp_test_dir "config_test")
-    cd "$temp_dir" || return 1
+    local test_dir
+    test_dir=$(create_temp_test_dir "config_system")
+    cd "$test_dir" || { fail_test "Cannot enter temp dir"; return 1; }
 
-    # Create test configuration
     cat > "test.conf" <<EOF
-OLD_DOMAIN="test.com"
-NEW_DOMAIN="local.test"
-MULTISITE="false"
+[general]
+sql_file=dump.sql
+old_domain=test.com
+new_domain=local.test
+all_tables=true
+dry_run=false
+clear_revisions=true
+setup_stage_proxy=false
+auto_proceed=true
+
+[site_mappings]
 EOF
 
-    # Source main script for config functions
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        if declare -F load_config >/dev/null 2>&1; then
-            if load_config "test.conf" >/dev/null 2>&1; then
-                if [[ "$OLD_DOMAIN" == "test.com" ]]; then
-                    printf "  ✅ Configuration loaded correctly\n"
-                    pass_test "Configuration system working"
-                else
-                    fail_test "Configuration variables not set correctly"
-                fi
-            else
-                fail_test "Failed to load configuration"
-            fi
-        else
-            skip_test "load_config function not available"
-        fi
-    else
+    if ! source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
+        cd / && cleanup_temp_test_dir "$test_dir"
         fail_test "Failed to load main script"
+        return 1
     fi
 
-    cd / && cleanup_temp_test_dir "$temp_dir"
+    # Core functions must exist: a missing one is a bug, not a reason to skip
+    local fn
+    for fn in load_import_config validate_config_file; do
+        if ! declare -F "$fn" >/dev/null 2>&1; then
+            cd / && cleanup_temp_test_dir "$test_dir"
+            fail_test "core function $fn is missing"
+            return 1
+        fi
+    done
+
+    local errors=0
+    load_import_config "test.conf" >/dev/null 2>&1
+    [[ "$CONFIG_OLD_DOMAIN" == "test.com" ]]   && printf "  ✅ old_domain loaded\n"   || { printf "  ❌ old_domain not loaded: '%s'\n" "$CONFIG_OLD_DOMAIN"; ((errors++)); }
+    [[ "$CONFIG_NEW_DOMAIN" == "local.test" ]] && printf "  ✅ new_domain loaded\n"   || { printf "  ❌ new_domain not loaded: '%s'\n" "$CONFIG_NEW_DOMAIN"; ((errors++)); }
+    [[ "$CONFIG_SQL_FILE" == "dump.sql" ]]     && printf "  ✅ sql_file loaded\n"     || { printf "  ❌ sql_file not loaded: '%s'\n" "$CONFIG_SQL_FILE"; ((errors++)); }
+    [[ "$CONFIG_AUTO_PROCEED" == "true" ]]     && printf "  ✅ auto_proceed loaded\n" || { printf "  ❌ auto_proceed not loaded: '%s'\n" "$CONFIG_AUTO_PROCEED"; ((errors++)); }
+    [[ "$CONFIG_BACKUP_BEFORE_IMPORT" == "ask" && "$CONFIG_BACKUP_KEEP" == "5" ]] \
+        && printf "  ✅ defaults applied for keys missing from the file\n" \
+        || { printf "  ❌ defaults missing (backup=%s keep=%s)\n" "$CONFIG_BACKUP_BEFORE_IMPORT" "$CONFIG_BACKUP_KEEP"; ((errors++)); }
+
+    if validate_config_file "test.conf" >/dev/null 2>&1; then
+        printf "  ✅ valid configuration is accepted\n"
+    else
+        printf "  ❌ valid configuration was rejected\n"; ((errors++))
+    fi
+
+    cd / && cleanup_temp_test_dir "$test_dir"
+    if [[ "$errors" -eq 0 ]]; then
+        pass_test "Configuration system working"
+    else
+        fail_test "$errors configuration check(s) failed"
+    fi
 }
 
 # ===============================================
@@ -252,21 +277,107 @@ EOF
 test_error_handling() {
     start_test "Error Handling" "Test error handling mechanisms"
 
-    # Test with invalid function calls
-    if source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
-        # Test calling function with invalid parameters
-        if declare -F validate_config >/dev/null 2>&1; then
-            if validate_config "/nonexistent/file" >/dev/null 2>&1; then
-                fail_test "Invalid config validation should fail"
-            else
-                printf "  ✅ Error handling for invalid config works\n"
-                pass_test "Error handling mechanisms working"
-            fi
-        else
-            skip_test "validate_config function not available"
-        fi
-    else
+    local test_dir
+    test_dir=$(create_temp_test_dir "error_handling")
+    cd "$test_dir" || { fail_test "Cannot enter temp dir"; return 1; }
+
+    if ! source "$PROJECT_ROOT_DIR/import_wp_db.sh" >/dev/null 2>&1; then
+        cd / && cleanup_temp_test_dir "$test_dir"
         fail_test "Failed to load main script"
+        return 1
+    fi
+    if ! declare -F validate_config_file >/dev/null 2>&1; then
+        cd / && cleanup_temp_test_dir "$test_dir"
+        fail_test "core function validate_config_file is missing"
+        return 1
+    fi
+
+    local errors=0 out
+
+    if validate_config_file "/nonexistent/file" >/dev/null 2>&1; then
+        printf "  ❌ a missing config file was accepted\n"; ((errors++))
+    else
+        printf "  ✅ missing config file is rejected\n"
+    fi
+
+    printf '[site_mappings]\n' > no_general.conf
+    out=$(validate_config_file no_general.conf 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    if [[ $? -eq 0 && "$out" == *"Missing [general] section"* ]]; then
+        printf "  ✅ config without [general] is rejected with a reason\n"
+    else
+        printf "  ❌ config without [general] was not rejected clearly: %s\n" "$out"; ((errors++))
+    fi
+
+    printf '[general]\nsql_file=a.sql\n[site_mappings]\n' > no_domains.conf
+    out=$(validate_config_file no_domains.conf 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    if [[ "$out" == *"Missing or empty old_domain setting"* && "$out" == *"Missing or empty new_domain setting"* ]]; then
+        printf "  ✅ missing required domains are reported\n"
+    else
+        printf "  ❌ missing domains not reported: %s\n" "$out"; ((errors++))
+    fi
+
+    cd / && cleanup_temp_test_dir "$test_dir"
+    if [[ "$errors" -eq 0 ]]; then
+        pass_test "Error handling mechanisms working"
+    else
+        fail_test "$errors error-handling check(s) failed"
+    fi
+}
+
+# ===============================================
+# Test execute_with_timeout with and without a system `timeout`
+# ===============================================
+#
+# Description:
+#   `execute_with_timeout` is called with a shell FUNCTION (execute_wp_cli) almost everywhere.
+#   An external `timeout` cannot run a function, so on Linux (or with GNU coreutils) every
+#   call failed. A stub `timeout` that rejects functions reproduces that without needing Linux.
+#
+test_execute_with_timeout() {
+    start_test "Execute With Timeout" "shell functions run even when a system timeout exists"
+
+    if ! source "$PROJECT_ROOT_DIR/lib/core/utils.sh" >/dev/null 2>&1 || ! declare -F execute_with_timeout >/dev/null 2>&1; then
+        fail_test "core function execute_with_timeout is missing"
+        return 1
+    fi
+
+    local errors=0 w stubdir
+    w=$(create_temp_test_dir "exec_timeout")
+    stubdir="$w/bin"; mkdir -p "$stubdir"
+    # A "GNU timeout" stand-in: like the real one it can only run executables
+    cat > "$stubdir/timeout" <<'EOF'
+#!/usr/bin/env bash
+echo "timeout-called: $*" >> "$STUB_TIMEOUT_LOG"
+shift
+exec "$@"
+EOF
+    chmod +x "$stubdir/timeout"
+    printf '#!/bin/sh\necho "external-output"\n' > "$stubdir/ext_cmd"; chmod +x "$stubdir/ext_cmd"
+    export STUB_TIMEOUT_LOG="$w/timeout.log"; : > "$STUB_TIMEOUT_LOG"
+
+    my_function() { echo "function-output:$*"; return 7; }
+
+    local out rc
+    out=$(PATH="$stubdir:$PATH" execute_with_timeout 5 my_function a b); rc=$?
+    [[ "$out" == "function-output:a b" ]] && printf "  ✅ a shell function runs with a system timeout present\n" || { printf "  ❌ function did not run: '%s'\n" "$out"; ((errors++)); }
+    [[ $rc -eq 7 ]] && printf "  ✅ the function's exit code is returned\n" || { printf "  ❌ exit code lost (%s)\n" "$rc"; ((errors++)); }
+    [[ ! -s "$STUB_TIMEOUT_LOG" ]] && printf "  ✅ the external timeout is not used for functions\n" || { printf "  ❌ external timeout was called for a function\n"; ((errors++)); }
+
+    out=$(PATH="$stubdir:$PATH" execute_with_timeout 5 ext_cmd); rc=$?
+    [[ "$out" == "external-output" && $rc -eq 0 ]] && printf "  ✅ an external command still runs\n" || { printf "  ❌ external command failed: '%s' rc=%s\n" "$out" "$rc"; ((errors++)); }
+    grep -q 'timeout-called: 5 ext_cmd' "$STUB_TIMEOUT_LOG" && printf "  ✅ the system timeout is still used for executables\n" || { printf "  ❌ timeout not used for an executable\n"; ((errors++)); }
+
+    # Without any system timeout: functions and commands run directly
+    : > "$STUB_TIMEOUT_LOG"
+    out=$(PATH="$stubdir" execute_with_timeout 5 my_function x 2>/dev/null); rc=$?
+    [[ "$out" == "function-output:x" && $rc -eq 7 ]] && printf "  ✅ works without a system timeout\n" || { printf "  ❌ failed without timeout: '%s' rc=%s\n" "$out" "$rc"; ((errors++)); }
+
+    unset -f my_function; unset STUB_TIMEOUT_LOG
+    cd / && cleanup_temp_test_dir "$w"
+    if [[ "$errors" -eq 0 ]]; then
+        pass_test "execute_with_timeout works for functions and executables"
+    else
+        fail_test "$errors execute_with_timeout check(s) failed"
     fi
 }
 
@@ -420,6 +531,7 @@ run_unit_tests() {
     test_error_handling
 
     # Supporting functionality tests
+    test_execute_with_timeout
     test_string_utilities
     test_file_handling
 

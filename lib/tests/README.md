@@ -117,6 +117,7 @@ lib/tests/
 ├── system/                     # System environment tests
 │   └── test_environment.sh    # Resource and permission tests
 ├── integration/                # Integration tests
+│   ├── test_real_import.sh    # Real sites + real tool + real server (opt-in: ./run_tests.sh real-import)
 │   ├── test_server_matrix.sh  # Real MySQL/MariaDB versions (opt-in: ./run_tests.sh matrix)
 │   └── test_wordpress.sh      # WordPress functionality tests
 ├── unit/                       # Unit tests
