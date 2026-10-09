@@ -502,24 +502,25 @@ test_external_access() {
 
     local access_issues=0
 
-    # Test MySQL client availability
-    if command -v mysql >/dev/null 2>&1; then
+    # Test MySQL client availability (same lookup order as the tool: PATH first, then fallback dirs)
+    local mysql_cmd
+    mysql_cmd=$(PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}" command -v mysql 2>/dev/null)
+    if [[ -n "$mysql_cmd" ]]; then
         printf "  ✅ MySQL client available\n"
 
         # Test MySQL client version
-        local mysql_version=$(mysql --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' | head -1 || echo "unknown")
+        local mysql_version=$("$mysql_cmd" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+[0-9.]*' | head -1 || echo "unknown")
         printf "    Version: $mysql_version\n"
 
         # Test MySQL help (basic functionality)
-        if mysql --help >/dev/null 2>&1; then
+        if "$mysql_cmd" --help >/dev/null 2>&1; then
             printf "    ✅ MySQL client functional\n"
         else
             printf "    ❌ MySQL client not functional\n"
             ((access_issues++))
         fi
     else
-        printf "  ⚠️  MySQL client not available\n"
-        # Not counted as error since MySQL might be optional in some environments
+        printf "  ℹ️  No mysql client in PATH (optional: used for fast imports, WP-CLI is the fallback)\n"
     fi
 
     # Test WP-CLI availability
@@ -538,8 +539,7 @@ test_external_access() {
             ((access_issues++))
         fi
     else
-        printf "  ⚠️  WP-CLI not available\n"
-        # This is more critical for WordPress tool
+        printf "  ❌ WP-CLI was not found in PATH (required)\n"
         ((access_issues++))
     fi
 
@@ -555,14 +555,14 @@ test_external_access() {
             ((access_issues++))
         fi
     else
-        printf "  ⚠️  Git not available (updates may not work)\n"
+        printf "  ℹ️  git not found (only needed for 'wp-db-import update')\n"
     fi
 
     # Test curl availability (for downloads)
     if command -v curl >/dev/null 2>&1; then
         printf "  ✅ curl available\n"
     else
-        printf "  ⚠️  curl not available\n"
+        printf "  ℹ️  curl not found (only needed to download Stage File Proxy; wget also works)\n"
     fi
 
     if [[ $access_issues -eq 0 ]]; then

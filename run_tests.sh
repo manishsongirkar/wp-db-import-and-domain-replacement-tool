@@ -40,6 +40,7 @@
 #   validation         Tool validation tests
 #   security           Security (penetration-style) tests - also part of "all"
 #   matrix             Real MySQL/MariaDB server version matrix (opt-in, not in "all")
+#   real-import        Real WordPress sites imported by the real tool (opt-in, needs php/WP-CLI/network)
 #
 # Dependencies:
 # - lib/tests/test_framework.sh
@@ -321,7 +322,7 @@ parse_arguments() {
             *)
                 # Test suite argument
                 case "$1" in
-                    all|compatibility|bash|system|unit|wordpress|validation|security|matrix)
+                    all|compatibility|bash|system|unit|wordpress|validation|security|matrix|real-import)
                         TEST_SUITE="$1"
                         ;;
                     *)
@@ -684,6 +685,14 @@ execute_tests() {
             local test_dir="$SCRIPT_DIR/lib/tests/integration"
             local saved_verbose="$VERBOSE"; VERBOSE=true
             run_test_suite "Server Matrix" "$test_dir/test_server_matrix.sh" "Fixture dumps on every available MySQL/MariaDB version"
+            VERBOSE="$saved_verbose"
+            [[ $? -ne 0 ]] && overall_result=1
+            ;;
+        "real-import")
+            # Long end-to-end run: always show what happens, even without --verbose
+            local test_dir="$SCRIPT_DIR/lib/tests/integration"
+            local saved_verbose="$VERBOSE"; VERBOSE=true
+            run_test_suite "Real Import" "$test_dir/test_real_import.sh" "Real WordPress sites imported by the real tool on a real server"
             VERBOSE="$saved_verbose"
             [[ $? -ne 0 ]] && overall_result=1
             ;;

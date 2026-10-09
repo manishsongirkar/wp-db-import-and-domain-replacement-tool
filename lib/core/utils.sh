@@ -191,7 +191,11 @@ show_spinner() {
 execute_with_timeout() {
     local timeout_duration="$1"
     shift
-    if command -v timeout >/dev/null 2>&1; then
+    # The external `timeout` can only run executables. Most callers pass a shell FUNCTION
+    # (execute_wp_cli): `timeout 5 execute_wp_cli` fails with "No such file or directory" on
+    # Linux and on any system with GNU coreutils, which silently broke multisite detection.
+    # Functions are therefore run directly (no time limit, as on stock macOS).
+    if command -v timeout >/dev/null 2>&1 && [[ "$(type -t "$1" 2>/dev/null)" == "file" ]]; then
         timeout "$timeout_duration" "$@"
     else
         "$@"
