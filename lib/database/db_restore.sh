@@ -12,7 +12,7 @@
 #   wp-db-import restore --list            list backups of the current database (newest first)
 #   wp-db-import restore --list --all      list backups of every database in the backup folder
 #   wp-db-import restore --last            restore the newest backup of the current database
-#   wp-db-import restore <file>            restore a specific file (.sql, .sql.gz, .zip, .sql.bz2)
+#   wp-db-import restore <file>            restore a specific file (.sql, .sql.gz, .zip, .sql.bz2, .sql.gz.gpg)
 #   wp-db-import --yes restore --last      no confirmation question (scripts, CI)
 #
 # Safety:
@@ -51,7 +51,7 @@ restore_current_db_name() {
 # List backup files, newest first
 # ===============================================
 # Parameters: $1 = backup dir, $2 = database name (empty = every database)
-# Prints one path per line. Only files named <db>-YYYYMMDD-HHMMSS[-n].sql.gz are listed.
+# Prints one path per line. Only files named <db>-YYYYMMDD-HHMMSS[-n].sql.gz[.gpg] are listed.
 restore_list_files() {
     local dir="$1" db="${2:-}" base rest stamp n key
     [[ -d "$dir" ]] || return 0
@@ -61,9 +61,9 @@ restore_list_files() {
         if [[ -n "$db" ]]; then
             [[ "$base" == "${db}-"* ]] || continue
             rest="${base#"${db}"-}"
-            [[ "$rest" =~ ^([0-9]{8}-[0-9]{6})(-([0-9]+))?\.sql\.gz$ ]] || continue
+            [[ "$rest" =~ ^([0-9]{8}-[0-9]{6})(-([0-9]+))?\.sql\.gz(\.gpg)?$ ]] || continue
         else
-            [[ "$base" =~ ^.+-([0-9]{8}-[0-9]{6})(-([0-9]+))?\.sql\.gz$ ]] || continue
+            [[ "$base" =~ ^.+-([0-9]{8}-[0-9]{6})(-([0-9]+))?\.sql\.gz(\.gpg)?$ ]] || continue
         fi
         stamp="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[3]:-0}"
         key=$(printf "%s-%06d" "$stamp" "$n")
@@ -91,11 +91,12 @@ restore_print_list() {
     for f in "${files[@]}"; do
         i=$((i + 1))
         base="${f##*/}"
-        [[ "$base" =~ ^(.+)-([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})(-[0-9]+)?\.sql\.gz$ ]]
+        [[ "$base" =~ ^(.+)-([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})(-[0-9]+)?\.sql\.gz(\.gpg)?$ ]]
         shown_db="${BASH_REMATCH[1]}"
         stamp="${BASH_REMATCH[2]}-${BASH_REMATCH[3]}-${BASH_REMATCH[4]} ${BASH_REMATCH[5]}:${BASH_REMATCH[6]}:${BASH_REMATCH[7]}"
         size_b=$(_sql_file_size_bytes "$f")
         if [[ "$size_b" -ge 1048576 ]]; then size="$((size_b / 1048576)) MB"; else size="$(( (size_b + 1023) / 1024 )) KB"; fi
+        [[ "$base" == *.gpg ]] && base="$base (encrypted)"
         printf "  %-3s %-19s %-9s %-22s %s\n" "$i" "$stamp" "$size" "$shown_db" "$base"
     done
     printf "\n${DIM}Restore the newest with: wp-db-import restore --last   (or: wp-db-import restore <file>)${RESET}\n"
@@ -121,12 +122,12 @@ restore_extra_tables() {
 }
 
 # ===============================================
-# Restore one backup file
+# Restore one backup file (plain, compressed or already decrypted)
 # ===============================================
 # Parameters: $1 = file, $2 = WordPress root, $3 = config path (optional)
 # Returns 0 on success or when the user cancels; 1 on failure.
-restore_database() {
-    local file="$1" wp_root="${2:-${WP_ROOT:-$(pwd)}}" config_path="${3:-}"
+_restore_database_plain() {
+    local file="$1" wp_root="${2:-${WP_ROOT:-$(pwd)}}" config_path="${3:-}" shown="${4:-$1}"
     local verify_error size_b db_name
 
     if [[ -z "$file" ]]; then
@@ -143,7 +144,7 @@ restore_database() {
     size_b=$(_sql_file_size_bytes "$file")
     db_name=$(restore_current_db_name "$wp_root")
     printf "\n${CYAN}${BOLD}♻️  Restore database${RESET}\n"
-    printf "   Backup:   %s ${DIM}(%d KB)${RESET}\n" "$file" "$(( (size_b + 1023) / 1024 ))"
+    printf "   Backup:   %s ${DIM}(%d KB)${RESET}\n" "$shown" "$(( (size_b + 1023) / 1024 ))"
     printf "   Database: %s\n" "$db_name"
     printf "   ${YELLOW}This replaces the current contents of the database.${RESET}\n\n"
 
@@ -168,7 +169,7 @@ restore_database() {
     mode_lc=$(printf "%s" "$saved_mode" | tr '[:upper:]' '[:lower:]')
     case "$mode_lc" in ""|ask) CONFIG_BACKUP_BEFORE_IMPORT="true" ;; esac
     WPDB_LAST_BACKUP_FILE=""
-    if ! WPDB_BACKUP_PROTECT="$file" backup_database_before_import "$wp_root" "$config_path"; then
+    if ! WPDB_BACKUP_PROTECT="$shown" backup_database_before_import "$wp_root" "$config_path"; then
         CONFIG_BACKUP_BEFORE_IMPORT="$saved_mode"
         printf "${RED}❌ The safety backup of the current database failed; restore cancelled. Nothing was changed.${RESET}\n"
         return 1
@@ -206,6 +207,58 @@ restore_database() {
     [[ -n "$safety_backup" ]] && printf "${DIM}   Undo with: wp-db-import restore \"%s\"${RESET}\n" "$safety_backup"
     return 0
 }
+
+# ===============================================
+# Decrypt an encrypted backup (.sql.gz.gpg) to a private temp file
+# ===============================================
+# Sets RESTORE_DECRYPTED_FILE. gpg asks for the passphrase (or uses the agent); with --yes it runs
+# with --batch, so it never waits for a prompt that nobody can answer.
+restore_decrypt_backup() {
+    local src="$1" tmp
+    RESTORE_DECRYPTED_FILE=""
+    if [[ ! -f "$src" || ! -r "$src" ]]; then
+        printf "${RED}❌ Backup file not found or not readable: %s${RESET}\n" "$src"
+        return 1
+    fi
+    if ! command -v gpg >/dev/null 2>&1; then
+        printf "${RED}❌ This backup is encrypted and gpg is not installed. Nothing was changed.${RESET}\n"
+        return 1
+    fi
+    tmp="$(secure_tmpdir)/restore-decrypted.sql.gz" || return 1
+    rm -f "$tmp"
+    printf "${CYAN}🔓 Decrypting the backup (gpg may ask for your passphrase)...${RESET}\n"
+    local -a batch=()
+    wpdb_assume_yes && batch=(--batch)
+    if ! (umask 077; gpg --quiet --yes ${batch[@]+"${batch[@]}"} --decrypt --output "$tmp" -- "$src") 2>/dev/null \
+        || [[ ! -s "$tmp" ]] || ! gzip -t "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        printf "${RED}❌ Could not decrypt the backup (wrong passphrase, missing secret key, or a damaged file). Nothing was changed.${RESET}\n"
+        return 1
+    fi
+    RESTORE_DECRYPTED_FILE="$tmp"
+    return 0
+}
+
+# ===============================================
+# Restore one backup file
+# ===============================================
+# Parameters: $1 = file (.sql, .sql.gz, .zip, .sql.bz2 or .sql.gz.gpg), $2 = WordPress root,
+#             $3 = config path (optional)
+# Returns 0 on success or when the user cancels; 1 on failure.
+# An encrypted file is decrypted once to a private temp file that is removed afterwards.
+restore_database() {
+    local file="$1" rc
+    if [[ -n "$file" && "$(sql_file_kind "$file")" == "gpg" ]]; then
+        restore_decrypt_backup "$file" || return 1
+        local plain="$RESTORE_DECRYPTED_FILE"
+        _restore_database_plain "$plain" "${2:-${WP_ROOT:-$(pwd)}}" "${3:-}" "$file"
+        rc=$?
+        rm -f "$plain"
+        return $rc
+    fi
+    _restore_database_plain "$@"
+}
+
 
 # ===============================================
 # Command line entry: wp-db-import restore ...
@@ -275,8 +328,8 @@ restore_cli() {
 restore_usage() {
     printf "Usage: wp-db-import [--yes] restore --list [--all]\n"
     printf "       wp-db-import [--yes] restore --last\n"
-    printf "       wp-db-import [--yes] restore <file.sql|.sql.gz|.zip|.sql.bz2>\n"
+    printf "       wp-db-import [--yes] restore <file.sql|.sql.gz|.zip|.sql.bz2|.sql.gz.gpg>\n"
 }
 
-export -f restore_backup_dir restore_current_db_name restore_list_files restore_print_list \
+export -f restore_decrypt_backup _restore_database_plain restore_backup_dir restore_current_db_name restore_list_files restore_print_list \
     restore_extra_tables restore_database restore_cli restore_usage 2>/dev/null

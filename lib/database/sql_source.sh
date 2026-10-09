@@ -46,6 +46,7 @@ sql_file_kind() {
         *.gz|*.gzip) printf "gzip" ;;
         *.zip)       printf "zip" ;;
         *.bz2)       printf "bzip2" ;;
+        *.gpg|*.pgp|*.asc) printf "gpg" ;;
         *)           printf "plain" ;;
     esac
 }
@@ -60,6 +61,8 @@ sql_open_stream() {
         bzip2) bzip2 -dc -- "$file" ;;
         # Only .sql members; skips macOS __MACOSX folders and ._ resource-fork files
         zip)   unzip -p "$file" '*.sql' -x '*__MACOSX/*' '*/._*' '._*' ;;
+        # Encrypted backups are decrypted once by "wp-db-import restore"; never stream ciphertext as SQL
+        gpg)   return 1 ;;
         *)     cat -- "$file" ;;
     esac
 }
@@ -78,6 +81,10 @@ sql_verify_source() {
     kind=$(sql_file_kind "$file")
     case "$kind" in
         plain) return 0 ;;
+        gpg)
+            printf "%s\n" "This file is encrypted. Use: wp-db-import restore \"$file\" (gpg asks for your passphrase)" >&2
+            return 1
+            ;;
         gzip)  tool="gzip" ;;
         bzip2) tool="bzip2" ;;
         zip)   tool="unzip" ;;

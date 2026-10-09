@@ -239,6 +239,7 @@ Run these before opening a pull request that touches import, backup, temp files 
 - New temp files go in `$(secure_tmpdir)`, never a fixed `/tmp/...` path.
 - `WPDB_MATRIX_SERVERS="/path/to/bin ..."` adds servers (directories containing `mysqld` or `mariadbd`) to the matrix test.
 - `WPDB_MYSQL_BIN=/path/to/mysql` makes the importer use a specific client (used by the tests with stubs).
+- Backup file names are `<db>-YYYYMMDD-HHMMSS[-n].sql.gz[.gpg]`. Rotation (`prune_old_backups`), listing (`restore_list_files`) and restore must all accept the `.gpg` form, and an encrypted file is never streamed as SQL (`sql_open_stream` refuses it; `restore` decrypts to a private temp file). A requested encryption must never fall back to an unencrypted file.
 - A new config key or section must also be added to `ensure_socket_config_settings` (`lib/config/config_manager.sh`), with its default, so existing configs are upgraded at import time. Keep the new-config template and the migration in sync (a test compares them). Write config files with `cat tmp > file`, not `mv`, to keep the file mode. The migration must only add: never change or remove what is in the file.
 - Custom URL replacements go through `dm_load` / `dm_run` / `dm_run_site_scope` (`lib/database/domain_mappings.sh`). A search must be anchored with `//` or `scheme://` (a bare host would match emails). Per-site entries use an explicit table list, never `--url` (with `--all-tables` it does not limit the replacement). `update_site_mapping` must only look at `[site_mappings]`: other sections can contain lines like `2: ...`.
 - `WPDB_TEST_WP_VERSION=7.1.3 ./run_tests.sh real-import` uses the WP-CLI download cache (offline). If WP-CLI runs out of memory while extracting, use `PHP_INI_SCAN_DIR=":/dir/with/memory.ini"`.
@@ -531,6 +532,7 @@ wp-db-import-and-domain-replacement-tool/
 │   │       ├── test_import_security.sh
 │   │       ├── test_new_modules.sh
 │   │       ├── test_doctor.sh
+│   │       ├── test_backup_edge.sh
 │   │       ├── test_domain_mappings.sh
 │   │       ├── test_restore.sh
 │   │       ├── test_socket_detection.sh

@@ -303,6 +303,13 @@ backup_before_import=ask
 backup_dir=
 backup_keep=5
 
+# also delete backups older than N days (0 = off)
+backup_keep_days=0
+
+# encrypt backups with GnuPG: false (default) or gpg
+backup_encrypt=false
+backup_gpg_recipient=
+
 [site_mappings]
 # Format: blog_id:old_domain:new_domain
 1:admin.example.com:example.test
@@ -358,7 +365,11 @@ Before the current database is replaced, the tool can save a compressed copy so 
 - An empty or missing database is skipped (nothing to back up).
 - Backups are saved as `<dbname>-<timestamp>.sql.gz` in `~/.wp-db-import/backups` (folder mode `700`, files mode `600`). Set `backup_dir=` to use another folder. Two backups in the same second never overwrite each other.
 - The export uses `--add-drop-table`, so a restore replaces existing tables cleanly.
-- **Rotation:** `backup_keep=5` (default) keeps the newest 5 backups per database and deletes older ones after each new backup, so the folder cannot grow forever. Use `backup_keep=0` to keep everything. Only files named `<dbname>-YYYYMMDD-HHMMSS.sql.gz` are ever deleted; other files and other databases' backups are never touched. Stale `.partial` files from interrupted runs are cleaned up too.
+- **Rotation:** `backup_keep=5` (default) keeps the newest 5 backups per database and deletes older ones after each new backup, so the folder cannot grow forever. Use `backup_keep=0` to keep everything. Only files named `<dbname>-YYYYMMDD-HHMMSS.sql.gz` (or `.sql.gz.gpg`) are ever deleted; other files and other databases' backups are never touched. Stale `.partial` files from interrupted runs are cleaned up too.
+- **Age limit:** `backup_keep_days=30` also deletes backups older than 30 days, next to `backup_keep` (either rule deletes). The backup just made and a file being restored are never deleted. `0` (default) turns it off.
+- **Free disk space:** before the export starts, the database size (`information_schema`) is compared with the free space in the backup folder. The compressed backup is estimated at half the database size. If it will not fit, the backup (and so the import) is cancelled before anything is written; if it is tight, you get a warning. If the size or the free space cannot be read, there is no check.
+- **Progress:** a backup that takes more than a few seconds shows the size written so far (in a terminal only, so scripts and CI stay quiet).
+- **Encryption (optional):** `backup_encrypt=gpg` and `backup_gpg_recipient=<key id, fingerprint or e-mail>` encrypt new backups with GnuPG (`<dbname>-<timestamp>.sql.gz.gpg`, mode `600`). Off by default (`backup_encrypt=false`). If gpg or the key is missing, the backup and the import are **cancelled**: the tool never falls back to an unencrypted file. `wp-db-import restore` decrypts once to a private temp file (gpg asks for your passphrase) and removes it afterwards. Manual restore: `gpg --decrypt <file>.sql.gz.gpg | gunzip -c | wp db import -`. `wp-db-import doctor` checks gpg and the key.
 
 ### 🧾 Logs and Temporary Files
 

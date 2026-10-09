@@ -54,6 +54,9 @@ load_import_config() {
     export CONFIG_BACKUP_BEFORE_IMPORT=""
     export CONFIG_BACKUP_DIR=""
     export CONFIG_BACKUP_KEEP=""
+    export CONFIG_BACKUP_KEEP_DAYS=""
+    export CONFIG_BACKUP_ENCRYPT=""
+    export CONFIG_BACKUP_GPG_RECIPIENT=""
 
     if [[ ! -f "$config_path" ]]; then
         return 1
@@ -97,6 +100,12 @@ load_import_config() {
     local raw_backup_keep
     raw_backup_keep=$(parse_config_section "$config_path" "general" "backup_keep")
     CONFIG_BACKUP_KEEP="${raw_backup_keep:-5}"
+    local raw_backup_keep_days raw_backup_encrypt
+    raw_backup_keep_days=$(parse_config_section "$config_path" "general" "backup_keep_days")
+    CONFIG_BACKUP_KEEP_DAYS="${raw_backup_keep_days:-0}"
+    raw_backup_encrypt=$(parse_config_section "$config_path" "general" "backup_encrypt")
+    CONFIG_BACKUP_ENCRYPT="${raw_backup_encrypt:-false}"
+    CONFIG_BACKUP_GPG_RECIPIENT=$(parse_config_section "$config_path" "general" "backup_gpg_recipient")
 
     return 0
 }

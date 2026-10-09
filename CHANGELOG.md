@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- **Backup edge cases** ([#17](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/17)):
+  - **Free disk space check** before the export: the database size (`information_schema`) against the free space in `backup_dir` (`df -Pk`), the backup estimated at half the size. Too little space cancels the backup and the import before anything is written; a tight fit warns; unknown size or space means no check.
+  - **Progress** for long backups: the size written so far, after a few seconds, in a terminal only.
+  - **`backup_keep_days=N`** (default `0` = off) also deletes backups older than N days, next to `backup_keep`. The backup just made and a file being restored are never deleted; other databases and other file names are never touched.
+  - **`backup_encrypt=gpg`** with **`backup_gpg_recipient=`** (default `false`): new backups are encrypted with GnuPG (`.sql.gz.gpg`, mode 600). If gpg or the key is missing, the backup and the import are cancelled: **never an unencrypted fallback**. `wp-db-import restore` lists encrypted backups (marked), decrypts once to a private temp file and removes it afterwards; other commands refuse an encrypted file and point to `restore`.
+  - The three keys are added to existing configs at import time (with comments) and to new configs and the example files. `wp-db-import doctor` checks gpg and the key when encryption is on.
+  - Unit test `test_backup_edge.sh` (stubbed `df` and WP-CLI; a real gpg round trip in a throw-away keyring, skipped without gpg).
 - **Automatic config upgrade for the new sections**: when an import starts with an existing `wpdb-import.conf`, the tool now also appends `[domain_mappings]` and `[site_domain_mappings]` (comments only) if they are missing, next to the keys it already added (`backup_before_import=ask`, `backup_dir=`, `backup_keep=5`, socket and optimization settings). Each added key comes with its explanation comment. Only missing parts are added; existing values, sections (any letter case) and the file mode are kept; a second run changes nothing.
   - The message now lists what was really added, instead of a fixed list.
   - New-config template and migration use the same text (`config_general_settings_template`, `config_mapping_sections_template`).
@@ -45,6 +52,7 @@
 - Tests that printed "function not available" and skipped were rewritten against the real functions (`load_import_config`, `validate_config_file`, `run_search_replace`, ...) with real assertions: config loading and validation, the exact search-replace commands (two passes, `guid` skipped, `--dry-run`, `--network`/`--url`), the cleanup. A missing core function is now a **failure**. `./run_tests.sh --verbose` has zero "not available" warnings. Environment notes for optional tools (mysql client, git, curl) are shown as information.
 
 ### Fixed
+- The backup pipeline only checked the status of the export. It now uses `pipefail`, so a failing `gzip` or `gpg` also fails the backup.
 - `parse_config_section` also read commented lines. A config made by `config-create` therefore read `mysql_socket` as the example path from its own comment (`# Example: mysql_socket=/opt/homebrew/var/mysql/mysql.sock`). Comment lines (`#`, `;`) are skipped.
 - Updating a config key or a site mapping replaced the file through a temp file, so the file's mode was reset (a `chmod 640` config became `644`, or `600` in the fallback path). The mode and owner are now kept.
 - `update_site_mapping` no longer treats a line such as `2: ...` in another section as an existing site mapping (it could skip adding the mapping of blog 2).
