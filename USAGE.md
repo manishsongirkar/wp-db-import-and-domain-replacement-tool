@@ -34,7 +34,18 @@ wp-db-import test               # Run test suite to validate tool functionality
 wp-db-import --help             # Show this help message
 ```
 
-💡 **Tab Completion**: Type `wp-db-import ` and press TAB to see all available commands!
+💡 **Tab Completion** (Bash 3.2+ and Zsh): type `wp-db-import ` and press TAB to see all commands. It also completes:
+
+| You type | TAB offers |
+|----------|------------|
+| `wp-db-import -` | `--yes -y --non-interactive --dry-run --help` (also before the command: `wp-db-import --yes res`) |
+| `wp-db-import restore ` | `--list --last --all` and backup files (`.sql`, `.sql.gz`, `.zip`, `.sql.bz2`, `.sql.gz.gpg`) |
+| `wp-db-import test ` | the suite names (`unit`, `security`, `matrix`, `real-import`, ...) and the runner options; `--format ` offers `json html text all` |
+| `wp-db-import detect -` | `--verbose --quiet` |
+| `wp-db-import show-cleanup ` | directories |
+| `./uninstall.sh -` | `--yes --delete-backups --keep-backups` |
+
+The completion files are checked against `wp-db-import --help`, `run_tests.sh` and `uninstall.sh` by a unit test, so a new command or option cannot be forgotten.
 
 > **Note:** Autocomplete suggestions are automatically updated when you run `./install.sh`.
 

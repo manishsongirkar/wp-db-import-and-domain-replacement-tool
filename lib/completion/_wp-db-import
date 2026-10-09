@@ -1,31 +1,33 @@
-#compdef wp-db-import
+#compdef wp-db-import uninstall.sh
 
 # ===============================================
 # Zsh Completion for wp-db-import command
 # ===============================================
-## Zsh Completion Script for the `wp-db-import` command.
-##
-## This script provides tab completion for the command and its options
-## in the Zsh shell environment, enhancing usability and speed.
-##
+#
+# Tab completion for `wp-db-import` and ./uninstall.sh in Zsh.
+#
+# Completes:
+#   wp-db-import <TAB>                 the subcommands (with a description)
+#   wp-db-import -<TAB>                global options (--yes -y --non-interactive --dry-run --help)
+#   wp-db-import --yes res<TAB>        a global option before the subcommand is fine
+#   wp-db-import restore <TAB>         --list --last --all, and backup files (.sql .gz .zip .bz2 .gpg)
+#   wp-db-import test <TAB>            test suite names, and the test runner options
+#   wp-db-import test --format <TAB>   json html text all
+#   wp-db-import detect -<TAB>         --verbose --quiet
+#   wp-db-import show-cleanup <TAB>    directories
+#   ./uninstall.sh -<TAB>              --yes --delete-backups --keep-backups
+#
+# Keep in sync with: wp-db-import --help, the case list of run_tests.sh and uninstall.sh
+# (a unit test, test_completions.sh, checks it).
 #
 # Installation:
 #   This file is automatically sourced when wp-db-import is installed
 #
-# Usage:
-#   wp-db-import <TAB>  # Shows all available commands
-#   wp-db-import conf<TAB>  # Completes to config-* commands
-#
 
-## @brief Provides Zsh completions for the `wp-db-import` command.
-##
-## This function uses the standard Zsh completion system to describe the
-## available subcommands for `wp-db-import` by listing them and their descriptions.
-##
-## @param $@ Standard Zsh completion arguments.
 _wp_db_import() {
     local context state state_descr line
-    local -a commands options
+    typeset -A opt_args
+    local -a commands suites
 
     commands=(
         'config-show:Show current configuration'
@@ -35,31 +37,74 @@ _wp_db_import() {
         'show-links:Show local site links'
         'setup-proxy:Setup stage file proxy'
         'show-cleanup:Generate revision cleanup commands'
-        'restore:Restore a database backup (--list, --last or a file)'
+        'detect:Detect single site or multisite'
         'doctor:Check the environment (tools, WP-CLI, database, backups, config)'
+        'restore:Restore a database backup (--list, --last or a file)'
         'update:Update to latest version'
         'version:Show version info'
         'test:Run test suite to validate tool functionality'
-        '--help:Show help'
+    )
+    suites=(all compatibility bash system unit wordpress validation security matrix real-import)
+
+    # Global options: accepted in any position
+    local -a global
+    global=(
+        '(-y --yes --non-interactive)'{-y,--yes,--non-interactive}'[unattended mode: every prompt takes its default]'
+        '--dry-run[preview the import without changing the database]'
+        '--help[show help]'
     )
 
-    options=(
-        '--yes:Unattended mode for scripts and CI (every prompt takes its default)'
-        '-y:Same as --yes'
-        '--non-interactive:Same as --yes'
-        '--dry-run:Preview the import without changing the database'
-        '--help:Show help'
-    )
+    _arguments -C $global \
+        '1: :->command' \
+        '*:: :->args' && return 0
 
-    case $words[1] in
-        wp-db-import)
-            if [[ "$words[CURRENT]" == -* ]]; then
-                _describe 'wp-db-import options' options
-            else
-                _describe 'wp-db-import commands' commands
-            fi
+    case $state in
+        command)
+            _describe -t commands 'wp-db-import command' commands
+            ;;
+        args)
+            case $words[1] in
+                restore)
+                    _arguments \
+                        '--list[list backups, newest first]' \
+                        '--last[restore the newest backup of this database]' \
+                        '--all[with --list: backups of every database]' \
+                        '*:backup file:_files -g "*.(sql|gz|zip|bz2|gpg)"'
+                    ;;
+                test)
+                    _arguments \
+                        '--verbose[show more output]' \
+                        '--quick[only the essential tests]' \
+                        '--parallel[run suites in parallel]' \
+                        '--ci[CI mode: no prompts, JSON report]' \
+                        '--format[report format]:format:(json html text all)' \
+                        '--output[report folder]:directory:_directories' \
+                        '--help[show test runner help]' \
+                        '*:suite:(${suites[@]})'
+                    ;;
+                detect)
+                    _arguments \
+                        '(-v --verbose)'{-v,--verbose}'[show how the type was detected]' \
+                        '(-q --quiet)'{-q,--quiet}'[less output]' \
+                        '*:WordPress directory:_directories'
+                    ;;
+                show-cleanup)
+                    _arguments '*:WordPress directory:_directories'
+                    ;;
+            esac
             ;;
     esac
 }
 
-_wp_db_import "$@"
+_wp_db_import_uninstall() {
+    _arguments \
+        '(-y --yes)'{-y,--yes}'[remove the command without asking (backups are kept)]' \
+        '--delete-backups[also delete ~/.wp-db-import (backups) without asking]' \
+        '--keep-backups[never ask about backups; keep them]' \
+        '(-h --help)'{-h,--help}'[show help]'
+}
+
+case $service in
+    uninstall.sh) _wp_db_import_uninstall "$@" ;;
+    *)            _wp_db_import "$@" ;;
+esac

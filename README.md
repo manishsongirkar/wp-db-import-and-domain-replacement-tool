@@ -222,7 +222,7 @@ wp-db-import show-cleanup [<path|options>]
 wp-db-import setup-proxy
 
 # Detect WordPress installation type
-wp-db-import detect [<path>] [--verbose]
+wp-db-import detect [<path>] [--verbose|--quiet]
 
 # Run the test suite
 wp-db-import test [all|unit|integration]

@@ -196,7 +196,7 @@ test_doctor_cli() {
     out=$(_dc_run "$_DC_WORK/nowp" "$b" --help); rc=$?
     _chk "--help: usage, exit 0"                         bash -c 'test "$1" -eq 0 && grep -q "Usage: wp-db-import doctor" <<< "$0"' "$out" "$rc"
     _chk "main --help lists doctor"                      bash -c "bash '$_DC_ROOT/wp-db-import' --help 2>&1 | grep -q 'wp-db-import doctor'"
-    _chk "Bash completion lists doctor"                  grep -q 'restore doctor' "$_DC_ROOT/lib/completion/wp-db-import.bash"
+    _chk "Bash completion lists doctor"                  grep -qE 'cmds="[^"]*[[:space:]]doctor[[:space:]]' "$_DC_ROOT/lib/completion/wp-db-import.bash"
     _chk "Zsh completion lists doctor"                   grep -q "'doctor:" "$_DC_ROOT/lib/completion/_wp-db-import"
     _chk "module loader loads doctor.sh"                 grep -q 'doctor.sh' "$_DC_ROOT/lib/module_loader.sh"
     _finish "CLI wiring is complete"

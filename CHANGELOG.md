@@ -9,7 +9,10 @@
   - **`backup_keep_days=N`** (default `0` = off) also deletes backups older than N days, next to `backup_keep`. The backup just made and a file being restored are never deleted; other databases and other file names are never touched.
   - **`backup_encrypt=gpg`** with **`backup_gpg_recipient=`** (default `false`): new backups are encrypted with GnuPG (`.sql.gz.gpg`, mode 600). If gpg or the key is missing, the backup and the import are cancelled: **never an unencrypted fallback**. `wp-db-import restore` lists encrypted backups (marked), decrypts once to a private temp file and removes it afterwards; other commands refuse an encrypted file and point to `restore`.
   - The three keys are added to existing configs at import time (with comments) and to new configs and the example files. `wp-db-import doctor` checks gpg and the key when encryption is on.
+  - `restore` completion (Bash and Zsh) also offers `.gpg` files.
   - Unit test `test_backup_edge.sh` (stubbed `df` and WP-CLI; a real gpg round trip in a throw-away keyring, skipped without gpg).
+- **Shell completions refreshed** ([#26](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/26)): Bash (now one code path for Bash 3.2 and newer, no Bash 4 features) and Zsh complete every command (`detect` and `doctor` added), the global options anywhere (`wp-db-import --yes res<TAB>`), `restore --list --last --all` and backup files, the test suite names and runner options (`--format` values, `--output` directories), `detect --verbose --quiet`, `show-cleanup` directories, and `./uninstall.sh --yes --delete-backups --keep-backups`. The hidden `--quite` alias is not offered. `wp-db-import --help` lists `detect`.
+  - New unit test `test_completions.sh`: syntax (Bash 3.2, running Bash, `zsh -n`), every command and option in `--help` and in the dispatcher is in both files, suite names equal `run_tests.sh`, `uninstall.sh` options covered, real completion runs in Bash 3.2 and the running Bash, and a mocked Zsh check.
 - **Automatic config upgrade for the new sections**: when an import starts with an existing `wpdb-import.conf`, the tool now also appends `[domain_mappings]` and `[site_domain_mappings]` (comments only) if they are missing, next to the keys it already added (`backup_before_import=ask`, `backup_dir=`, `backup_keep=5`, socket and optimization settings). Each added key comes with its explanation comment. Only missing parts are added; existing values, sections (any letter case) and the file mode are kept; a second run changes nothing.
   - The message now lists what was really added, instead of a fixed list.
   - New-config template and migration use the same text (`config_general_settings_template`, `config_mapping_sections_template`).
@@ -53,6 +56,7 @@
 
 ### Fixed
 - The backup pipeline only checked the status of the export. It now uses `pipefail`, so a failing `gzip` or `gpg` also fails the backup.
+- The `restore` file completion used `compgen -X` with an extglob pattern, which does not work when `extglob` is off (the default in most shells). It now filters with a `case`.
 - `parse_config_section` also read commented lines. A config made by `config-create` therefore read `mysql_socket` as the example path from its own comment (`# Example: mysql_socket=/opt/homebrew/var/mysql/mysql.sock`). Comment lines (`#`, `;`) are skipped.
 - Updating a config key or a site mapping replaced the file through a temp file, so the file's mode was reset (a `chmod 640` config became `644`, or `600` in the fallback path). The mode and owner are now kept.
 - `update_site_mapping` no longer treats a line such as `2: ...` in another section as an existing site mapping (it could skip adding the mapping of blog 2).
