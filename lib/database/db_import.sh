@@ -300,7 +300,7 @@ estimate_import_duration() {
     sample_size_mb=$((sample_size_mb > 50 ? 50 : sample_size_mb))
     local temp_sample="$tmp_dir/bench_sample.sql"
     local bench_log="$tmp_dir/bench.log"
-    if ! sql_open_stream "$sql_file" 2>/dev/null | head -c $((sample_size_mb * 1048576)) | sed '$d' > "$temp_sample" 2>/dev/null; then
+    if ! sql_open_stream "$sql_file" 2>/dev/null | head -c $((sample_size_mb * 1048576)) 2>/dev/null | sed '$d' > "$temp_sample" 2>/dev/null; then
         rm -f "$temp_sample"
         estimate_heuristic "$total_mb"
         return 0
