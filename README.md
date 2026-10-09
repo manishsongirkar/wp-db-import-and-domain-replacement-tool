@@ -63,7 +63,7 @@ wp-db-import version
 - 📦 **Safe Multisite Updates** — Attempts wp_blogs/wp_site updates and emits MySQL commands when manual intervention is needed.
 - 🧹 **Post-Import Cleanup** — Flushes caches, rewrite rules, and transients after operations.
 - 📸 **Stage File Proxy Integration** — Optional setup for serving media from production in local environments.
-- 🧪 **Dry-run & Safety** — Preview changes before applying them; comprehensive logging for troubleshooting.
+- 🧪 **Real Dry Run** — `--dry-run` previews the whole import in a temporary database: tables, rows, compatibility needs and replacements per table, with your database untouched.
 - ⚡ **Fast Local Import** — Imports through the MySQL Unix socket (or the `mysql` client) with WP-CLI as the automatic fallback.
 - 💾 **Pre-Import Backup** — Saves a compressed copy of the current database before it is replaced, and lets you opt out (the choice is saved in the config).
 - 🗜️ **Compressed Dumps** — Imports `.sql.gz`, `.zip` and `.sql.bz2` directly, streamed without extracting to disk.
@@ -133,6 +133,41 @@ wp-db-import update        # git installations: fast-forward update, shows versi
 - `update` only fast-forwards (it never merges or rewrites your history). If it fails it prints the cause and how to fix it, for example when your installed branch was deleted after a merge (`git checkout main && git pull`).
 - `uninstall.sh` removes the command, the Bash/Zsh completions and stale private temp directories. It **never deletes your saved database backups unless you answer yes** (or pass `--delete-backups`). If anything cannot be removed it prints the exact error, the path, its permissions and a hint, lists every problem in the summary, and exits non-zero. Per-project `wpdb-import.conf` files and the cloned repository folder are not removed.
 
+### 🧪 Dry Run (preview without changing anything)
+
+```bash
+wp-db-import --dry-run            # also: dry_run=true in wpdb-import.conf, WPDB_DRY_RUN=1, or answer y at the prompt
+bash import_wp_db.sh --dry-run    # when running the script directly
+```
+
+A dry run **never changes your database**: no backup, no import, no replacement. It:
+
+1. verifies the SQL file (size, corrupt archives);
+2. imports the dump into a **temporary database** (`wpdb_dry_...`), and tries the compatibility filter if the server rejects the dump as is;
+3. counts the **tables and rows** that would be created;
+4. counts the **occurrences of the old domain** (and of every `[site_mappings]` domain) **per table**, including serialized data;
+5. drops the temporary database and prints a summary:
+
+```
+📋 Dry run summary
+   Would import:            99 tables / 84694 rows
+   Compatibility filter:    no
+
+   geokon-staging.mystagingwebsite.com → geokon.test
+   Would replace:           6603 occurrences in 5745 values across 17 tables
+      wp_posts                             4995 occurrences
+      wp_yoast_indexable                    916 occurrences
+      ...
+✅ Dry run finished. Your database was not changed.
+```
+
+- Needs the **mysql client** and an account that may **CREATE DATABASE**. If the server refuses, the tool says so, shows the error and the `GRANT` that fixes it; nothing is changed.
+- A dump that cannot be imported is reported with its SQL error ("a real import would fail the same way").
+- Dumps made with `--databases` (lines like `CREATE DATABASE`, `USE`, `DROP DATABASE`) cannot reach another database: those one-line statements are removed from the preview stream.
+- Domains that contain each other (`prod.example.com` and `news.prod.example.com`) are counted separately, longest first.
+- **Behavior change:** before, `dry_run=true` still imported the dump into your real database and only previewed the search-replace. A dry run now previews everything and imports nothing. The question "Run in dry-run mode?" is asked **before** the import, not after it.
+- Exit codes: `0` preview done, `1` preview could not run (no client, no CREATE privilege, broken dump).
+
 ### 🤖 Unattended Mode (`--yes`) for Scripts and CI
 
 ```bash
@@ -160,6 +195,9 @@ cd /path/to/wordpress && wp-db-import --yes
 ```bash
 # Run main interactive import wizard
 wp-db-import
+
+# Preview the import without changing the database (temporary database, nothing replaced)
+wp-db-import --dry-run
 
 # Unattended (scripts, CI): every prompt takes its default, nothing is read from stdin
 wp-db-import --yes              # also: -y, --non-interactive, WPDB_ASSUME_YES=1
@@ -439,7 +477,7 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
 | **old_domain** | Production domain to search for | Required input | `old_domain=example.com` |
 | **new_domain** | Local/staging domain to replace with | Required input | `new_domain=example.test` |
 | **all_tables** | Include non-WordPress prefixed tables | `true` | `all_tables=true` |
-| **dry_run** | Preview changes without applying them | `false` | `dry_run=false` |
+| **dry_run** | Preview the whole import in a temporary database; nothing is changed (see [Dry Run](#-dry-run-preview-without-changing-anything)) | `false` | `dry_run=false` |
 | **clear_revisions** | Delete all post revisions before search-replace | `true` | `clear_revisions=true` |
 | **setup_stage_proxy** | Automatically configure stage file proxy | `true` | `setup_stage_proxy=true` |
 | **auto_proceed** | Skip confirmation prompts | `false` | `auto_proceed=false` |
@@ -453,7 +491,7 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
 | **New Domain** | Local/staging domain to replace with | From config or prompt | Security validation applied; config override available |
 | **Revision cleanup** | Delete all post revisions before search-replace | From config or Optional (Y/n) | High-speed bulk operation using xargs; MySQL commands shown when skipped |
 | **All tables** | Include non-WordPress prefixed tables | From config or Recommended (Y/n) | Essential for full migrations; remembers choice in config |
-| **Dry-run mode** | Preview changes without applying them | From config or Optional (y/N) | Shows exact operations to be executed; easily toggled in config |
+| **Dry-run mode** | Preview the import without changing the database | `--dry-run`, config, or Optional (y/N) | Asked **before** the import; imports into a temporary database and reports tables, rows and replacements |
 | **Enhanced www/non-www handling** | Automatic detection and conditional processing of www variants | Automatic | Smart 2-4 pass system based on source domain |
 | **Multisite mapping** | Per-subsite domain mapping (auto-detected) | Smart prompts with config memory | Remembers mappings, only prompts for new sites |
 | **Automatic DB Updates** | wp_blogs and wp_site table updates via wp eval | Automatic for multisite | Executed before search-replace operations |

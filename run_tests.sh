@@ -567,6 +567,11 @@ run_unit_tests() {
         [[ $? -ne 0 ]] && overall_result=1
     fi
 
+    if [[ -f "$test_dir/test_dry_run.sh" ]]; then
+        run_test_suite "Unit Tests (Dry Run)" "$test_dir/test_dry_run.sh" "--dry-run: scratch database only, always dropped, clear failures"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
+
     if [[ -f "$test_dir/test_yes_flag.sh" ]]; then
         run_test_suite "Unit Tests (Unattended --yes)" "$test_dir/test_yes_flag.sh" "--yes / --non-interactive: helpers, flags, no-hang, required values"
         [[ $? -ne 0 ]] && overall_result=1

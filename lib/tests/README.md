@@ -122,6 +122,7 @@ lib/tests/
 │   └── test_wordpress.sh      # WordPress functionality tests
 ├── unit/                       # Unit tests
 │   ├── test_core_functions.sh # Core function tests
+│   ├── test_dry_run.sh        # --dry-run (stubbed mysql): scratch DB only, always dropped, clear failures
 │   ├── test_import_hardening.sh   # Backup, compressed dumps, compat filter, checksum, temp dir, benchmark
 │   ├── test_import_performance.sh # Import estimate, optimizations, config keys
 │   ├── test_import_security.sh    # Penetration-style security tests
