@@ -532,7 +532,7 @@ test_search_replace() {
     grep -qF '[search-replace] [//old-site.com] [//new-site.local]' "$log" \
         && printf "    ✅ protocol-independent pass (//old-site.com -> //new-site.local)\n" \
         || { printf "    ❌ missing protocol-independent pass\n"; ((search_replace_issues++)); }
-    grep -qF '[\\//old-site.com] [\\//new-site.local]' "$log" \
+    grep -qF '[\/\/old-site.com] [\/\/new-site.local]' "$log" \
         && printf "    ✅ escaped pass for serialized and JSON data\n" \
         || { printf "    ❌ missing escaped pass\n"; ((search_replace_issues++)); }
     [[ "$(grep -c -- '--skip-columns=guid' "$log")" == "2" ]] && printf "    ✅ guid column is never changed\n" || { printf "    ❌ guid not skipped\n"; ((search_replace_issues++)); }

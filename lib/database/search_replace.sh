@@ -171,16 +171,17 @@ run_search_replace() {
 
     # Define search-replace patterns
     local sr1_old_non_www="//${non_www_domain_with_path}"
-    local sr2_old_non_www="\\\\//${non_www_domain_with_path}"
+    # JSON-escaped form: every "/" becomes "\/" (Gravity Forms and block data store URLs like this)
+    local sr2_old_non_www="${sr1_old_non_www//\//\\/}"
     local sr_new="//${replace_domain_with_path}"
-    local sr_new_escaped="\\\\//${replace_domain_with_path}"
+    local sr_new_escaped="${sr_new//\//\\/}"
 
     # Define www patterns if source has www
     local sr1_old_www
     local sr2_old_www
     if [[ "$has_www" == true ]]; then
         sr1_old_www="//${www_domain_with_path}"
-        sr2_old_www="\\\\//${www_domain_with_path}"
+        sr2_old_www="${sr1_old_www//\//\\/}"
     fi
 
     # Execute Pass 1: Standard replacement for non-www variant
