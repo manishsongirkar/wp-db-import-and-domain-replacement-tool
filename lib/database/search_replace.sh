@@ -387,6 +387,7 @@ process_multisite_mappings() {
         else
             update_step_status "1" "Standard URL replacement failed" "failed"
             update_step_status "2" "Serialized data replacement failed" "failed"
+            print_failure_hint "$SR_LOG_MULTI"
         fi
     done
 
@@ -413,6 +414,7 @@ process_multisite_mappings() {
         else
             update_step_status "1" "Standard URL replacement failed" "failed"
             update_step_status "2" "Serialized data replacement failed" "failed"
+            print_failure_hint "$main_site_log"
         fi
     elif [[ -n "$main_site_key" ]]; then
         printf "\n${YELLOW}⏭️  Main Site (ID %s) - No changes needed${RESET}\n" "$main_site_id"

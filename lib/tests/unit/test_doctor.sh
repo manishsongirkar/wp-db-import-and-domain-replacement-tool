@@ -74,6 +74,7 @@ case "$*" in
   *"SELECT VERSION()"*)        echo "8.4.0" ;;
   *"CREATE DATABASE"*)         [ "${STUB_CREATE:-ok}" = ok ] || { echo "ERROR 1044 (42000): Access denied" >&2; exit 1; } ;;
   *"sql_mode"*)                echo "${STUB_MODE:-}" ;;
+  *"max_allowed_packet"*)      printf '%s\t%s\n' "${STUB_PACKET:-67108864}" "${STUB_POOL:-134217728}" ;;
 esac
 exit 0
 STUBEOF
@@ -97,7 +98,7 @@ _dc_run() {
     local dir="$1" bindir="$2"; shift 2
     local out rc
     out=$( cd "$dir" && env -i HOME="$_DC_WORK/home" PATH="$bindir" WPDB_FALLBACK_PATH="$_DC_WORK/none" \
-        STUB_CONNECT="${STUB_CONNECT:-ok}" STUB_CREATE="${STUB_CREATE:-ok}" STUB_MODE="${STUB_MODE:-}" \
+        STUB_CONNECT="${STUB_CONNECT:-ok}" STUB_CREATE="${STUB_CREATE:-ok}" STUB_MODE="${STUB_MODE:-}" STUB_PACKET="${STUB_PACKET:-67108864}" STUB_POOL="${STUB_POOL:-134217728}" \
         STUB_ISINSTALLED="${STUB_ISINSTALLED:-ok}" STUB_LOG="${STUB_LOG:-}" "$BASH" -c '
         for f in core/utils config/config_manager database/sql_source database/socket_detector utilities/doctor; do
             source "'"$_DC_ROOT"'/lib/$f.sh" >/dev/null 2>&1
@@ -164,6 +165,10 @@ test_doctor_site() {
 
     out=$(STUB_MODE="STRICT_TRANS_TABLES,NO_ZERO_DATE" _dc_run "$site" "$b")
     _chk "strict sql_mode is a WARN"                     grep -q 'WARN  sql_mode' <<< "$out"
+
+    _chk "default limits are OK rows"                    bash -c 'grep -q "OK    max_allowed_packet  *64 MB" <<< "$0" && grep -q "OK    innodb_buffer_pool_size  *128 MB" <<< "$0"' "$out"
+    out=$(STUB_PACKET=4194304 STUB_POOL=16777216 _dc_run "$site" "$b"); rc=$?
+    _chk "small limits are WARN with a fix, exit 0"      bash -c 'test "$1" -eq 0 && grep -q "WARN  max_allowed_packet  *4 MB" <<< "$0" && grep -q "SET GLOBAL max_allowed_packet" <<< "$0" && grep -q "WARN  innodb_buffer_pool_size  *16 MB" <<< "$0"' "$out" "$rc"
 
     out=$(STUB_ISINSTALLED=fail _dc_run "$site" "$b"); rc=$?
     _chk "wp core is-installed failing is FAIL, exit 1"  bash -c 'test "$1" -eq 1 && grep -q "FAIL  WordPress" <<< "$0"' "$out" "$rc"

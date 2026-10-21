@@ -127,6 +127,15 @@ backup_gpg_recipient=
 - These flags are skipped automatically when importing through WP-CLI fallback so behavior stays compatible.
 - `parallel_import` stays disabled by default because regular SQL dumps are order-sensitive; forcing parallel execution can corrupt import order.
 
+### Safety Guardrails and Large Databases
+
+- **Dry run first:** the tool asks `Run in dry-run mode? (y/N)` before anything is imported. Answering `y` saves `dry_run=true`; answering `n` is not saved, so the question comes back. Set `dry_run=true` to preview on every run. With `--yes` the default is live (`N`).
+- **Backup first:** `backup_before_import=ask` (default) backs up before the import. A failed backup or too little disk space cancels the import.
+- **Custom tables:** `all_tables=true` (default) replaces in every table. For custom tables with unusual serialized or JSON data, run `--dry-run`, read the per-table counts, or set `all_tables=false` to limit the run to the tables WordPress registers.
+- **Large databases (about 2 GB and more):** raise `max_allowed_packet` (for example `512M`) if the import fails with `packet bigger than 'max_allowed_packet'` or `server has gone away`. Set `innodb_buffer_pool_size` to about 50-70% of free RAM. If search-replace runs out of PHP memory, use `WP_CLI_PHP_ARGS='-d memory_limit=2G' wp-db-import`. `wp search-replace` has no `--batch-size` option. Tables without a primary key are slow to process. Never run on a live production database. `wp-db-import doctor` warns about small `max_allowed_packet` and `innodb_buffer_pool_size`; a failed import or search-replace prints the matching fix.
+
+See the README section "Safety Guardrails and Large Databases" for details.
+
 ### Pre-Import Backup Behavior
 
 - `backup_before_import=ask` (default) asks `Back up the current database before importing? (Y/n)` on every run. Press Enter for Yes.

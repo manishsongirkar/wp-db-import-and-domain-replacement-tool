@@ -202,6 +202,7 @@ dm_run() {
             fi
             if ! execute_wp_cli search-replace "$search" "$replace" ${tbl[@]+"${tbl[@]}"} "${flags[@]}" >> "$log_file" 2>&1; then
                 printf "   ${RED}✖ %s => %s: WP-CLI failed (see %s)${RESET}\n" "$old" "$new" "$log_file"
+                print_failure_hint "$log_file"
                 return 1
             fi
         done
