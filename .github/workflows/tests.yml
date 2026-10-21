@@ -12,9 +12,9 @@ permissions:
 jobs:
   lint:
     name: shellcheck and version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Syntax check
         run: |
           for f in import_wp_db.sh wp-db-import uninstall.sh run_tests.sh $(find lib -name '*.sh'); do bash -n "$f"; done
@@ -36,9 +36,9 @@ jobs:
           - { os: macos-latest,  bash: "5.x (brew)",   userland: BSD }
           - { os: macos-latest,  bash: "3.2 (system)", userland: GNU }
           - { os: macos-latest,  bash: "5.x (brew)",   userland: GNU }
-          - { os: ubuntu-latest, bash: "5.x (system)", userland: GNU }
+          - { os: ubuntu-24.04, bash: "5.x (system)", userland: GNU }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
         run: brew install bash coreutils gnu-sed findutils grep gawk
@@ -57,7 +57,7 @@ jobs:
           "$WPDB_BASH" --version | head -n 1
           "$WPDB_BASH" ./run_tests.sh --ci --format json --output ./test-reports unit
           "$WPDB_BASH" ./run_tests.sh --ci --format json --output ./test-reports security
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: reports-${{ matrix.os }}-${{ strategy.job-index }}
@@ -65,13 +65,13 @@ jobs:
 
   matrix:
     name: server matrix (${{ matrix.server }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         server: [mysql, mariadb]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install one server (service stopped, tests start their own)
         run: |
           sudo apt-get update
@@ -92,7 +92,7 @@ jobs:
         run: |
           ./run_tests.sh --ci --format json --output ./test-reports matrix
           ./run_tests.sh --ci --format json --output ./test-reports real-import
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: reports-matrix-${{ matrix.server }}
