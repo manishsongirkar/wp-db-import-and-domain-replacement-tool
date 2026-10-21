@@ -209,6 +209,21 @@ import_log_has_errors() {
 }
 
 # ===============================================
+# Hint for a known resource failure in an import or search-replace log
+# ===============================================
+# Parameters: $1 = log file. Prints one fix line (nothing when the log has no known cause).
+print_failure_hint() {
+    local log="$1"
+    [[ -f "$log" ]] || return 0
+    if LC_ALL=C grep -qiE 'max_allowed_packet|packet bigger|server has gone away|ERROR (2006|1153)' "$log" 2>/dev/null; then
+        printf "${YELLOW}💡 A row or statement is bigger than the server accepts. Raise max_allowed_packet (for example SET GLOBAL max_allowed_packet=536870912; or max_allowed_packet=512M in my.cnf) and run again.${RESET}\n"
+    elif LC_ALL=C grep -qi 'Allowed memory size' "$log" 2>/dev/null; then
+        printf "${YELLOW}💡 PHP ran out of memory. Run again with more: WP_CLI_PHP_ARGS='-d memory_limit=2G' wp-db-import${RESET}\n"
+    fi
+    return 0
+}
+
+# ===============================================
 # Cap a log file's size (log rotation for per-run logs)
 # ===============================================
 # A failing import can echo every remaining statement (hundreds of thousands of lines).
@@ -296,4 +311,4 @@ _build_mysql_args() {
 
 export -f _sql_file_size_bytes sql_file_kind sql_open_stream sql_verify_source \
     sql_uncompressed_size_bytes estimate_heuristic _sql_compat_script sql_compat_filter \
-    import_error_is_compat_related import_log_has_errors cap_log_file sql_has_drop_table _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null
+    import_error_is_compat_related import_log_has_errors print_failure_hint cap_log_file sql_has_drop_table _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null

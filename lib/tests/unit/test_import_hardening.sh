@@ -1014,6 +1014,36 @@ STUBEOF
     _finish "empty database passes the pre-import check; connection and missing-files errors still stop the import"
 }
 
+test_failure_hints() {
+    start_test "Failure hints and large-dump notice" "known packet/memory errors get a fix line; big dumps show the server limits"
+    local errors=0 log="$_HARD_WORK/hint.log" out
+    printf 'ERROR 2006 (HY000) at line 40: MySQL server has gone away\n' > "$log"
+    out=$(print_failure_hint "$log" 2>&1)
+    _chk "gone away: max_allowed_packet hint"              bash -c "[[ '$out' == *'max_allowed_packet'* ]]"
+    printf 'ERROR 1153 (08S01) at line 9: Got a packet bigger than '"'"'max_allowed_packet'"'"' bytes\n' > "$log"
+    out=$(print_failure_hint "$log" 2>&1)
+    _chk "packet bigger: max_allowed_packet hint"          bash -c "[[ '$out' == *'max_allowed_packet'* ]]"
+    printf 'PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted\n' > "$log"
+    out=$(print_failure_hint "$log" 2>&1)
+    _chk "PHP memory: WP_CLI_PHP_ARGS hint"                grep -q WP_CLI_PHP_ARGS <<< "$out"
+    printf 'ERROR 1146 (42S02): Table x doesn'"'"'t exist\n' > "$log"
+    _chk "unknown error: no hint"                          test -z "$(print_failure_hint "$log" 2>&1)"
+    _chk "missing log: no hint, no error"                  test -z "$(print_failure_hint "$_HARD_WORK/none.log" 2>&1)"
+
+    _import_db_query() { printf '4194304\t134217728\n'; }
+    out=$(import_large_dump_notice 100 2>&1)
+    _chk "small dump: no notice"                           test -z "$out"
+    out=$(import_large_dump_notice 3000 2>&1)
+    _chk "large dump: notice with the server limits"       bash -c "[[ '$out' == *'Large dump (3000 MB)'* && '$out' == *'max_allowed_packet 4 MB'* && '$out' == *'buffer_pool_size 128 MB'* ]]"
+    out=$(WPDB_LARGE_DUMP_MB=50 import_large_dump_notice 60 2>&1)
+    _chk "WPDB_LARGE_DUMP_MB moves the threshold"          bash -c "[[ '$out' == *'Large dump'* ]]"
+    _import_db_query() { return 1; }
+    out=$(import_large_dump_notice 3000 2>&1); rc=$?
+    _chk "no server answer: notice without numbers, rc 0"  bash -c "[[ $rc -eq 0 && '$out' == *'Large dump'* && '$out' != *'MB.'*'MB.'* ]]"
+    unset -f _import_db_query
+    _finish "known failures print a fix; large dumps show the limits"
+}
+
 # ================================================================
 # Run all
 # ================================================================
@@ -1041,6 +1071,7 @@ run_import_hardening_tests() {
     test_backup_config_keys
     test_sfp_checksum
     test_empty_db_import_check
+    test_failure_hints
 
     [[ -n "$_HARD_WORK" ]] && rm -rf "$_HARD_WORK"
     finalize_test_session

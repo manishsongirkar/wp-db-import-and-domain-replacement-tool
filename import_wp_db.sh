@@ -890,6 +890,7 @@ ${subsite_line}"
       fi
     else
       printf "\n${RED}❌ Search-replace failed. See %s.${RESET}\n" "$SR_LOG_SINGLE"
+      print_failure_hint "$SR_LOG_SINGLE"
       return 1
     fi
   fi

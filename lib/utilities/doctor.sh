@@ -163,6 +163,22 @@ doctor_site_checks() {
             else
                 _doc_row OK "sql_mode" "${mode:-empty}"
             fi
+
+            local limits packet pool
+            limits=$(_doc_query "SELECT @@max_allowed_packet, @@innodb_buffer_pool_size" "$WP_DB_NAME" 2>/dev/null | head -1)
+            packet=${limits%%$'\t'*}; pool=${limits##*$'\t'}
+            if [[ "$packet" =~ ^[0-9]+$ && "$pool" =~ ^[0-9]+$ ]]; then
+                if [[ "$packet" -lt 67108864 ]]; then
+                    _doc_row WARN "max_allowed_packet" "$((packet / 1048576)) MB" "large rows can fail the import: SET GLOBAL max_allowed_packet=536870912; or max_allowed_packet=512M in my.cnf"
+                else
+                    _doc_row OK "max_allowed_packet" "$((packet / 1048576)) MB"
+                fi
+                if [[ "$pool" -lt 134217728 ]]; then
+                    _doc_row WARN "innodb_buffer_pool_size" "$((pool / 1048576)) MB" "large imports are slow: set innodb_buffer_pool_size to about 50-70% of free RAM in my.cnf"
+                else
+                    _doc_row OK "innodb_buffer_pool_size" "$((pool / 1048576)) MB"
+                fi
+            fi
         else
             err=$(printf "%s" "$server" | grep -i 'error' | head -1 | cut -c1-160)
             _doc_row FAIL "Database server" "cannot connect: ${err:-no answer}" "start the database, check DB_HOST/DB_USER/DB_PASSWORD in wp-config.php, or set mysql_socket in wpdb-import.conf"

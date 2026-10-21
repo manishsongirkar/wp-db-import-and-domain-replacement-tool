@@ -399,6 +399,36 @@ wp-db-import --yes restore --last      # no question (scripts, CI)
 
 Set `sql_file` to a `.sql.gz`, `.zip` or `.sql.bz2` file. The dump is checked for corruption first, then streamed straight into MySQL or WP-CLI. Nothing is extracted to disk. For `.zip` files only the `.sql` entries are used (macOS `__MACOSX` junk is ignored). Requires `gzip`, `unzip` or `bzip2` on the machine.
 
+### 🛡️ Safety Guardrails and Large Databases
+
+**Built-in guardrails (nothing to install):**
+
+| Risk | What the tool does | Your control |
+| ---- | ------------------ | ------------ |
+| Wrong replacement on a live database | **Dry run is asked before anything is imported** (`Run in dry-run mode? (y/N)`). A dry run imports into a temporary database and reports the occurrences per table. Your database is not changed. | `--dry-run`, `dry_run=true` (always preview), `WPDB_DRY_RUN=1`. Run a dry run first on every new dump. |
+| Losing the current data | **Backup before the import** (`backup_before_import=ask`, Enter = Yes). If a requested backup fails or the disk is too small, the import is cancelled. | [Pre-Import Backup](#-pre-import-backup), `wp-db-import restore --last` |
+| Silent unattended runs | `--yes` takes each default. The dry-run default is **N** (live), so set `dry_run=true` in the config for CI previews. The backup still runs. | [Unattended Mode](#-unattended-mode---yes-for-scripts-and-ci) |
+| Corrupt serialized data | WP-CLI `search-replace` rewrites serialized string lengths. Domain mappings run before the main domain, longest search first. | `--dry-run` per-table counts |
+
+> **Note:** the dry-run question is asked on every run until `dry_run=` has a value in `wpdb-import.conf`. Answering `y` saves `dry_run=true`. Answering `n` is **not** saved, so you are asked again next time. Set `dry_run=true` to preview every run, or `dry_run=false` to turn the question off.
+
+**Custom tables and unusual data.** `all_tables=true` (default) runs the replacement on **every** table in the database, including custom tables that do not use the WordPress prefix. WP-CLI handles standard PHP-serialized values and JSON-escaped URLs. Data in other formats (for example a custom binary or double-encoded blob) can be left unchanged or, rarely, be changed in a way the plugin cannot read. To lower the risk:
+
+- Run `--dry-run` and read the per-table counts. A table that you did not expect in the list is a table to check.
+- Set `all_tables=false` to limit the replacement to the tables WordPress registers (core tables and tables that plugins register with `$wpdb`).
+- Keep the backup on. `wp-db-import restore --last` undoes the run.
+
+**Large databases (about 2 GB and more).** The import itself streams the dump to the `mysql` client, so PHP memory is not used for it. The limits are in MySQL and in the WP-CLI search-replace step:
+
+- **`max_allowed_packet`**: a dump with a very large row (for example a big `INSERT` with a media blob or a serialized option) fails with `Got a packet bigger than 'max_allowed_packet' bytes` or `MySQL server has gone away`. Raise it on the server (`max_allowed_packet=512M` in `my.cnf`, or `SET GLOBAL max_allowed_packet=536870912;` as an admin user) and import again. The mysql client has its own limit; the tool uses the default client.
+- **Early warnings:** `wp-db-import doctor` shows `WARN` rows when `max_allowed_packet` is below 64 MB or `innodb_buffer_pool_size` is below 128 MB. A dump of 2 GB or more prints the server values before the import (change the limit with `WPDB_LARGE_DUMP_MB`). If an import or a search-replace fails because of the packet size or PHP memory, the tool prints the fix line.
+- **`innodb_buffer_pool_size`**: set it to about 50–70% of free RAM on a dedicated database server. A bigger pool makes the import and the search-replace faster. In Local, edit the site's `my.cnf.hbs`, and restart the site.
+- **`innodb_flush_log_at_trx_commit=2`** and a bigger `innodb_log_file_size` (MySQL 8: `innodb_redo_log_capacity`) speed up large imports on local and staging servers. Do not keep `2` on a production server.
+- **PHP memory in search-replace**: WP-CLI reads tables in pages. A table with very large rows can still exhaust the PHP memory limit. Raise it for one run: `WP_CLI_PHP_ARGS='-d memory_limit=2G' wp-db-import`. (`wp search-replace` has no `--batch-size` option, so there is no batch size to set.)
+- **Time**: search-replace runs 2 passes (4 with a `www` host, more with [custom URL mappings](#-custom-url-mappings)) over all tables. Tables without a primary key or without indexes are read slowly, and WP-CLI cannot page them well. Run the tool on a local or staging copy, never on a live production database.
+- **Free disk space**: the backup needs about half of the database size (checked before it starts). The temporary database of a dry run needs the full database size, plus the dump.
+- **Mega databases (10 GB and more)**: this tool does not split or chunk a dump. For these sizes, move the data with a native tool (for example `mysqldump --single-transaction` and `mysql`, or `mydumper`/`myloader`), test on a smaller copy first, and keep a backup.
+
 ### 🔀 Cross-Version SQL Compatibility
 
 Dumps from a different server version (for example a MariaDB 11 dump into MySQL 8.4, or a MySQL 8 dump into MariaDB 10.6) can contain SQL the target rejects. The tool never changes a dump that imports fine. If the first attempt fails with a known compatibility error, it retries **once** with a filter that:

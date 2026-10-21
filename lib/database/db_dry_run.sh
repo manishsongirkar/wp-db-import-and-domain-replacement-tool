@@ -66,8 +66,8 @@ decide_dry_run_mode() {
             printf "${YELLOW}🧪 Dry run: preview only, nothing will be changed.${RESET}\n\n"
             [[ -n "$config_path" ]] && update_config_general "$config_path" "dry_run" "true" 2>/dev/null
         else
+            # Not saved: an N must not switch the question off for later runs (set dry_run=false for that)
             printf "${GREEN}🚀 Running in live mode (changes will be applied).${RESET}\n\n"
-            [[ -n "$config_path" ]] && update_config_general "$config_path" "dry_run" "false" 2>/dev/null
         fi
     fi
     export WPDB_DRY_RUN_ACTIVE

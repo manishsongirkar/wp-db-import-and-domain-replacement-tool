@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- **Large-database guardrails** (Phase 1):
+  - **Fix hints:** a failed import, search-replace or custom replacement whose log shows `max_allowed_packet` / `server has gone away` / `packet bigger` prints how to raise `max_allowed_packet`; `Allowed memory size` prints `WP_CLI_PHP_ARGS='-d memory_limit=2G'`. Other errors print nothing new.
+  - **`doctor`** shows `max_allowed_packet` (WARN below 64 MB) and `innodb_buffer_pool_size` (WARN below 128 MB) with a fix.
+  - **Large-dump notice:** a dump of 2 GB or more (`WPDB_LARGE_DUMP_MB`, default 2048) prints the server's `max_allowed_packet` and buffer pool size before the import.
+
+### Changed
+- Answering `n` to the dry-run question is no longer saved as `dry_run=false`, so the question is asked again on the next run. `y` still saves `dry_run=true`; an explicit `dry_run=` value in the config is used as before.
+
+### Documentation
+- New README and USAGE section **Safety Guardrails and Large Databases**: the dry-run prompt and `dry_run=true`, the pre-import backup, custom tables (`all_tables`), and limits for large databases (`max_allowed_packet`, `innodb_buffer_pool_size`, PHP memory through `WP_CLI_PHP_ARGS`). It also states that `wp search-replace` has no `--batch-size` option.
+
+### Added
 - **Backup edge cases** ([#17](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/17)):
   - **Free disk space check** before the export: the database size (`information_schema`) against the free space in `backup_dir` (`df -Pk`), the backup estimated at half the size. Too little space cancels the backup and the import before anything is written; a tight fit warns; unknown size or space means no check.
   - **Progress** for long backups: the size written so far, after a few seconds, in a terminal only.

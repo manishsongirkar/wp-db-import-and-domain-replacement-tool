@@ -516,6 +516,21 @@ import_prepare_retry() {
 # Returns:
 #   0 on success, 1 on failure
 #
+# Large dumps (WPDB_LARGE_DUMP_MB, default 2048 MB): show the server limits that matter.
+# Parameters: $1 = dump size in MB. Never fails the import.
+import_large_dump_notice() {
+    [[ "${1:-0}" -ge "${WPDB_LARGE_DUMP_MB:-2048}" ]] || return 0
+    local vals packet pool
+    vals=$(_import_db_query "SELECT @@max_allowed_packet, @@innodb_buffer_pool_size" 2>/dev/null | head -1)
+    packet=${vals%%$'\t'*}; pool=${vals##*$'\t'}
+    printf "${YELLOW}⚠️  Large dump (%s MB).${RESET}" "$1"
+    if [[ "$packet" =~ ^[0-9]+$ && "$pool" =~ ^[0-9]+$ ]]; then
+        printf " ${DIM}Server: max_allowed_packet %s MB, innodb_buffer_pool_size %s MB.${RESET}" "$((packet / 1048576))" "$((pool / 1048576))"
+    fi
+    printf "\n${DIM}   Tuning tips (max_allowed_packet, buffer pool, PHP memory): see README, Safety Guardrails and Large Databases.${RESET}\n"
+    return 0
+}
+
 perform_db_import() {
     local sql_file="$1"
     local log_file="${2:-${DB_LOG:-$(secure_tmpdir)/db_import.log}}"
@@ -543,6 +558,7 @@ perform_db_import() {
     else
         printf "\n${CYAN}📊 SQL File: %d MB${RESET}\n" "$file_size_mb"
     fi
+    import_large_dump_notice "$file_size_mb"
     local sql_kind
     sql_kind=$(sql_file_kind "$sql_file")
     if [[ "$sql_kind" != "plain" ]]; then
@@ -808,6 +824,7 @@ perform_db_import() {
         # The log lives in a private temp directory removed on exit, so show the cause here
         if [[ -f "$log_file" ]]; then
             LC_ALL=C grep -E '^(ERROR|Error)' "$log_file" 2>/dev/null | head -3 | cut -c1-300 | sed 's/^/   /'
+            print_failure_hint "$log_file"
         fi
         return 1
     fi
@@ -840,6 +857,6 @@ export -f _now_ms
 export -f estimate_import_duration
 export -f perform_db_import_via_socket
 export -f perform_db_import_via_wpcli
-export -f _emit_import_stream
+export -f _emit_import_stream import_large_dump_notice
 export -f _warn_client_server_mismatch _import_db_query _import_list_tables import_snapshot_tables import_drop_new_tables import_prepare_retry
 export -f perform_db_import

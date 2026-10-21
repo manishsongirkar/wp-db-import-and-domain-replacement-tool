@@ -176,7 +176,7 @@ test_dry_run_decision() {
     _chk "prompt answer y: saved as dry_run=true"      grep -q '^dry_run=true' "$cfg"
     decide_dry_run_mode "$cfg" >/dev/null 2>&1 <<< "n"
     _chk "prompt answer n: live mode"                  test "$WPDB_DRY_RUN_ACTIVE" = false
-    _chk "prompt answer n: saved as dry_run=false"     grep -q '^dry_run=false' "$cfg"
+    _chk "prompt answer n: not saved (asked again next run)" bash -c '! grep -q "^dry_run=false" "$0"' "$cfg"
     decide_dry_run_mode "$cfg" >/dev/null 2>&1 <<< ""
     _chk "Enter (default No): live mode"               test "$WPDB_DRY_RUN_ACTIVE" = false
     decide_dry_run_mode "$cfg" >/dev/null 2>&1 </dev/null
