@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Documentation
+- README: a **Safety first** warning at the top (replaces the database, use a copy, built-in backup and `--dry-run`, `wp db export` before you start, `restore --last` to undo) and an **Example: GitHub Actions** workflow for unattended imports (`--yes`, full `wpdb-import.conf`, pinned release). The example is not run in this project's CI.
+
 ### Added
 - **Large-database guardrails** (Phase 1):
   - **Fix hints:** a failed import, search-replace or custom replacement whose log shows `max_allowed_packet` / `server has gone away` / `packet bigger` prints how to raise `max_allowed_packet`; `Allowed memory size` prints `WP_CLI_PHP_ARGS='-d memory_limit=2G'`. Other errors print nothing new.

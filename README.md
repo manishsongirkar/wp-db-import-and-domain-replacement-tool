@@ -6,6 +6,15 @@
 
 Accelerate your local development setup with this advanced WP-CLI wrapper. Built for reliable WordPress migration automation, it effortlessly manages database imports and performs accurate database search and replace (including serialized data) to synchronize production data with local or staging environments.
 
+> [!WARNING]
+> **Safety first.** The import **replaces the current contents of the database** and then rewrites domains in it. Run it on a local or staging copy, never on a live production database. The tool asks for a backup before it imports (`backup_before_import=ask`, saved to `~/.wp-db-import/backups`), and `--dry-run` previews everything first. For data you cannot lose, also take your own export before you start:
+>
+> ```bash
+> wp db export "pre-import-$(date +%Y%m%d-%H%M%S).sql"
+> ```
+>
+> Undo a run with `wp-db-import restore --last`. See the section *Safety Guardrails and Large Databases* below.
+
 ## 📦 Installation & Setup
 
 ### 🚀 Quick Install (Recommended)
@@ -190,6 +199,70 @@ In unattended mode:
 # Example CI step (config file already contains sql_file, old_domain, new_domain)
 cd /path/to/wordpress && wp-db-import --yes
 ```
+
+#### Example: GitHub Actions
+
+Imports a dump into a throw-away WordPress on a runner and swaps the domain. It uses only documented options (`--yes`, a full `wpdb-import.conf`, `bash import_wp_db.sh`). This is an example for your own repository: it is **not run in this project's CI**, so adjust the dump path, domains, versions and database settings to your project.
+
+```yaml
+name: Import and replace domain
+on: workflow_dispatch
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -proot" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7          # your repository, with the dump (for example db/site.sql.gz)
+
+      - name: Install WP-CLI
+        run: |
+          curl -fsSL -o wp-cli.phar https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          sudo install -m 755 wp-cli.phar /usr/local/bin/wp
+
+      - name: Prepare an empty WordPress
+        run: |
+          mkdir wp && cd wp
+          wp core download
+          wp config create --dbname=wordpress --dbuser=root --dbpass=root --dbhost=127.0.0.1
+
+      - name: Get the import tool (pinned release)
+        run: git clone --depth 1 --branch v1.2.0 https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git "$RUNNER_TEMP/wpdb"
+
+      - name: Write the config
+        run: |
+          cp db/site.sql.gz wp/
+          cat > wp/wpdb-import.conf <<'EOF'
+          [general]
+          sql_file=site.sql.gz
+          old_domain=example.com
+          new_domain=example.test
+          all_tables=true
+          dry_run=false
+          clear_revisions=true
+          setup_stage_proxy=false
+          auto_proceed=true
+          # fresh runner database: nothing to back up
+          backup_before_import=false
+
+          [site_mappings]
+          EOF
+
+      - name: Import and replace the domain
+        working-directory: wp
+        run: bash "$RUNNER_TEMP/wpdb/import_wp_db.sh" --yes
+```
+
+The step fails (exit code 1) if the import or the replacement fails. For a preview step, use `--dry-run`. Do not commit a dump that contains real customer data to a public repository.
 
 ### 📋 Available Commands
 ```bash
