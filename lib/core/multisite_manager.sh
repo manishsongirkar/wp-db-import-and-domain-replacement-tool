@@ -35,7 +35,18 @@ update_multisite_tables() {
     local multisite_type="$2"
     local search_domain="$3"
 
-    printf "\n${CYAN}${BOLD}🔧 Updating wp_blogs and wp_site tables (before search-replace)...${RESET}\n"
+    # The PHP code below is built with php_sq_escape (utils.sh). Without it a value could not be
+    # escaped, so stop instead of writing anything.
+    if ! declare -F php_sq_escape >/dev/null 2>&1; then
+        printf "${RED}❌ Internal error: php_sq_escape is not loaded; the network tables were not updated.${RESET}\n"
+        return 1
+    fi
+
+    # Table names shown in the messages follow the site's own prefix (wp-config.php)
+    local tbl_prefix
+    tbl_prefix=$(get_safe_table_prefix)
+
+    printf "\n${CYAN}${BOLD}🔧 Updating %sblogs and %ssite tables (before search-replace)...${RESET}\n" "$tbl_prefix" "$tbl_prefix"
     printf "================================================================\n\n"
 
     # Extract the base domain from the main site mapping for wp_site update
@@ -70,9 +81,9 @@ update_multisite_tables() {
         return 1
     fi
 
-    printf "${CYAN}🔄 Executing wp_blogs and wp_site table updates via wp eval...${RESET}\n\n"
+    printf "${CYAN}🔄 Executing %sblogs and %ssite table updates via wp eval...${RESET}\n\n" "$tbl_prefix" "$tbl_prefix"
 
-    printf "${CYAN}⚡ Updating wp_blogs and wp_site tables...${RESET}\n"
+    printf "${CYAN}⚡ Updating %sblogs and %ssite tables...${RESET}\n" "$tbl_prefix" "$tbl_prefix"
 
     # Explicitly disable shell debugging to prevent variable assignment echoes
     set +x +v
@@ -92,7 +103,11 @@ update_multisite_tables() {
     fi
 
     # Execute wp_site update FIRST (before wp_blogs updates change domain references)
-    local site_command="global \$wpdb; \$result = \$wpdb->update('wp_site', array('domain' => '${base_domain}'), array('id' => 1)); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
+    # Domains and paths are placed between PHP single quotes: escape \ and ' so a value is always data.
+    # The tables are named with the site's own prefix ($wpdb->base_prefix), not a fixed "wp_".
+    local q_base_domain
+    q_base_domain=$(php_sq_escape "$base_domain")
+    local site_command="global \$wpdb; \$result = \$wpdb->update(\$wpdb->base_prefix . 'site', array('domain' => '${q_base_domain}'), array('id' => 1)); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
 
     # Execute command and check result using bash pattern matching (no grep dependency)
     local site_output
@@ -111,7 +126,7 @@ update_multisite_tables() {
 
     # Execute subsite updates
     printf "\n"
-    printf "${YELLOW}📝 Updating wp_blogs for subsites...${RESET}\n"
+    printf "${YELLOW}📝 Updating %sblogs for subsites...${RESET}\n" "$tbl_prefix"
     for ((i=0; i<array_length; i++)); do
         local old_domain="${domain_keys[i]}"
         local new_domain="${domain_values[i]}"
@@ -158,7 +173,17 @@ update_multisite_tables() {
         fi
 
         # Execute individual wp eval command for this subsite
-        local individual_command="global \$wpdb; \$result = \$wpdb->update('wp_blogs', array('domain' => '${target_domain}', 'path' => '${site_path}'), array('blog_id' => ${blog_id})); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
+        # blog_id goes into PHP unquoted: it must be a plain number
+        if [[ ! "$blog_id" =~ ^[0-9]+$ ]]; then
+            ((failed_commands++))
+            failed_details="${failed_details}Updating Blog ID '${blog_id}'... Failed (not a number) ❌\n"
+            printf "  → Blog ID %s: ${RED}❌ not a valid blog ID, skipped${RESET}\n" "$blog_id"
+            continue
+        fi
+        local q_target_domain q_site_path
+        q_target_domain=$(php_sq_escape "$target_domain")
+        q_site_path=$(php_sq_escape "$site_path")
+        local individual_command="global \$wpdb; \$result = \$wpdb->update(\$wpdb->base_prefix . 'blogs', array('domain' => '${q_target_domain}', 'path' => '${q_site_path}'), array('blog_id' => ${blog_id})); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
 
         # Execute command and check result
         local blog_output
@@ -179,7 +204,7 @@ update_multisite_tables() {
     # Execute main site update
     if [[ -n "$main_site_new_domain" ]]; then
         printf "\n"
-        printf "${YELLOW}📝 Updating wp_blogs for main site (ID: %s)...${RESET}\n" "$main_site_id"
+        printf "${YELLOW}📝 Updating %sblogs for main site (ID: %s)...${RESET}\n" "$tbl_prefix" "$main_site_id"
         local main_site_path="/"
         local target_domain="$base_domain"
 
@@ -193,12 +218,16 @@ update_multisite_tables() {
         fi
 
         # Execute main site wp_blogs update
-        local main_command="global \$wpdb; \$result = \$wpdb->update('wp_blogs', array('domain' => '${target_domain}', 'path' => '${main_site_path}'), array('blog_id' => ${main_site_id})); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
-
-        local main_output
-        {
-            main_output=$(set +x; execute_wp_cli eval "$main_command" --url="$search_domain" 2>&1)
-        } 2>/dev/null
+        local main_output=""
+        if [[ "$main_site_id" =~ ^[0-9]+$ ]]; then
+            local q_main_target_domain q_main_site_path
+            q_main_target_domain=$(php_sq_escape "$target_domain")
+            q_main_site_path=$(php_sq_escape "$main_site_path")
+            local main_command="global \$wpdb; \$result = \$wpdb->update(\$wpdb->base_prefix . 'blogs', array('domain' => '${q_main_target_domain}', 'path' => '${q_main_site_path}'), array('blog_id' => ${main_site_id})); echo (\$result !== false ? 'SUCCESS' : 'FAILED');"
+            {
+                main_output=$(set +x; execute_wp_cli eval "$main_command" --url="$search_domain" 2>&1)
+            } 2>/dev/null
+        fi
 
         if [[ "$main_output" == *"SUCCESS"* ]]; then
             ((total_commands_executed++))
@@ -213,11 +242,11 @@ update_multisite_tables() {
     # Determine overall success and show clean output
     if [[ $failed_commands -eq 0 ]]; then
         printf "\n"
-        printf "${GREEN}✅ Database tables wp_blogs & wp_site updated successfully!${RESET}\n"
+        printf "${GREEN}✅ Database tables %sblogs & %ssite updated successfully!${RESET}\n" "$tbl_prefix" "$tbl_prefix"
         return 0
     else
         printf "\n"
-        printf "${RED}❌ Database tables wp_blogs & wp_site update failed!${RESET}\n"
+        printf "${RED}❌ Database tables %sblogs & %ssite update failed!${RESET}\n" "$tbl_prefix" "$tbl_prefix"
         echo -e "$failed_details"
         return 1
     fi

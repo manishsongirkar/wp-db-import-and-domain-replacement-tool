@@ -94,6 +94,17 @@ test_update_command() {
     _chk "update: shows version $cur_version -> 9.9.9"   grep -q "Version: $cur_version → 9.9.9" <<< "$out"
     _chk "update: files were actually updated"           test "$(tr -d '\n' < "$tool/VERSION")" = "9.9.9"
     _chk "update: verifies the updated files"            grep -q 'Updated files verified' <<< "$out"
+    _chk "update: shows the source repository"           grep -q 'Source: ' <<< "$out"
+    _chk "update: warns when the source is not the official repository" grep -q 'not the official repository' <<< "$out"
+    # credentials stored in the remote URL are never printed (update and version)
+    git -C "$tool" remote set-url origin "https://user:s3cr3tTOKEN@127.0.0.1:1/manishsongirkar/wp-db-import-and-domain-replacement-tool.git"
+    _capture bash -c 'cd "$1" && bash ./wp-db-import update' _ "$tool"
+    _chk "update: URL credentials are not printed"       bash -c '! grep -q s3cr3tTOKEN <<< "$0"' "$CAP_OUT"
+    _chk "update: the official repository gets no warning" bash -c '! grep -q "not the official repository" <<< "$0"' "$CAP_OUT"
+    _capture bash -c 'cd "$1" && bash ./wp-db-import version' _ "$tool"
+    _chk "version: URL credentials are not printed"      bash -c '! grep -q s3cr3tTOKEN <<< "$0"' "$CAP_OUT"
+    _chk "version: still shows the repository"           grep -q 'Repository: .*127.0.0.1:1/manishsongirkar' <<< "$CAP_OUT"
+    git -C "$tool" remote set-url origin "$origin"
     _chk "update: no merge commit (fast-forward only)"   test "$(git -C "$tool" rev-list --merges HEAD | wc -l | tr -d ' ')" = 0
 
     # Uncommitted changes: asks, and 'n' cancels without changing anything

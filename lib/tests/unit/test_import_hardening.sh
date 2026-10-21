@@ -1025,7 +1025,9 @@ test_failure_hints() {
     _chk "packet bigger: max_allowed_packet hint"          bash -c "[[ '$out' == *'max_allowed_packet'* ]]"
     printf 'PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted\n' > "$log"
     out=$(print_failure_hint "$log" 2>&1)
-    _chk "PHP memory: WP_CLI_PHP_ARGS hint"                grep -q WP_CLI_PHP_ARGS <<< "$out"
+    _chk "PHP memory: wp-cli.yml hint"                     grep -q 'wp-cli.yml' <<< "$out"
+    _chk "PHP memory: hint names ini_set memory_limit"     grep -q 'ini_set' <<< "$out"
+    _chk "PHP memory: hint does not suggest WP_CLI_PHP_ARGS" bash -c '! grep -q WP_CLI_PHP_ARGS <<< "$0"' "$out"
     printf 'ERROR 1146 (42S02): Table x doesn'"'"'t exist\n' > "$log"
     _chk "unknown error: no hint"                          test -z "$(print_failure_hint "$log" 2>&1)"
     _chk "missing log: no hint, no error"                  test -z "$(print_failure_hint "$_HARD_WORK/none.log" 2>&1)"

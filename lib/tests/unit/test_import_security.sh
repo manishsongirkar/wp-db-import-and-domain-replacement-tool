@@ -264,6 +264,60 @@ EOF
 }
 
 # ================================================================
+# eval helpers and the database password
+# ================================================================
+test_sec_eval_and_password_env() {
+    start_test "Injection: Array Helpers, Password Scope" "keys/values are data, never code; the password is not exported"
+    _sec_load
+    local errors=0 w; w=$(_sec_work)
+    local canary="$w/CANARY_ARR"; rm -f "$canary"
+
+    # --- array helpers: hostile keys, values and names
+    declare -A WPDB_T_MAP 2>/dev/null
+    init_associative_array WPDB_T_MAP
+    set_associative_value WPDB_T_MAP "k'; touch $canary; '" "v'; touch $canary; '"
+    set_associative_value WPDB_T_MAP 'plain' "it's \\ \"q\" \$HOME \`id\` \$(id)"
+    get_associative_value WPDB_T_MAP "\$(touch $canary)" >/dev/null 2>&1
+    get_associative_value WPDB_T_MAP "x\"; touch $canary; echo \"" >/dev/null 2>&1
+    _chk "hostile keys and values execute nothing"        test ! -e "$canary"
+    _chk "value round trip (quotes, backslash, \$, backtick)" test "$(get_associative_value WPDB_T_MAP plain)" = "it's \\ \"q\" \$HOME \`id\` \$(id)"
+    _chk "hostile key round trip"                         test "$(get_associative_value WPDB_T_MAP "k'; touch $canary; '")" = "v'; touch $canary; '"
+    set_associative_value "WPDB_T_MAP; touch $canary" k v >/dev/null 2>&1
+    _chk "hostile array name is refused (rc 1)"           bash -c '! set_associative_value "X; true" k v' 2>/dev/null
+    _chk "hostile array name executes nothing"            test ! -e "$canary"
+    init_associative_array "A\$(touch $canary)" >/dev/null 2>&1
+    get_associative_keys "A\$(touch $canary)" >/dev/null 2>&1
+    echo x | read_lines_into_array "A;touch $canary" >/dev/null 2>&1
+    copy_array_to_local "A;touch $canary" B >/dev/null 2>&1
+    process_array_by_name "A;touch $canary" >/dev/null 2>&1
+    _chk "other helpers refuse hostile names"             test ! -e "$canary"
+    _names_ok() { _wpdb_valid_var_name WP_IMPORT_CONFIG && _wpdb_valid_var_name _a1 && ! _wpdb_valid_var_name "1a" && ! _wpdb_valid_var_name "" && ! _wpdb_valid_var_name "a b"; }
+    _chk "valid names are accepted, invalid refused"      _names_ok
+    unset WPDB_T_MAP
+
+    # --- the password is a shell variable, not an exported one
+    local site="$w/pwsite"; mkdir -p "$site"
+    cat > "$site/wp-config.php" <<'PHPEOF'
+<?php
+define( 'DB_NAME', 'dbn' );
+define( 'DB_USER', 'dbu' );
+define( 'DB_PASSWORD', 'Sup3r-Secret-Pw' );
+define( 'DB_HOST', 'localhost' );
+PHPEOF
+    unset WP_DB_PASSWORD WP_DB_NAME
+    get_wp_db_credentials "$site" >/dev/null 2>&1
+    _chk "credentials are read"                           test "$WP_DB_PASSWORD" = "Sup3r-Secret-Pw" -a "$WP_DB_NAME" = dbn
+    _chk "password is not exported"                       bash -c '[[ "$(declare -p WP_DB_PASSWORD)" != "declare -x"* ]]'
+    _chk "a child process does not see the password"      test -z "$(env | grep -c Sup3r-Secret-Pw | grep -v '^0$')"
+    _chk "db name/user/host stay exported"                test "$(env | grep -c '^WP_DB_NAME=dbn$')" = 1
+    _pwd_via_client_env() { local -x MYSQL_PWD="$WP_DB_PASSWORD"; test "$(env | grep -c '^MYSQL_PWD=Sup3r-Secret-Pw$')" = 1; }
+    _chk "password still reaches the client via MYSQL_PWD" _pwd_via_client_env
+    _chk "MYSQL_PWD does not outlive that function"       test -z "${MYSQL_PWD+x}"
+    unset WP_DB_PASSWORD
+    _finish "array helpers never evaluate data; the password stays out of child environments"
+}
+
+# ================================================================
 # Temp files and symlink attacks
 # ================================================================
 test_sec_tempfiles() {
@@ -474,6 +528,7 @@ run_import_security_tests() {
     test_sec_password_handling
     test_sec_backup
     test_sec_config_injection
+    test_sec_eval_and_password_env
     test_sec_tempfiles
     test_sec_archives
     test_sec_download_tampering

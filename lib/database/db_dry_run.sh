@@ -197,7 +197,9 @@ _dry_run_in_scratch() {
     end_ms=$(_now_ms)
     printf "${GREEN}done${RESET} ${DIM}(%d s)${RESET}\n" "$(( (end_ms - start_ms) / 1000 ))"
 
-    local q=(env "MYSQL_PWD=${WP_DB_PASSWORD:-}" "$mysql_bin" "${args[@]}" -N -B)
+    # MYSQL_PWD in the environment of this function only: the password never appears in a command line
+    local -x MYSQL_PWD="${WP_DB_PASSWORD:-}"
+    local q=("$mysql_bin" "${args[@]}" -N -B)
 
     # 5) tables and rows
     local tables_list count_sql="" t tcount=0 rows=0 cnt

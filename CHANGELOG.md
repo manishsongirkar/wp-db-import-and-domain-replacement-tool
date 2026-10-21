@@ -2,12 +2,29 @@
 
 ## [Unreleased]
 
+### Security
+- **PHP injection in the multisite network update fixed:** domains and paths placed in the `wp eval` code are escaped (`php_sq_escape`), and blog IDs must be numbers. Before, a quote in a domain from `wpdb-import.conf` or a prompt could leave the PHP string. The helper is required: without it the update stops and writes nothing.
+- **Shell `eval` in the array helpers removed:** `set_associative_value` and `get_associative_value` read keys and values from variables, and all array helpers refuse names that are not plain identifiers. (No current code path used them with outside data.)
+- **Password handling:** `WP_DB_PASSWORD` is no longer exported to child processes, and the dry run no longer builds `env MYSQL_PWD=...` (the password was briefly in a process list). The client still gets `MYSQL_PWD` for its own command.
+- **Printed manual SQL** escapes quotes and backslashes in domains and paths.
+- **`wp-db-import update`** shows its source repository, warns when it is not the official one, and never prints credentials stored in the remote URL (also in `wp-db-import version`). It was already fast-forward only.
+
+### Fixed
+- **Custom table prefix on multisite:** the network update (`wp eval`), main-site detection (`wp_site`, `wp_blogs`, `wp_N_options` queries), the manual SQL and the messages used a fixed `wp_`. They now use the site's `$table_prefix` (`$wpdb->base_prefix` in PHP). Default `wp_` sites behave as before.
+- **`get_wp_table_prefix`** now reads double-quoted and indented `$table_prefix` lines, takes the last assignment, ignores commented lines, and finds `wp-config.php` one folder above the site. The raw value is still returned (callers refuse unsafe values); new `get_safe_table_prefix` gives `wp_` for an unsafe value.
+- **Memory hint:** `WP_CLI_PHP_ARGS` does not raise the limit of a normal `wp` run (tested with WP-CLI 2.12), so the hint and the docs now give the working ways: `exec: ini_set("memory_limit", "2G");` in `wp-cli.yml`, or `php.ini`.
+
+### Added
+- **Remote database warning:** a live import prints a warning (never blocks) when `DB_HOST` looks like a remote server.
+- **`doctor`** warns when WP-CLI is older than 2.8.
+- **Tests:** multisite prefix and escaping (with a fake `$wpdb` when php is installed), prefix parsing, host detection, array-helper and password tests, update-source tests, doctor WP-CLI version, and real end-to-end scenarios 8c (custom prefix on subdirectory and subdomain networks) and 8d (custom prefix on a single site). Fixed a Bash 3.2 quoting bug in the dry-run CLI test.
+
 ### Documentation
 - README: a **Safety first** warning at the top (replaces the database, use a copy, built-in backup and `--dry-run`, `wp db export` before you start, `restore --last` to undo) and an **Example: GitHub Actions** workflow for unattended imports (`--yes`, full `wpdb-import.conf`, pinned release). The example is not run in this project's CI.
 
 ### Added
 - **Large-database guardrails** (Phase 1):
-  - **Fix hints:** a failed import, search-replace or custom replacement whose log shows `max_allowed_packet` / `server has gone away` / `packet bigger` prints how to raise `max_allowed_packet`; `Allowed memory size` prints `WP_CLI_PHP_ARGS='-d memory_limit=2G'`. Other errors print nothing new.
+  - **Fix hints:** a failed import, search-replace or custom replacement whose log shows `max_allowed_packet` / `server has gone away` / `packet bigger` prints how to raise `max_allowed_packet`; `Allowed memory size` prints how to raise `memory_limit` for WP-CLI (a `wp-cli.yml` line or the CLI `php.ini`). Other errors print nothing new.
   - **`doctor`** shows `max_allowed_packet` (WARN below 64 MB) and `innodb_buffer_pool_size` (WARN below 128 MB) with a fix.
   - **Large-dump notice:** a dump of 2 GB or more (`WPDB_LARGE_DUMP_MB`, default 2048) prints the server's `max_allowed_packet` and buffer pool size before the import.
 
@@ -15,7 +32,7 @@
 - Answering `n` to the dry-run question is no longer saved as `dry_run=false`, so the question is asked again on the next run. `y` still saves `dry_run=true`; an explicit `dry_run=` value in the config is used as before.
 
 ### Documentation
-- New README and USAGE section **Safety Guardrails and Large Databases**: the dry-run prompt and `dry_run=true`, the pre-import backup, custom tables (`all_tables`), and limits for large databases (`max_allowed_packet`, `innodb_buffer_pool_size`, PHP memory through `WP_CLI_PHP_ARGS`). It also states that `wp search-replace` has no `--batch-size` option.
+- New README and USAGE section **Safety Guardrails and Large Databases**: the dry-run prompt and `dry_run=true`, the pre-import backup, custom tables (`all_tables`), and limits for large databases (`max_allowed_packet`, `innodb_buffer_pool_size`, PHP memory through `wp-cli.yml` or `php.ini`). It also states that `wp search-replace` has no `--batch-size` option.
 
 ### Added
 - **Backup edge cases** ([#17](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/17)):

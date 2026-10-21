@@ -79,6 +79,12 @@ doctor_tool_checks() {
         ver=$(printf "%s\n" "$out" | grep -m1 '^WP-CLI')
         if [[ -n "$ver" ]]; then
             _doc_row OK "WP-CLI" "$ver ($wp)"
+            # Very old WP-CLI releases are not kept up with current PHP and MySQL/MariaDB versions
+            local wmaj wmin
+            read -r wmaj wmin <<< "$(printf '%s' "$ver" | sed -nE 's/^WP-CLI[[:space:]]+([0-9]+)\.([0-9]+).*/\1 \2/p')"
+            if [[ "$wmaj" =~ ^[0-9]+$ && "$wmin" =~ ^[0-9]+$ ]] && { [[ "$wmaj" -lt 2 ]] || { [[ "$wmaj" -eq 2 && "$wmin" -lt 8 ]]; }; }; then
+                _doc_row WARN "WP-CLI version" "$wmaj.$wmin is old (2.8 or newer is recommended)" "update it: wp cli update (or reinstall WP-CLI)"
+            fi
         else
             _doc_row FAIL "WP-CLI" "does not run: $wp" "run '$wp --version' and fix the error it prints"
         fi

@@ -130,9 +130,11 @@ backup_gpg_recipient=
 ### Safety Guardrails and Large Databases
 
 - **Dry run first:** the tool asks `Run in dry-run mode? (y/N)` before anything is imported. Answering `y` saves `dry_run=true`; answering `n` is not saved, so the question comes back. Set `dry_run=true` to preview on every run. With `--yes` the default is live (`N`).
+- **Remote server warning:** a live import warns (it never blocks) when `DB_HOST` looks like a remote server. See the README note under Safety Guardrails.
+- **Table prefix:** multisite table updates and main-site detection use the `$table_prefix` of `wp-config.php` (not a fixed `wp_`).
 - **Backup first:** `backup_before_import=ask` (default) backs up before the import. A failed backup or too little disk space cancels the import.
 - **Custom tables:** `all_tables=true` (default) replaces in every table. For custom tables with unusual serialized or JSON data, run `--dry-run`, read the per-table counts, or set `all_tables=false` to limit the run to the tables WordPress registers.
-- **Large databases (about 2 GB and more):** raise `max_allowed_packet` (for example `512M`) if the import fails with `packet bigger than 'max_allowed_packet'` or `server has gone away`. Set `innodb_buffer_pool_size` to about 50-70% of free RAM. If search-replace runs out of PHP memory, use `WP_CLI_PHP_ARGS='-d memory_limit=2G' wp-db-import`. `wp search-replace` has no `--batch-size` option. Tables without a primary key are slow to process. Never run on a live production database. `wp-db-import doctor` warns about small `max_allowed_packet` and `innodb_buffer_pool_size`; a failed import or search-replace prints the matching fix.
+- **Large databases (about 2 GB and more):** raise `max_allowed_packet` (for example `512M`) if the import fails with `packet bigger than 'max_allowed_packet'` or `server has gone away`. Set `innodb_buffer_pool_size` to about 50-70% of free RAM. If search-replace runs out of PHP memory, add `exec: ini_set("memory_limit", "2G");` to a `wp-cli.yml` file in the WordPress folder, or set `memory_limit` in the CLI `php.ini` (`php --ini`). `WP_CLI_PHP_ARGS` does not work for a normal `wp` run. `wp search-replace` has no `--batch-size` option. Tables without a primary key are slow to process. Never run on a live production database. `wp-db-import doctor` warns about small `max_allowed_packet` and `innodb_buffer_pool_size`; a failed import or search-replace prints the matching fix.
 
 See the README section "Safety Guardrails and Large Databases" for details.
 
@@ -330,4 +332,4 @@ import_wp_db
 wp-db-import doctor      # in a WordPress directory: tools and site checks
 ```
 
-Each row shows `OK`, `WARN` or `FAIL`, and a `fix:` line when something is wrong. `WARN` means a feature will not work (for example no `unzip` for `.zip` dumps). `FAIL` means the import cannot work, and the exit code is 1. Passwords are never printed. The only server write is a scratch database (`wpdb_doctor_<pid>`) that is dropped at once. Outside a WordPress directory only the tool checks run.
+Each row shows `OK`, `WARN` or `FAIL`, and a `fix:` line when something is wrong. `WARN` means a feature will not work (for example no `unzip` for `.zip` dumps). `FAIL` means the import cannot work, and the exit code is 1. It also warns when WP-CLI is older than 2.8. Passwords are never printed. The only server write is a scratch database (`wpdb_doctor_<pid>`) that is dropped at once. Outside a WordPress directory only the tool checks run.

@@ -59,7 +59,7 @@ _ri_install_site() {
     cp -R "$SRV_WORK/core" "$dir" || return 1
     _ri_q -e "CREATE DATABASE IF NOT EXISTS \`$db\`" || return 1
     _ri_wp "$dir" config create --dbname="$db" --dbuser="$_RI_DB_USER" --dbpass="$_RI_DB_PASS" \
-        --dbhost="localhost:$SRV_SOCKET" --skip-check --quiet >/dev/null 2>&1 || return 1
+        --dbhost="localhost:$SRV_SOCKET" ${_RI_DBPREFIX:+--dbprefix="$_RI_DBPREFIX"} --skip-check --quiet >/dev/null 2>&1 || return 1
     if [[ -z "$multisite" ]]; then
         _ri_wp "$dir" core install --url="$url" --title="Site $db" --admin_user=admin \
             --admin_password=pw12345 --admin_email=a@example.com --skip-email >/dev/null 2>&1 || return 1
@@ -169,6 +169,72 @@ _ri_multisite_scenario() {
     _chk "no temp directory left behind"                 test -z "$(ls -A "$SRV_WORK/tmp" 2>/dev/null)"
 }
 
+
+# Scenario 8c: multisite with a custom table prefix (not wp_). Parameters: mode(subdirectory|subdomain) prefix
+_ri_prefix_multisite_scenario() {
+    local mode="$1" pre="$2" old_domain="prod.example.com" new_domain="target.test"
+    local prod="$SRV_WORK/prod_px_$mode" tgt="$SRV_WORK/t_px_$mode" dump="$SRV_WORK/prod_px_$mode.sql" db="target_px_$mode"
+    local old_site2 new_site2 url2_old url2_new
+    if [[ "$mode" == "subdirectory" ]]; then
+        old_site2="$old_domain/news";  new_site2="$new_domain/news"
+        url2_old="https://$old_domain/news/"; url2_new="https://$new_domain/news/"
+    else
+        old_site2="news.$old_domain";  new_site2="news.$new_domain"
+        url2_old="http://news.$old_domain/"; url2_new="http://news.$new_domain/"
+    fi
+    printf "\n  -- Scenario 8c: %s network with a custom table prefix (%s)\n" "$mode" "$pre"
+    _RI_DBPREFIX="$pre"
+    _ri_install_site "$prod" "prod_px_$mode" "https://$old_domain" "$mode" || { _RI_DBPREFIX=""; printf "  ❌ production network install failed\n"; ((errors++)); return; }
+    _ri_wp "$prod" site create --slug=news --title=News >/dev/null 2>&1 || { _RI_DBPREFIX=""; printf "  ❌ could not create the second site\n"; ((errors++)); return; }
+    _ri_add_content "$prod" "$old_domain"
+    _ri_add_content "$prod" "$old_site2" "--url=$url2_old"
+    _ri_wp "$prod" db export "$dump" --add-drop-table >/dev/null 2>&1 || { _RI_DBPREFIX=""; printf "  ❌ dump export failed\n"; ((errors++)); return; }
+    _ri_install_site "$tgt" "$db" "http://$new_domain" "$mode" || { _RI_DBPREFIX=""; printf "  ❌ target network install failed\n"; ((errors++)); return; }
+    _RI_DBPREFIX=""
+    _ri_write_config "$tgt" "$dump" "$old_domain" "$new_domain" auto "1:$old_domain:$new_domain
+2:$old_site2:$new_site2"
+    _ri_run_tool "$tgt"
+
+    _chk "exit code 0"                                   test "$_RI_RC" -eq 0
+    _chk "import reported successful"                    grep -q 'Database import successful' <<< "$_RI_OUT"
+    _chk "the network tables are reported with the real prefix" grep -q "Database tables ${pre}blogs & ${pre}site updated successfully" <<< "$_RI_OUT"
+    _chk "no 'update failed' for the network tables"     bash -c '! grep -q "update failed" <<< "$0"' "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"             _ri_console_clean
+    _chk "the old domain was detected in the database"   grep -q "Detected domain in database: $old_domain" <<< "$_RI_OUT"
+    _chk "the database has no wp_ tables (prefix is really custom)" test "$(_ri_q -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$db' AND table_name LIKE 'wp\\_%'")" = 0
+    _chk "${pre}blogs: main site domain is $new_domain"  test "$(_ri_q -N -e "SELECT domain FROM $db.${pre}blogs WHERE blog_id=1")" = "$new_domain"
+    if [[ "$mode" == "subdirectory" ]]; then
+        _chk "${pre}blogs: subsite is $new_domain/news/" test "$(_ri_q -N -e "SELECT CONCAT(domain, path) FROM $db.${pre}blogs WHERE blog_id=2")" = "$new_domain/news/"
+    else
+        _chk "${pre}blogs: subsite is news.$new_domain/" test "$(_ri_q -N -e "SELECT CONCAT(domain, path) FROM $db.${pre}blogs WHERE blog_id=2")" = "news.$new_domain/"
+    fi
+    _chk "${pre}site: network domain is $new_domain"     test "$(_ri_q -N -e "SELECT domain FROM $db.${pre}site WHERE id=1")" = "$new_domain"
+    _chk "main site URL is https://$new_domain/"         test "$(_ri_wp "$tgt" site list --field=url --blog_id=1 2>/dev/null | head -1)" = "https://$new_domain/"
+    _chk "subsite URL is $url2_new"                      test "$(_ri_wp "$tgt" site list --field=url --blog_id=2 2>/dev/null | head -1)" = "$url2_new"
+    _chk "no occurrence of the old domain is left (all prefixed tables)" test "$(_ri_q -N -e "SELECT (SELECT COUNT(*) FROM $db.${pre}posts WHERE post_content LIKE '%$old_domain%') + (SELECT COUNT(*) FROM $db.${pre}2_posts WHERE post_content LIKE '%$old_domain%') + (SELECT COUNT(*) FROM $db.${pre}options WHERE option_value LIKE '%$old_domain%') + (SELECT COUNT(*) FROM $db.${pre}2_options WHERE option_value LIKE '%$old_domain%') + (SELECT COUNT(*) FROM $db.${pre}blogs WHERE domain LIKE '%$old_domain%') + (SELECT COUNT(*) FROM $db.${pre}site WHERE domain LIKE '%$old_domain%')")" = 0
+}
+
+# Scenario 8d: single site with a custom table prefix. Parameter: prefix
+_ri_prefix_single_scenario() {
+    local pre="$1" prod="$SRV_WORK/prod_ps" tgt="$SRV_WORK/t_ps" dump="$SRV_WORK/prod_ps.sql" db="target_ps"
+    printf "\n  -- Scenario 8d: single site with a custom table prefix (%s)\n" "$pre"
+    _RI_DBPREFIX="$pre"
+    _ri_install_site "$prod" "prod_ps" "https://prod.example.com" || { _RI_DBPREFIX=""; printf "  ❌ production site install failed\n"; ((errors++)); return; }
+    _ri_add_content "$prod" "prod.example.com"
+    _ri_wp "$prod" db export "$dump" --add-drop-table >/dev/null 2>&1 || { _RI_DBPREFIX=""; printf "  ❌ dump export failed\n"; ((errors++)); return; }
+    _ri_install_site "$tgt" "$db" "http://target.test" || { _RI_DBPREFIX=""; printf "  ❌ target site install failed\n"; ((errors++)); return; }
+    _RI_DBPREFIX=""
+    _ri_write_config "$tgt" "$dump" prod.example.com target.test auto
+    _ri_run_tool "$tgt"
+    _chk "exit code 0"                                   test "$_RI_RC" -eq 0
+    _chk "import reported successful"                    grep -q 'Database import successful' <<< "$_RI_OUT"
+    _chk "search-replace completed"                      grep -q 'Search-replace completed successfully' <<< "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"             _ri_console_clean
+    _chk "siteurl is https://target.test"                test "$(_ri_wp "$tgt" option get siteurl 2>/dev/null)" = "https://target.test"
+    _chk "post link replaced (https)"                    bash -c "cd '$tgt' && wp post list --post_type=post --field=post_content 2>/dev/null | grep -qF 'https://target.test/x'"
+    _chk "no occurrence of the old domain is left"       test "$(_ri_q -N -e "SELECT (SELECT COUNT(*) FROM $db.${pre}posts WHERE post_content LIKE '%prod.example.com%') + (SELECT COUNT(*) FROM $db.${pre}options WHERE option_value LIKE '%prod.example.com%')")" = 0
+    _chk "the site still loads WordPress"                bash -c "cd '$tgt' && wp core is-installed"
+}
 
 # Replaces $2 with $3 (plain text) in file $1 (portable: no sed -i, no regex)
 _ri_inject() {
@@ -537,6 +603,9 @@ test_real_import() {
     _chk "invalid entry: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "must start with //" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fpbad" "$(_ri_fingerprint target8)"
 
     _ri_custom_multisite_scenario
+    _ri_prefix_multisite_scenario subdirectory zz_
+    _ri_prefix_multisite_scenario subdomain Qx9_
+    _ri_prefix_single_scenario qq_
 
     printf "\n  -- Scenario 7f: multisite dry run (main site and subsite mapping)\n"
     local msdb=target_subdirectory msdump="$SRV_WORK/prod_subdirectory.sql" msbefore
