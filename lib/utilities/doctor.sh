@@ -117,12 +117,12 @@ doctor_site_checks() {
         [[ -z "$cfg_use_socket" ]] && cfg_use_socket="auto"
     fi
 
-    local ver
-    if ver=$(cd "$wp_root" && execute_wp_cli core is-installed 2>&1); then
-        _doc_row OK "WordPress" "installed, WP-CLI can load it"
-    else
-        _doc_row FAIL "WordPress" "wp core is-installed failed" "run 'wp core is-installed' in $wp_root and fix the error it prints (database connection, PHP extension, wp-config)"
-    fi
+    case "$(cd "$wp_root" && wp_install_state)" in
+        installed) _doc_row OK "WordPress" "installed, WP-CLI can load it" ;;
+        empty)     _doc_row WARN "WordPress" "database table not found (empty database)" "import a SQL file with 'wp-db-import'; the import creates the tables" ;;
+        noconn)    _doc_row FAIL "WordPress" "cannot connect to the database" "check the credentials in $wp_root/wp-config.php and that the database server runs" ;;
+        *)         _doc_row FAIL "WordPress" "wp core is-installed failed" "run 'wp core is-installed' in $wp_root and fix the error it prints (PHP extension, wp-config, WordPress files)" ;;
+    esac
 
     _DOC_SOCKET=""
     if [[ "$cfg_use_socket" != "false" ]] && declare -F detect_mysql_socket >/dev/null 2>&1; then

@@ -745,6 +745,8 @@ if is_sourced; then
         export -f sanitize_domain
         export -f validate_file_exists
         export -f validate_wordpress_installation
+        export -f wp_install_state
+        export -f validate_wordpress_for_import
         export -f check_wpcli_availability
         export -f create_temp_file
         export -f check_wp_config_constant
@@ -1125,6 +1127,56 @@ validate_wordpress_installation() {
         return 1
     fi
     return 0
+}
+
+# ===============================================
+# WordPress Install State
+# ===============================================
+#
+# Description: Classifies the site in the current directory. `wp core is-installed` alone cannot
+#              tell an empty database (no tables) from a broken setup.
+#
+# Prints: installed | empty (WordPress files present, database has no WordPress tables)
+#         | noconn (database connection failed) | nowp (no WordPress files)
+#
+wp_install_state() {
+    local out
+    out=$(execute_wp_cli core is-installed 2>&1) && { echo installed; return 0; }
+    if [[ "$out" == *"Error establishing a database connection"* ]]; then
+        echo noconn
+    elif execute_wp_cli core version &>/dev/null; then
+        echo empty
+    else
+        echo nowp
+    fi
+    return 0
+}
+
+# ===============================================
+# Validate WordPress Files Before an Import
+# ===============================================
+#
+# Description: Like validate_wordpress_installation, but also accepts a site whose database has
+#              no WordPress tables yet (empty database): `wp core is-installed` fails there,
+#              yet the import must still work, as `wp db import` does.
+#
+# Returns:
+#	- 0 if WordPress is installed, or its files are present and the database is reachable.
+#	- 1 otherwise (prints the error).
+#
+validate_wordpress_for_import() {
+    case "$(wp_install_state)" in
+        installed) return 0 ;;
+        empty)
+            printf "${YELLOW}ℹ️  Database tables not found (empty database). The import will create the tables.${RESET}\n"
+            return 0 ;;
+        noconn)
+            printf "${RED}❌ Cannot connect to the database. Check the credentials in wp-config.php.${RESET}\n"
+            return 1 ;;
+        *)
+            printf "${RED}❌ No WordPress installation detected in this directory.${RESET}\n"
+            return 1 ;;
+    esac
 }
 
 # ===============================================
