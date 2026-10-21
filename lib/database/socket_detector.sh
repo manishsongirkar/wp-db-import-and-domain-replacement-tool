@@ -37,6 +37,26 @@ _is_valid_socket() {
 }
 
 # ===============================================
+# Print the socket read from stdin (one path per line) only if exactly
+# one distinct valid socket is listed. With several running servers,
+# picking "the first" can aim an import at the wrong site's database,
+# so an ambiguous list yields nothing.
+# ===============================================
+_sole_valid_socket() {
+    local candidate found="" count=0
+    while IFS= read -r candidate; do
+        _is_valid_socket "$candidate" || continue
+        found="$candidate"
+        count=$((count + 1))
+    done < <(sort -u)
+
+    if [[ "$count" -eq 1 ]]; then
+        printf "%s" "$found"
+    fi
+    return 0
+}
+
+# ===============================================
 # Detect the active local development environment
 # ===============================================
 detect_dev_environment() {
@@ -226,42 +246,63 @@ _detect_socket_via_defaults() {
 # Detect socket via running mysqld process
 # ===============================================
 _detect_socket_via_process() {
-    local socket_path
-
-    socket_path=$(
-        ps aux 2>/dev/null \
+    ps aux 2>/dev/null \
         | grep -E '[m]ysqld' \
         | grep -oE '\-\-socket=[^ ]+' \
-        | head -1 \
-        | cut -d'=' -f2-
-    )
-
-    if _is_valid_socket "$socket_path"; then
-        printf "%s" "$socket_path"
-    fi
+        | cut -d'=' -f2- \
+        | _sole_valid_socket
     return 0
+}
+
+# ===============================================
+# Find the Local socket that belongs to this WordPress root
+# ===============================================
+# Local writes one "ssh-entry/<site id>.sh" per site, which does
+# `cd "<site>/app/public"`. The file name is the site id, and the
+# site's server socket is run/<site id>/mysql/mysqld.sock.
+# Exit codes: 0 = socket printed, 1 = not a Local site,
+#             2 = Local site, but its server is not running.
+_detect_local_site_socket() {
+    local wp_root="${1%/}"
+    local base_dir entry site_id physical candidate
+    local known_site=false
+
+    [[ -n "$wp_root" ]] || return 1
+    physical=$(cd "$wp_root" 2>/dev/null && pwd -P)
+
+    for base_dir in \
+        "$HOME/Library/Application Support/Local" \
+        "$HOME/.config/Local"; do
+        [[ -d "$base_dir/ssh-entry" ]] || continue
+
+        for candidate in "$wp_root" "$physical"; do
+            [[ -n "$candidate" ]] || continue
+            while IFS= read -r entry; do
+                [[ -n "$entry" ]] || continue
+                known_site=true
+                site_id=$(basename "$entry" .sh)
+                if _is_valid_socket "$base_dir/run/$site_id/mysql/mysqld.sock"; then
+                    printf "%s" "$base_dir/run/$site_id/mysql/mysqld.sock"
+                    return 0
+                fi
+            done < <(grep -lFx -- "cd \"$candidate\"" "$base_dir"/ssh-entry/*.sh 2>/dev/null)
+        done
+    done
+
+    [[ "$known_site" == "true" ]] && return 2
+    return 1
 }
 
 # ===============================================
 # Probe Local by Flywheel / Local socket paths
 # ===============================================
+# Only used when the WordPress root is not a known Local site.
+# Returns a socket only if exactly one Local server is running.
 _probe_local_socket_paths() {
-    local base_dir
-    local socket_path
-
-    for base_dir in \
-        "$HOME/Library/Application Support/Local/run" \
-        "$HOME/.config/Local/run"; do
-        if [[ -d "$base_dir" ]]; then
-            for socket_path in "$base_dir"/*/mysql/mysqld.sock; do
-                if _is_valid_socket "$socket_path"; then
-                    printf "%s" "$socket_path"
-                    return 0
-                fi
-            done
-        fi
-    done
-
+    printf '%s\n' \
+        "$HOME/Library/Application Support/Local/run"/*/mysql/mysqld.sock \
+        "$HOME/.config/Local/run"/*/mysql/mysqld.sock \
+        | _sole_valid_socket
     return 0
 }
 
@@ -269,18 +310,8 @@ _probe_local_socket_paths() {
 # Probe DBngin socket paths
 # ===============================================
 _probe_dbngin_socket_paths() {
-    local base_dir="$HOME/Library/Application Support/DBngin/mysql"
-    local socket_path
-
-    [[ -d "$base_dir" ]] || return 0
-
-    for socket_path in "$base_dir"/*/data/mysql.sock; do
-        if _is_valid_socket "$socket_path"; then
-            printf "%s" "$socket_path"
-            return 0
-        fi
-    done
-
+    printf '%s\n' "$HOME/Library/Application Support/DBngin/mysql"/*/data/mysql.sock \
+        | _sole_valid_socket
     return 0
 }
 
@@ -414,6 +445,21 @@ detect_mysql_socket() {
         if [[ -n "$wp_config_socket" ]] && _is_valid_socket "$wp_config_socket"; then
             printf "%s" "$wp_config_socket"
             return 0
+        fi
+    fi
+
+    # Several Local sites can run at once. Match this WordPress root to its own
+    # site's socket, and never fall back to another site's server.
+    if [[ -n "$wp_root" ]]; then
+        local local_site_socket local_site_rc
+        local_site_socket=$(_detect_local_site_socket "$wp_root")
+        local_site_rc=$?
+        if [[ "$local_site_rc" -eq 0 ]]; then
+            printf "%s" "$local_site_socket"
+            return 0
+        elif [[ "$local_site_rc" -eq 2 ]]; then
+            printf "${YELLOW:-}WARNING: This Local site's MySQL server is not running. Start the site in Local.${RESET:-}\n" >&2
+            return 1
         fi
     fi
 

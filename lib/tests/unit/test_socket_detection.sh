@@ -340,6 +340,79 @@ test_socket_environment_detection() {
 }
 
 # ================================================================
+# Test: Several Local sites running - each root gets its own socket
+# ================================================================
+#
+# Description: Regression test. With two Local sites running, detection
+#              used to return the first socket for every site, so an
+#              import could land in the wrong site's database.
+#
+test_socket_multiple_local_sites() {
+    start_test "Socket Multiple Local Sites" "Each Local site root resolves to its own socket, never another site's"
+
+    if ! source "$PROJECT_ROOT_DIR/lib/database/socket_detector.sh" >/dev/null 2>&1; then
+        fail_test "Could not source socket_detector.sh"
+        return 1
+    fi
+    # Mock sockets are plain files; accept any existing path
+    _is_valid_socket() { [[ -n "$1" && -e "$1" ]]; }
+
+    local errors=0 got rc
+    local original_home="$HOME"
+    local tmp_home
+    tmp_home=$(mktemp -d "/tmp/test_socket_multi_$$.XXXXXX")
+    local local_dir="$tmp_home/Library/Application Support/Local"
+    local id
+    for id in siteA siteB siteStopped; do
+        mkdir -p "$tmp_home/sites/$id/app/public" "$local_dir/run/$id/mysql"
+        printf 'cd "%s"\n' "$tmp_home/sites/$id/app/public" > "$local_dir/ssh-entry-$id.sh"
+    done
+    mkdir -p "$local_dir/ssh-entry"
+    for id in siteA siteB siteStopped; do
+        mv "$local_dir/ssh-entry-$id.sh" "$local_dir/ssh-entry/$id.sh"
+    done
+    touch "$local_dir/run/siteA/mysql/mysqld.sock" "$local_dir/run/siteB/mysql/mysqld.sock"
+    HOME="$tmp_home"
+
+    got=$(detect_mysql_socket "$tmp_home/sites/siteA/app/public" 2>/dev/null)
+    if [[ "$got" == "$local_dir/run/siteA/mysql/mysqld.sock" ]]; then
+        printf "  ✅ siteA resolves to its own socket\n"
+    else
+        printf "  ❌ siteA got '%s'\n" "$got"; ((errors++))
+    fi
+
+    got=$(detect_mysql_socket "$tmp_home/sites/siteB/app/public/" 2>/dev/null)
+    if [[ "$got" == "$local_dir/run/siteB/mysql/mysqld.sock" ]]; then
+        printf "  ✅ siteB resolves to its own socket\n"
+    else
+        printf "  ❌ siteB got '%s'\n" "$got"; ((errors++))
+    fi
+
+    got=$(detect_mysql_socket "$tmp_home/sites/siteStopped/app/public" 2>/dev/null) && rc=0 || rc=$?
+    if [[ -z "$got" && "$rc" -ne 0 ]]; then
+        printf "  ✅ Stopped site gets no socket (not another site's)\n"
+    else
+        printf "  ❌ Stopped site got '%s'\n" "$got"; ((errors++))
+    fi
+
+    got=$(_probe_local_socket_paths)
+    if [[ -z "$got" ]]; then
+        printf "  ✅ Unmapped probe refuses to guess between two running servers\n"
+    else
+        printf "  ❌ Probe guessed '%s'\n" "$got"; ((errors++))
+    fi
+
+    HOME="$original_home"
+    rm -rf "$tmp_home"
+
+    if [[ "$errors" -eq 0 ]]; then
+        pass_test "Multiple Local sites resolve to the correct sockets"
+    else
+        fail_test "$errors multi-site socket check(s) failed"
+    fi
+}
+
+# ================================================================
 # Test: Host-side Lando/DDEV skip direct socket probing
 # ================================================================
 #
@@ -714,6 +787,7 @@ run_socket_tests() {
     test_socket_config_override
     test_socket_invalid_config_override
     test_socket_environment_detection
+    test_socket_multiple_local_sites
     test_socket_container_host_fallback
     test_wp_db_credentials_parser
     test_wp_db_credentials_missing_file
