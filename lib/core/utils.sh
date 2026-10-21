@@ -376,6 +376,9 @@ detect_main_site() {
     local main_site_blog_id=""
     local main_site_url=""
     local detection_method=""
+    # Network tables use the site's own table prefix (wp-config.php $table_prefix), not always "wp_"
+    local tbl_prefix
+    tbl_prefix=$(get_safe_table_prefix)
 
     # Quick check if WP-CLI is working at all
     if ! execute_with_timeout 5 execute_wp_cli core version --url="$fallback_domain" >/dev/null 2>&1; then
@@ -396,14 +399,14 @@ detect_main_site() {
     fi
 
     # === METHOD 1: Direct database queries (works on most environments) ===
-    main_site_blog_id=$(execute_with_timeout 10 execute_wp_cli db query "SELECT blog_id FROM wp_site WHERE id = 1 LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
+    main_site_blog_id=$(execute_with_timeout 10 execute_wp_cli db query "SELECT blog_id FROM \`${tbl_prefix}site\` WHERE id = 1 LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
 
     if [[ -n "$main_site_blog_id" && "$main_site_blog_id" != "0" ]]; then
         detection_method="database-wp_site"
         printf "${GREEN}✅ Found main site via wp_site table${RESET}\n" >&2
     else
         # Try wp_blogs table fallback
-        main_site_blog_id=$(execute_with_timeout 10 execute_wp_cli db query "SELECT blog_id FROM wp_blogs WHERE path = '/' ORDER BY blog_id ASC LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
+        main_site_blog_id=$(execute_with_timeout 10 execute_wp_cli db query "SELECT blog_id FROM \`${tbl_prefix}blogs\` WHERE path = '/' ORDER BY blog_id ASC LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
         if [[ -n "$main_site_blog_id" && "$main_site_blog_id" != "0" ]]; then
             detection_method="database-wp_blogs"
             printf "${GREEN}✅ Found main site via wp_blogs table${RESET}\n" >&2
@@ -550,11 +553,11 @@ detect_main_site() {
 
         # Method 2: Database query for URL (if not restricted)
         if [[ -z "$main_site_url" ]]; then
-            local main_options_table="wp_options"
+            local main_options_table="${tbl_prefix}options"
             if [[ "$main_site_blog_id" != "1" ]]; then
-                main_options_table="wp_${main_site_blog_id}_options"
+                main_options_table="${tbl_prefix}${main_site_blog_id}_options"
             fi
-            main_site_url=$(execute_with_timeout 10 execute_wp_cli db query "SELECT option_value FROM ${main_options_table} WHERE option_name = 'siteurl' LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
+            [[ "$main_site_blog_id" =~ ^[0-9]+$ ]] && main_site_url=$(execute_with_timeout 10 execute_wp_cli db query "SELECT option_value FROM \`${main_options_table}\` WHERE option_name = 'siteurl' LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")
         fi
 
         # Method 3: Construct from site list
@@ -569,7 +572,7 @@ detect_main_site() {
         # Method 4: Construct from wp_blogs table
         if [[ -z "$main_site_url" ]]; then
             local main_domain main_path
-            read -r main_domain main_path <<< "$(execute_with_timeout 10 execute_wp_cli db query "SELECT domain, path FROM wp_blogs WHERE blog_id = ${main_site_blog_id} LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")"
+            read -r main_domain main_path <<< "$(execute_with_timeout 10 execute_wp_cli db query "SELECT domain, path FROM \`${tbl_prefix}blogs\` WHERE blog_id = ${main_site_blog_id} LIMIT 1;" --skip-column-names --silent --url="$fallback_domain" 2>/dev/null || echo "")"
 
             if [[ -n "$main_domain" ]]; then
                 # Determine protocol (default to https for modern setups)
@@ -742,6 +745,11 @@ if is_sourced; then
         export -f is_sourced
         export -f find_wordpress_root
         export -f get_wp_table_prefix
+        export -f get_safe_table_prefix
+        export -f php_sq_escape
+        export -f sql_escape_string
+        export -f db_host_is_remote
+        export -f warn_if_remote_database
         export -f sanitize_domain
         export -f validate_file_exists
         export -f validate_wordpress_installation
@@ -857,6 +865,137 @@ detect_multisite_filesystem_indicators() {
 }
 
 # ===============================================
+# Escape Text For A PHP Single-Quoted String
+# ===============================================
+#
+# Description: Makes a value safe to place between single quotes in PHP code that is passed
+#              to `wp eval`. Only the backslash and the single quote are special there.
+#
+# Parameters:
+#	- $1: The text.
+#
+# Returns:
+#	- The escaped text (echoed, no trailing newline). A normal domain is returned unchanged.
+#
+php_sq_escape() {
+    local text="$1" out="" ch i
+    # A character loop, not ${var//x/y}: the replacement string handles backslashes differently
+    # in Bash 3.2, 4.x and 5.2+
+    for ((i = 0; i < ${#text}; i++)); do
+        ch="${text:i:1}"
+        case "$ch" in
+            \\|\') out="${out}\\${ch}" ;;
+            *) out="${out}${ch}" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# ===============================================
+# Escape Text For A SQL String Literal
+# ===============================================
+#
+# Description: Escapes backslash, single quote and double quote, so the text is safe inside
+#              either quote style in a SQL command that a person copies into phpMyAdmin.
+#
+# Parameters:
+#	- $1: The text.
+#
+# Returns:
+#	- The escaped text (echoed, no trailing newline). A normal domain is returned unchanged.
+#
+sql_escape_string() {
+    local text="$1" out="" ch i
+    for ((i = 0; i < ${#text}; i++)); do
+        ch="${text:i:1}"
+        case "$ch" in
+            \\|\'|\") out="${out}\\${ch}" ;;
+            *) out="${out}${ch}" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# ===============================================
+# Does A Database Host Look Remote?
+# ===============================================
+#
+# Description: Used to warn before an import replaces the database of a server that is
+#              probably not the developer's own machine (a live or shared server).
+#
+# Parameters:
+#	- $1: The DB_HOST value of wp-config.php ("localhost", "db:3306", "localhost:/tmp/mysql.sock",
+#	      "127.0.0.1", "[::1]:3306", "db.example.com", ...).
+#
+# Returns:
+#	- 0 if the host looks remote, 1 if it looks local (or is empty). Never prints.
+#
+# Behavior:
+#	- Local: empty, a socket path, localhost, loopback and private IP ranges, names without a dot
+#	  (Docker, Lando and DDEV service names such as "db" or "database") and the usual local
+#	  suffixes (.local .test .localhost .internal .lan .docker .ddev.site .lndo.site).
+#	- Everything else (a public IP or a full host name) is remote. A warning only: nothing is blocked.
+#
+db_host_is_remote() {
+    local host="$1" lc
+    lc=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+    # trim spaces
+    lc="${lc#"${lc%%[![:space:]]*}"}"
+    lc="${lc%"${lc##*[![:space:]]}"}"
+    [[ -z "$lc" ]] && return 1
+
+    case "$lc" in
+        \[*)
+            # IPv6 literal with optional port: [::1]:3306
+            lc="${lc#\[}"
+            lc="${lc%%\]*}"
+            ;;
+        *:*:*)
+            # bare IPv6 address (more than one colon)
+            ;;
+        *)
+            # host:port or host:/path/to/socket -> host
+            lc="${lc%%:*}"
+            ;;
+    esac
+    [[ -z "$lc" ]] && return 1
+
+    case "$lc" in
+        localhost|*.localhost|::1|127.*|10.*|192.168.*|169.254.*) return 1 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 1 ;;
+        fc*:*|fd*:*|fe80:*) return 1 ;;
+        *.local|*.test|*.internal|*.lan|*.docker|*.ddev.site|*.lndo.site) return 1 ;;
+    esac
+    # Any other IP address, or a full host name, is remote; a name without a dot is a local service name
+    [[ "$lc" == *:* ]] && return 0
+    [[ "$lc" == *.* ]] && return 0
+    return 1
+}
+
+# ===============================================
+# Warn When The Database Server Looks Remote
+# ===============================================
+#
+# Parameters:
+#	- $1: WordPress root directory (or wp-config.php path).
+#
+# Behavior:
+#	- Prints a warning only. Never stops the run and never changes global variables
+#	  (the credentials are read in a subshell).
+#
+warn_if_remote_database() {
+    local root="${1:-}" host
+    [[ -n "$root" ]] || return 0
+    host=$( get_wp_db_credentials "$root" >/dev/null 2>&1 && printf '%s' "${WP_DB_HOST:-}" )
+    if db_host_is_remote "$host"; then
+        printf "${YELLOW}⚠️  The database server '%s' does not look like your own machine.${RESET}\\n" "$host"
+        printf "${YELLOW}   This import replaces the database contents and changes domains. Make sure it is not a live or shared database.${RESET}\\n\\n"
+    fi
+    return 0
+}
+
+
+# ===============================================
 # Get WP Table Prefix
 # ===============================================
 #
@@ -872,19 +1011,50 @@ detect_multisite_filesystem_indicators() {
 get_wp_table_prefix() {
     local wp_config_path="${1:-wp-config.php}"
 
+    # No path given: WordPress also accepts wp-config.php one folder above the site
+    if [[ -z "${1:-}" && ! -f "$wp_config_path" && -f "../wp-config.php" ]]; then
+        wp_config_path="../wp-config.php"
+    fi
+
     if [[ ! -f "$wp_config_path" ]]; then
         echo "wp_"
         return 1
     fi
 
+    # Last `$table_prefix = '...';` line (single or double quotes, any indentation); commented lines never match
     local table_prefix
-    table_prefix=$(grep -E "^\\\$table_prefix\s*=" "$wp_config_path" | cut -d"'" -f2 2>/dev/null)
+    table_prefix=$(sed -nE "s/^[[:space:]]*\\\$table_prefix[[:space:]]*=[[:space:]]*['\"]([^'\"]*)['\"].*/\\1/p" "$wp_config_path" 2>/dev/null | tail -1)
 
+    # The raw value is returned (callers that build SQL must check it, see get_safe_table_prefix)
     if [[ -z "$table_prefix" ]]; then
         table_prefix="wp_"
     fi
 
     echo "$table_prefix"
+}
+
+# ===============================================
+# Get Safe WP Table Prefix
+# ===============================================
+#
+# Description: Like get_wp_table_prefix, but the result can always be placed in SQL: WordPress
+#              allows only letters, digits and underscores in a prefix, so any other value
+#              (a hand-edited or hostile wp-config.php) gives the default "wp_" instead.
+#
+# Parameters:
+#	- $1: Optional. Path to `wp-config.php` (same as get_wp_table_prefix).
+#
+# Returns:
+#	- The prefix (echoed). Always return code 0.
+#
+get_safe_table_prefix() {
+    local prefix
+    prefix=$(get_wp_table_prefix "$@" 2>/dev/null)
+    if [[ ! "$prefix" =~ ^[A-Za-z0-9_]+$ ]]; then
+        prefix="wp_"
+    fi
+    echo "$prefix"
+    return 0
 }
 
 # ===============================================
@@ -904,7 +1074,7 @@ get_wp_table_prefix() {
 #     WP_DB_HOST     - Database host (may include socket, e.g. localhost:/path/to.sock)
 #     WP_DB_NAME     - Database name
 #     WP_DB_USER     - Database user
-#     WP_DB_PASSWORD - Database password
+#     WP_DB_PASSWORD - Database password (shell variable only, not exported)
 #   Returns 0 on success, 1 if wp-config.php is not found or unreadable.
 #
 # Security Note:
@@ -982,7 +1152,9 @@ get_wp_db_credentials() {
         return 1
     fi
 
-    export WP_DB_HOST WP_DB_NAME WP_DB_USER WP_DB_PASSWORD
+    # The password stays a plain shell variable: it is not handed to every child process
+    # (wp, gpg, ...). The MySQL client gets it through MYSQL_PWD for that one command.
+    export WP_DB_HOST WP_DB_NAME WP_DB_USER
     return 0
 }
 
@@ -1416,6 +1588,17 @@ detect_bash_version() {
 }
 
 # ===============================================
+# Is This A Safe Variable Name?
+# ===============================================
+#
+# The array helpers below build `eval` strings from array NAMES, so a name must be a plain
+# identifier. Keys and values never go into an `eval` string (they are read from variables).
+#
+_wpdb_valid_var_name() {
+    [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+# ===============================================
 # Init Associative Array
 # ===============================================
 #
@@ -1432,6 +1615,7 @@ detect_bash_version() {
 #
 init_associative_array() {
     local array_name="$1"
+    _wpdb_valid_var_name "$array_name" || return 1
 
     detect_bash_version
 
@@ -1473,12 +1657,13 @@ set_associative_value() {
     local array_name="$1"
     local key="$2"
     local value="$3"
+    _wpdb_valid_var_name "$array_name" || return 1
 
     detect_bash_version
 
     if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
         # Bash 4.0+: Direct assignment
-        eval "${array_name}['$key']='$value'"
+        eval "${array_name}[\$key]=\$value"
     else
         # Bash 3.2: Parallel arrays
         eval "local keys_array_name=\"${array_name}_KEYS\""
@@ -1499,11 +1684,11 @@ set_associative_value() {
 
         if [[ $index -ge 0 ]]; then
             # Update existing value
-            eval "${values_array_name}[$index]='$value'"
+            eval "${values_array_name}[\$index]=\$value"
         else
             # Add new key-value pair
-            eval "${keys_array_name}+=('$key')"
-            eval "${values_array_name}+=('$value')"
+            eval "${keys_array_name}+=(\"\$key\")"
+            eval "${values_array_name}+=(\"\$value\")"
         fi
     fi
 }
@@ -1527,12 +1712,13 @@ set_associative_value() {
 get_associative_value() {
     local array_name="$1"
     local key="$2"
+    _wpdb_valid_var_name "$array_name" || return 1
 
     detect_bash_version
 
     if [[ "$BASH_FEATURE_ASSOCIATIVE_ARRAYS" == "true" ]]; then
         # Bash 4.0+: Direct access
-        eval "echo \"\${${array_name}['$key']:-}\""
+        eval "printf '%s\\n' \"\${${array_name}[\$key]:-}\""
     else
         # Bash 3.2: Search parallel arrays
         eval "local -a existing_keys=(\"\${${array_name}_KEYS[@]}\")"
@@ -1569,6 +1755,7 @@ get_associative_value() {
 #
 get_associative_keys() {
     local array_name="$1"
+    _wpdb_valid_var_name "$array_name" || return 1
 
     detect_bash_version
 
@@ -1661,6 +1848,7 @@ to_uppercase() {
 #
 read_lines_into_array() {
     local array_name="$1"
+    _wpdb_valid_var_name "$array_name" || return 1
 
     detect_bash_version
 
@@ -1694,6 +1882,7 @@ read_lines_into_array() {
 #
 process_array_by_name() {
     local array_name="$1"
+    _wpdb_valid_var_name "$array_name" || return 1
 
     # Copy array to global ARRAY_ELEMENTS for processing
     eval "ARRAY_ELEMENTS=(\"\${${array_name}[@]}\")"
@@ -1715,6 +1904,7 @@ process_array_by_name() {
 copy_array_to_local() {
     local source_name="$1"
     local dest_name="$2"
+    _wpdb_valid_var_name "$source_name" && _wpdb_valid_var_name "$dest_name" || return 1
 
     eval "local -a temp_array=(\"\${${source_name}[@]}\")"
     eval "$dest_name=(\"\${temp_array[@]}\")"

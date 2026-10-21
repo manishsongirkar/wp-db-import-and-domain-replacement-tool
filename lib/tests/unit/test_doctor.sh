@@ -53,7 +53,7 @@ _dc_stubs() {
     cat > "$d/wp" <<'STUBEOF'
 #!/bin/sh
 case "$*" in
-  *--version*)  echo "WP-CLI 2.12.0" ;;
+  *--version*)  echo "WP-CLI ${STUB_WPVER:-2.12.0}" ;;
   *core\ is-installed*)
     case "${STUB_ISINSTALLED:-ok}" in
       ok) ;;
@@ -98,7 +98,7 @@ _dc_run() {
     local dir="$1" bindir="$2"; shift 2
     local out rc
     out=$( cd "$dir" && env -i HOME="$_DC_WORK/home" PATH="$bindir" WPDB_FALLBACK_PATH="$_DC_WORK/none" \
-        STUB_CONNECT="${STUB_CONNECT:-ok}" STUB_CREATE="${STUB_CREATE:-ok}" STUB_MODE="${STUB_MODE:-}" STUB_PACKET="${STUB_PACKET:-67108864}" STUB_POOL="${STUB_POOL:-134217728}" \
+        STUB_CONNECT="${STUB_CONNECT:-ok}" STUB_CREATE="${STUB_CREATE:-ok}" STUB_MODE="${STUB_MODE:-}" STUB_WPVER="${STUB_WPVER:-2.12.0}" STUB_PACKET="${STUB_PACKET:-67108864}" STUB_POOL="${STUB_POOL:-134217728}" \
         STUB_ISINSTALLED="${STUB_ISINSTALLED:-ok}" STUB_LOG="${STUB_LOG:-}" "$BASH" -c '
         for f in core/utils config/config_manager database/sql_source database/socket_detector utilities/doctor; do
             source "'"$_DC_ROOT"'/lib/$f.sh" >/dev/null 2>&1
@@ -169,6 +169,16 @@ test_doctor_site() {
     _chk "default limits are OK rows"                    bash -c 'grep -q "OK    max_allowed_packet  *64 MB" <<< "$0" && grep -q "OK    innodb_buffer_pool_size  *128 MB" <<< "$0"' "$out"
     out=$(STUB_PACKET=4194304 STUB_POOL=16777216 _dc_run "$site" "$b"); rc=$?
     _chk "small limits are WARN with a fix, exit 0"      bash -c 'test "$1" -eq 0 && grep -q "WARN  max_allowed_packet  *4 MB" <<< "$0" && grep -q "SET GLOBAL max_allowed_packet" <<< "$0" && grep -q "WARN  innodb_buffer_pool_size  *16 MB" <<< "$0"' "$out" "$rc"
+
+    _chk "current WP-CLI: no version warning"            bash -c '! grep -q "WP-CLI version" <<< "$0"' "$out"
+    out=$(STUB_WPVER=2.5.0 _dc_run "$site" "$b"); rc=$?
+    _chk "old WP-CLI (2.5): WARN with a fix, exit 0"     bash -c 'test "$1" -eq 0 && grep -q "WARN  WP-CLI version  *2.5 is old" <<< "$0" && grep -q "wp cli update" <<< "$0"' "$out" "$rc"
+    out=$(STUB_WPVER=1.4.1 _dc_run "$site" "$b")
+    _chk "WP-CLI 1.x: WARN"                              grep -q 'WARN  WP-CLI version' <<< "$out"
+    out=$(STUB_WPVER=2.8.0 _dc_run "$site" "$b")
+    _chk "WP-CLI 2.8.0: no warning (the minimum)"        bash -c '! grep -q "WP-CLI version" <<< "$0"' "$out"
+    out=$(STUB_WPVER=3.0.0-alpha _dc_run "$site" "$b")
+    _chk "WP-CLI 3.0.0-alpha: no warning"                bash -c '! grep -q "WP-CLI version" <<< "$0"' "$out"
 
     out=$(STUB_ISINSTALLED=fail _dc_run "$site" "$b"); rc=$?
     _chk "wp core is-installed failing is FAIL, exit 1"  bash -c 'test "$1" -eq 1 && grep -q "FAIL  WordPress" <<< "$0"' "$out" "$rc"

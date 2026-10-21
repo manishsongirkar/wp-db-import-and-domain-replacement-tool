@@ -69,7 +69,7 @@ wp-db-import version
 - 🗺️ **Multisite-aware Mapping** — Persisted per-site mappings; prompts only for missing sites.
 - ⚡ **Fast Revision Cleanup** — High-speed bulk deletion of post revisions to speed up search-replace.
 - 🔁 **Reliable Search & Replace** — WP-CLI powered search-replace with dry-run support and serialized data handling.
-- 📦 **Safe Multisite Updates** — Attempts wp_blogs/wp_site updates and emits MySQL commands when manual intervention is needed.
+- 📦 **Safe Multisite Updates** — Attempts wp_blogs/wp_site updates (with your own table prefix) and emits MySQL commands when manual intervention is needed.
 - 🧹 **Post-Import Cleanup** — Flushes caches, rewrite rules, and transients after operations.
 - 📸 **Stage File Proxy Integration** — Optional setup for serving media from production in local environments.
 - 🧪 **Real Dry Run** — `--dry-run` previews the whole import in a temporary database: tables, rows, compatibility needs and replacements per table, with your database untouched.
@@ -133,7 +133,7 @@ wp-db-import update  # Automatic git pull
 ### 🔄 Updating and Uninstalling
 
 ```bash
-wp-db-import update        # git installations: fast-forward update, shows version change
+wp-db-import update        # git installations: fast-forward update, shows the source and the version change
 ./uninstall.sh             # interactive uninstall
 ./uninstall.sh --yes       # no prompts; saved backups are kept
 ./uninstall.sh --delete-backups   # also delete ~/.wp-db-import (cannot be undone)
@@ -485,6 +485,8 @@ Set `sql_file` to a `.sql.gz`, `.zip` or `.sql.bz2` file. The dump is checked fo
 
 > **Note:** the dry-run question is asked on every run until `dry_run=` has a value in `wpdb-import.conf`. Answering `y` saves `dry_run=true`. Answering `n` is **not** saved, so you are asked again next time. Set `dry_run=true` to preview every run, or `dry_run=false` to turn the question off.
 
+> **Note:** before a **live** import the tool reads `DB_HOST` from `wp-config.php`. If the server does not look like your own machine (a public IP or a full host name; not `localhost`, a socket, a private or loopback address, a name without a dot such as `db`, or a `.local`, `.test`, `.localhost`, `.internal`, `.lan`, `.docker`, `.ddev.site` or `.lndo.site` name), it prints a warning. The warning never stops the run, not even with `--yes`, so keep your backup on. A dry run does not warn, because it changes nothing.
+
 **Custom tables and unusual data.** `all_tables=true` (default) runs the replacement on **every** table in the database, including custom tables that do not use the WordPress prefix. WP-CLI handles standard PHP-serialized values and JSON-escaped URLs. Data in other formats (for example a custom binary or double-encoded blob) can be left unchanged or, rarely, be changed in a way the plugin cannot read. To lower the risk:
 
 - Run `--dry-run` and read the per-table counts. A table that you did not expect in the list is a table to check.
@@ -494,10 +496,10 @@ Set `sql_file` to a `.sql.gz`, `.zip` or `.sql.bz2` file. The dump is checked fo
 **Large databases (about 2 GB and more).** The import itself streams the dump to the `mysql` client, so PHP memory is not used for it. The limits are in MySQL and in the WP-CLI search-replace step:
 
 - **`max_allowed_packet`**: a dump with a very large row (for example a big `INSERT` with a media blob or a serialized option) fails with `Got a packet bigger than 'max_allowed_packet' bytes` or `MySQL server has gone away`. Raise it on the server (`max_allowed_packet=512M` in `my.cnf`, or `SET GLOBAL max_allowed_packet=536870912;` as an admin user) and import again. The mysql client has its own limit; the tool uses the default client.
-- **Early warnings:** `wp-db-import doctor` shows `WARN` rows when `max_allowed_packet` is below 64 MB or `innodb_buffer_pool_size` is below 128 MB. A dump of 2 GB or more prints the server values before the import (change the limit with `WPDB_LARGE_DUMP_MB`). If an import or a search-replace fails because of the packet size or PHP memory, the tool prints the fix line.
+- **Early warnings:** `wp-db-import doctor` shows `WARN` rows when `max_allowed_packet` is below 64 MB or `innodb_buffer_pool_size` is below 128 MB. A dump of 2 GB or more prints the server values before the import (change the limit with `WPDB_LARGE_DUMP_MB`). `doctor` also warns when WP-CLI is older than 2.8. If an import or a search-replace fails because of the packet size or PHP memory, the tool prints the fix line.
 - **`innodb_buffer_pool_size`**: set it to about 50–70% of free RAM on a dedicated database server. A bigger pool makes the import and the search-replace faster. In Local, edit the site's `my.cnf.hbs`, and restart the site.
 - **`innodb_flush_log_at_trx_commit=2`** and a bigger `innodb_log_file_size` (MySQL 8: `innodb_redo_log_capacity`) speed up large imports on local and staging servers. Do not keep `2` on a production server.
-- **PHP memory in search-replace**: WP-CLI reads tables in pages. A table with very large rows can still exhaust the PHP memory limit. Raise it for one run: `WP_CLI_PHP_ARGS='-d memory_limit=2G' wp-db-import`. (`wp search-replace` has no `--batch-size` option, so there is no batch size to set.)
+- **PHP memory in search-replace**: WP-CLI reads tables in pages. A table with very large rows can still exhaust the PHP memory limit (`Allowed memory size ... exhausted`). Raise the limit for WP-CLI in one of two ways: add the line `exec: ini_set("memory_limit", "2G");` to a `wp-cli.yml` file in the WordPress folder (the tool runs WP-CLI in that folder), or set `memory_limit` in the CLI `php.ini` (find it with `php --ini`). Setting `WP_CLI_PHP_ARGS` does **not** work: it is not applied to a normal `wp` run. (`wp search-replace` has no `--batch-size` option, so there is no batch size to set.)
 - **Time**: search-replace runs 2 passes (4 with a `www` host, more with [custom URL mappings](#-custom-url-mappings)) over all tables. Tables without a primary key or without indexes are read slowly, and WP-CLI cannot page them well. Run the tool on a local or staging copy, never on a live production database.
 - **Free disk space**: the backup needs about half of the database size (checked before it starts). The temporary database of a dry run needs the full database size, plus the dump.
 - **Mega databases (10 GB and more)**: this tool does not split or chunk a dump. For these sizes, move the data with a native tool (for example `mysqldump --single-transaction` and `mysql`, or `mydumper`/`myloader`), test on a smaller copy first, and keep a backup.
@@ -529,6 +531,10 @@ The tool uses the `mysql` client that comes first in your `PATH`, so the client 
 - Logs and scratch files live in a private per-run temp directory (mode `700`), never in predictable `/tmp` file names. Symlink attacks are refused.
 - The database password is passed through the `MYSQL_PWD` environment variable, never on the command line.
 - The Stage File Proxy plugin is downloaded from this project's GitHub release and installed **only if its SHA-256 matches the pinned value**.
+- The database password is a shell variable only: it is **not exported** to child processes (`wp`, `gpg`, ...), and it is never in a command line (the dry run also uses `MYSQL_PWD` instead of `env MYSQL_PWD=...`).
+- Domains and paths that go into PHP code for `wp eval` (multisite network tables) are escaped, and blog IDs must be plain numbers, so a value in a config file or at a prompt stays data and cannot run code. The manual SQL that is printed for phpMyAdmin escapes quotes and backslashes too.
+- The internal array helpers never `eval` keys or values, and refuse names that are not plain identifiers.
+- `wp-db-import update` shows where the update comes from (`Source:`), warns when that is not the official repository, never prints credentials stored in the remote URL, and only fast-forwards.
 - Config values, file names, passwords and database names are treated as data and are never evaluated by the shell. See the penetration-style tests in `lib/tests/unit/test_import_security.sh`.
 
 ### 🤖 How It Works
@@ -747,7 +753,9 @@ The tool includes a sophisticated revision cleanup system that automatically gen
 
 ## Manual MySQL Commands (Fallback Only)
 
-Manual commands are only shown if automatic updates fail:
+Manual commands are only shown if automatic updates fail. The commands use the table prefix of your site (`$table_prefix` in `wp-config.php`): the examples below show the default `wp_`.
+
+The automatic multisite update (`wp eval`) and the main-site detection use the same prefix, so sites with a custom prefix (for example `site_blogs` and `site_site`) work like the default. A prefix with characters other than letters, digits and underscores is never put into SQL: the multisite update then uses the default `wp_`, and the database domain detection skips its database lookup.
 
 ### Multisite Commands (Subdomain Network):
 

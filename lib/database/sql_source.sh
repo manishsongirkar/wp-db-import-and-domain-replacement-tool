@@ -218,7 +218,7 @@ print_failure_hint() {
     if LC_ALL=C grep -qiE 'max_allowed_packet|packet bigger|server has gone away|ERROR (2006|1153)' "$log" 2>/dev/null; then
         printf "${YELLOW}💡 A row or statement is bigger than the server accepts. Raise max_allowed_packet (for example SET GLOBAL max_allowed_packet=536870912; or max_allowed_packet=512M in my.cnf) and run again.${RESET}\n"
     elif LC_ALL=C grep -qi 'Allowed memory size' "$log" 2>/dev/null; then
-        printf "${YELLOW}💡 PHP ran out of memory. Run again with more: WP_CLI_PHP_ARGS='-d memory_limit=2G' wp-db-import${RESET}\n"
+        printf "${YELLOW}💡 PHP ran out of memory. Raise memory_limit for WP-CLI: add this line to wp-cli.yml in the WordPress folder: exec: ini_set(\"memory_limit\", \"2G\");  (or set memory_limit in the CLI php.ini, see: php --ini). Then run again.${RESET}\n"
     fi
     return 0
 }

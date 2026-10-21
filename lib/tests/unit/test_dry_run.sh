@@ -319,10 +319,7 @@ test_dry_run_cli() {
     _chk "--help explains the temporary database"        grep -q 'temporary database' <<< "$out"
     _chk "--help mentions the CREATE DATABASE need"      grep -q 'CREATE DATABASE' <<< "$out"
     out=$(bash "$_D_ROOT/wp-db-import" --dry-run bogus 2>&1 </dev/null | _strip)
-    _chk "--dry-run is not treated as a command"         bash -c "! grep -q 'Unknown command: --dry-run' <<< \"\$(cat <<'EOT'
-$out
-EOT
-)\""
+    _chk "--dry-run is not treated as a command"         bash -c '! grep -q "Unknown command: --dry-run" <<< "$0"' "$out"
     out=$(bash "$_D_ROOT/import_wp_db.sh" --bogus 2>&1 </dev/null | _strip); rc=$?
     _chk "import_wp_db.sh usage mentions --dry-run"      grep -qF '[--dry-run]' <<< "$out"
     bash "$_D_ROOT/import_wp_db.sh" --bogus >/dev/null 2>&1 </dev/null

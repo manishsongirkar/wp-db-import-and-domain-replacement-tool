@@ -424,6 +424,9 @@ import_wp_db() {
     return $?
   fi
 
+  # A live import replaces the database: warn (never block) when the server does not look like the developer's own machine
+  warn_if_remote_database "$wp_root"
+
   # Auto-proceed or prompt for confirmation
   local auto_reason
   if auto_reason=$(wpdb_auto_proceed_reason); then
@@ -975,7 +978,10 @@ ${subsite_line}"
     fi
 
     if [[ -n "$base_domain" ]]; then
-      printf "\n-- 1. Update wp_blogs table: blog domain and path for SUB-SITES (ID != %s)\n\n" "$main_site_id"
+      # The network tables use the site's own table prefix (wp-config.php), not always "wp_"
+      local tbl_prefix
+      tbl_prefix=$(get_safe_table_prefix)
+      printf "\n-- 1. Update %sblogs table: blog domain and path for SUB-SITES (ID != %s)\n\n" "$tbl_prefix" "$main_site_id"
 
       # Generate commands for each mapped subsite domain
       local processed_blog_ids=() # Track processed blog_ids to prevent duplicates
@@ -1048,10 +1054,10 @@ ${subsite_line}"
           target_domain="$domain_part"
         fi
 
-        printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Subsite)\n" "$target_domain" "$site_path" "$blog_id" "$old_domain" "$new_domain"
+        printf "UPDATE %sblogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Subsite)\n" "$tbl_prefix" "$(sql_escape_string "$target_domain")" "$(sql_escape_string "$site_path")" "$blog_id" "$old_domain" "$new_domain"
       done
 
-      printf "\n-- 2. Update wp_blogs table: blog domain and path for MAIN SITE (ID = %s)\n\n" "$main_site_id"
+      printf "\n-- 2. Update %sblogs table: blog domain and path for MAIN SITE (ID = %s)\n\n" "$tbl_prefix" "$main_site_id"
 
       # --- Main Site wp_blogs Command (ID = main_site_id) ---
       if [[ -n "$main_site_new_domain" ]]; then
@@ -1071,13 +1077,13 @@ ${subsite_line}"
           fi
 
           # Output the command for wp_blogs main_site_id
-          printf "UPDATE wp_blogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Main Site)\n" "$target_domain" "$main_site_path" "$main_site_id" "$main_site_old_domain" "$main_site_new_domain"
+          printf "UPDATE %sblogs SET domain = \"%s\", path = \"%s\" WHERE blog_id = %s; -- %s → %s (Main Site)\n" "$tbl_prefix" "$(sql_escape_string "$target_domain")" "$(sql_escape_string "$main_site_path")" "$main_site_id" "$main_site_old_domain" "$main_site_new_domain"
       else
-          printf "\n-- WARNING: Main site mapping (ID %s) not found to generate wp_blogs command.\n" "$main_site_id"
+          printf "\n-- WARNING: Main site mapping (ID %s) not found to generate the blogs command.\n" "$main_site_id"
       fi
 
-      printf "\n-- 3. Update wp_site table: the main network site domain (ID = 1)\n"
-      printf "UPDATE wp_site SET domain = '%s' WHERE id = 1;\n\n" "$base_domain"
+      printf "\n-- 3. Update %ssite table: the main network site domain (ID = 1)\n" "$tbl_prefix"
+      printf "UPDATE %ssite SET domain = '%s' WHERE id = 1;\n\n" "$tbl_prefix" "$(sql_escape_string "$base_domain")"
 
       printf "\n================================================================\n"
 
