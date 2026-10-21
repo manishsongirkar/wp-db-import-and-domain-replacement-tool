@@ -50,6 +50,7 @@
 - Unit tests for database domain detection, `execute_with_timeout` and a guard against `printf` formats that start with a dash.
 
 ### Changed
+- CI workflow: `actions/checkout` and `actions/upload-artifact` updated from v4 to v7 (they run on Node.js 24; Node.js 20 is deprecated), and `ubuntu-latest` is pinned to `ubuntu-24.04` so the runner image does not change under the tests when `ubuntu-latest` moves to Ubuntu 26.
 - **`dry_run=true` no longer imports the dump.** Before, a dry run still replaced your real database with the dump and only previewed the search-replace, which contradicted "no data will be changed". The question "Run in dry-run mode?" is now asked **before** the import.
 - Exit code of an unknown command or option is now **2** (usage error) instead of 1. Exit codes are `0` success, `1` failure, `2` usage error.
 - Tests that printed "function not available" and skipped were rewritten against the real functions (`load_import_config`, `validate_config_file`, `run_search_replace`, ...) with real assertions: config loading and validation, the exact search-replace commands (two passes, `guid` skipped, `--dry-run`, `--network`/`--url`), the cleanup. A missing core function is now a **failure**. `./run_tests.sh --verbose` has zero "not available" warnings. Environment notes for optional tools (mysql client, git, curl) are shown as information.
