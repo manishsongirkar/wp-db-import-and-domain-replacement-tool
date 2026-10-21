@@ -350,8 +350,7 @@ import_wp_db() {
   fi
 
   # 🧱 Verify WordPress installation integrity
-  if ! execute_wp_cli core is-installed &>/dev/null; then
-    printf "${RED}❌ No WordPress installation detected in this directory.${RESET}\n"
+  if ! validate_wordpress_for_import; then
     return 1
   fi
 

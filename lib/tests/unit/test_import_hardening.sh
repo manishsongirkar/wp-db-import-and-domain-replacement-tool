@@ -973,6 +973,48 @@ test_sfp_checksum() {
 }
 
 # ================================================================
+# 5b. Import into an empty database
+# ================================================================
+test_empty_db_import_check() {
+    start_test "Empty Database Import" "the pre-import check accepts a site whose database has no tables"
+    _hard_load
+    local errors=0 w; w=$(_hard_workdir)
+    # Stub wp. STUB_DB=installed|empty|noconn  STUB_FILES=yes|no (WordPress files present)
+    cat > "$w/wp-empty-stub" <<'STUBEOF'
+#!/usr/bin/env bash
+case "$*" in
+  "core is-installed")
+    case "${STUB_DB:-installed}" in
+      installed) exit 0 ;;
+      empty)  echo "Error: The site you have requested is not installed." >&2; exit 1 ;;
+      noconn) echo "Error: Error establishing a database connection." >&2; exit 1 ;;
+    esac ;;
+  "core version") [[ "${STUB_FILES:-yes}" == "yes" ]] && { echo 6.8; exit 0; }; echo "Error: This does not seem to be a WordPress installation." >&2; exit 1 ;;
+esac
+exit 0
+STUBEOF
+    chmod +x "$w/wp-empty-stub"
+    export WP_COMMAND="$w/wp-empty-stub"
+    local out rc
+
+    STUB_DB=installed validate_wordpress_for_import >/dev/null 2>&1
+    _chk "installed site is accepted"                      test $? -eq 0
+    STUB_DB=empty STUB_FILES=yes validate_wordpress_for_import >/dev/null 2>&1
+    _chk "empty database with WordPress files is accepted" test $? -eq 0
+    out=$(STUB_DB=empty STUB_FILES=yes validate_wordpress_for_import 2>&1)
+    _chk "empty database is explained, not an error"       bash -c "[[ '$out' != *'❌'* && '$out' == *'empty database'* ]]"
+    out=$(STUB_DB=empty STUB_FILES=no validate_wordpress_for_import 2>&1); rc=$?
+    _chk "no WordPress files is rejected"                  test $rc -ne 0
+    _chk "no WordPress files keeps the old message"        bash -c "[[ '$out' == *'No WordPress installation detected'* ]]"
+    out=$(STUB_DB=noconn STUB_FILES=yes validate_wordpress_for_import 2>&1); rc=$?
+    _chk "database connection failure is rejected"         test $rc -ne 0
+    _chk "connection failure names the real problem"       bash -c "[[ '$out' == *'Cannot connect to the database'* ]]"
+    _chk "main script uses the import check"               grep -q 'validate_wordpress_for_import' "$_HARD_ROOT/import_wp_db.sh"
+    unset WP_COMMAND
+    _finish "empty database passes the pre-import check; connection and missing-files errors still stop the import"
+}
+
+# ================================================================
 # Run all
 # ================================================================
 run_import_hardening_tests() {
@@ -998,6 +1040,7 @@ run_import_hardening_tests() {
     test_backup_preference_prompt
     test_backup_config_keys
     test_sfp_checksum
+    test_empty_db_import_check
 
     [[ -n "$_HARD_WORK" ]] && rm -rf "$_HARD_WORK"
     finalize_test_session

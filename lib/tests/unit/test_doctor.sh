@@ -47,14 +47,21 @@ _dc_tools() {
 
 _dc_add() { local d="$1" t p; shift; for t in "$@"; do p=$(command -v "$t" 2>/dev/null) && ln -sf "$p" "$d/$t"; done; return 0; }
 
-# Stubs. Environment knobs: STUB_CONNECT=ok|fail, STUB_CREATE=ok|fail, STUB_MODE=..., STUB_ISINSTALLED=ok|fail
+# Stubs. Environment knobs: STUB_CONNECT=ok|fail, STUB_CREATE=ok|fail, STUB_MODE=..., STUB_ISINSTALLED=ok|fail|empty|noconn
 _dc_stubs() {
     local d="$1"
     cat > "$d/wp" <<'STUBEOF'
 #!/bin/sh
 case "$*" in
   *--version*)  echo "WP-CLI 2.12.0" ;;
-  *core\ is-installed*) [ "${STUB_ISINSTALLED:-ok}" = ok ] || { echo "Error: database connection" >&2; exit 1; } ;;
+  *core\ is-installed*)
+    case "${STUB_ISINSTALLED:-ok}" in
+      ok) ;;
+      empty)  echo "Error: The site you have requested is not installed." >&2; exit 1 ;;
+      noconn) echo "Error: Error establishing a database connection." >&2; exit 1 ;;
+      *)      echo "Error: something else" >&2; exit 1 ;;
+    esac ;;
+  *core\ version*) [ "${STUB_ISINSTALLED:-ok}" = fail ] && { echo "Error: not WordPress" >&2; exit 1; } ;;
 esac
 exit 0
 STUBEOF
@@ -160,6 +167,12 @@ test_doctor_site() {
 
     out=$(STUB_ISINSTALLED=fail _dc_run "$site" "$b"); rc=$?
     _chk "wp core is-installed failing is FAIL, exit 1"  bash -c 'test "$1" -eq 1 && grep -q "FAIL  WordPress" <<< "$0"' "$out" "$rc"
+
+    out=$(STUB_ISINSTALLED=empty _dc_run "$site" "$b"); rc=$?
+    _chk "empty database: WARN 'database table not found', no FAIL, exit 0" bash -c 'test "$1" -eq 0 && grep -q "WARN  WordPress.*database table not found" <<< "$0" && ! grep -q FAIL <<< "$0"' "$out" "$rc"
+
+    out=$(STUB_ISINSTALLED=noconn _dc_run "$site" "$b"); rc=$?
+    _chk "database connection error is FAIL, exit 1"     bash -c 'test "$1" -eq 1 && grep -q "FAIL  WordPress.*cannot connect to the database" <<< "$0"' "$out" "$rc"
 
     # config file: valid is OK, invalid is FAIL, and doctor never changes it
     printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\n' "$_DC_WORK" > "$site/wpdb-import.conf"
