@@ -394,31 +394,24 @@ parse_config_section() {
         return 1
     fi
 
-    # Use awk to parse INI-style config
+    # Use awk to parse INI-style config. Section and key names are matched without regard to case and
+    # surrounding spaces, in every awk (IGNORECASE is gawk only; macOS awk would read nothing for [General]).
+    # The first match wins.
     awk -v section="$section" -v key="$key" '
-        BEGIN {
-            in_section = 0
-            IGNORECASE = 1
-        }
-        /^\[.*\]/ {
-            if ($0 ~ "\\[" section "\\]") {
-                in_section = 1
-            } else {
-                in_section = 0
-            }
+        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+        BEGIN { in_section = 0; section = tolower(section); key = tolower(key) }
+        /^[[:space:]]*\[.*\]/ {
+            h = tolower(trim($0))
+            sub(/\][ \t]*[#;].*$/, "]", h)
+            in_section = (h == "[" section "]")
             next
         }
-        in_section && !/^[[:space:]]*[#;]/ && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
+        in_section && !/^[[:space:]]*[#;]/ && index($0, "=") {
             # (comment lines are skipped: "# Example: mysql_socket=/path" is not a setting;
-            #  the key must start the line: "require_dry_run=true" is not "dry_run")
-            # Find position of first equals sign
-            match($0, /=/)
-            if (RSTART > 0) {
-                # Extract everything after the equals sign
-                val = substr($0, RSTART + 1)
-                sub(/^[[:space:]]+/, "", val)  # Remove leading whitespace
-                sub(/[[:space:]]+$/, "", val)  # Remove trailing whitespace
-                print val
+            #  the whole key must match: "require_dry_run=true" is not "dry_run")
+            eq = index($0, "=")
+            if (tolower(trim(substr($0, 1, eq - 1))) == key) {
+                print trim(substr($0, eq + 1))
                 exit
             }
         }
@@ -630,6 +623,7 @@ update_config_general() {
         # blank lines at the end of [general] are held back, so an added key (with its comment)
         # lands right after the last setting and the blank lines stay in front of the next section
         function flush() { while (pend > 0) { print ""; pend-- } }
+        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
         function add_key() {
             if (comment != "") { print ""; print comment }
             print key "=" value
@@ -639,11 +633,13 @@ update_config_general() {
             in_section = 0
             updated = 0
             pend = 0
-            IGNORECASE = 1
+            lkey = tolower(key)
             comment = ENVIRON["WPDB_CFG_COMMENT"]
         }
-        /^\[.*\]/ {
-            if ($0 ~ "\\[general\\]") {
+        /^[[:space:]]*\[.*\]/ {
+            h = tolower(trim($0))
+            sub(/\][ \t]*[#;].*$/, "]", h)
+            if (h == "[general]") {
                 in_section = 1
             } else {
                 if (in_section) {
@@ -655,7 +651,7 @@ update_config_general() {
             next
         }
         in_section && /^[[:space:]]*$/ { pend++; next }
-        in_section && $0 ~ "^[[:space:]]*" key "=" {
+        in_section && !/^[[:space:]]*[#;]/ && index($0, "=") && tolower(trim(substr($0, 1, index($0, "=") - 1))) == lkey {
             flush()
             print key "=" value
             updated = 1
@@ -797,6 +793,12 @@ validate_config_file() {
     setup_stage_proxy=$(parse_config_section "$config_path" "general" "setup_stage_proxy")
     auto_proceed=$(parse_config_section "$config_path" "general" "auto_proceed")
 
+    # dry_run: a bad value would start a live import
+    case "$(printf '%s' "$dry_run" | tr '[:upper:]' '[:lower:]')" in
+        ""|true|false|yes|no|1|0|on|off) ;;
+        *) errors+=("dry_run: '$dry_run' is not true or false") ;;
+    esac
+
     # skip_tables and precise: report every bad value
     if declare -F sr_validate_settings >/dev/null 2>&1; then
         local sr_line
@@ -813,7 +815,7 @@ validate_config_file() {
         ""|true|false|yes|no|1|0|on|off) ;;
         *) errors+=("require_dry_run: '$rdr' is not true or false") ;;
     esac
-    if [[ -n "$rdh" ]] && { [[ ! "$rdh" =~ ^[0-9]+$ ]] || [[ "$rdh" -lt 1 ]]; }; then
+    if [[ -n "$rdh" ]] && { [[ ! "$rdh" =~ ^[0-9]{1,5}$ ]] || [[ "$((10#$rdh))" -lt 1 ]]; }; then
         errors+=("require_dry_run_hours: '$rdh' is not a whole number of hours (1 or more)")
     fi
 

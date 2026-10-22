@@ -45,7 +45,7 @@ wpdb_dry_run_requested() {
 # ===============================================
 # Sets WPDB_DRY_RUN_ACTIVE to "true" or "false". Order: command line / environment,
 # then dry_run from the config, then a question (default No; saved to the config).
-# Parameters: $1 = config path
+# Parameters: $1 = config path. Returns 1 (nothing changed) when dry_run in the config is not true or false.
 decide_dry_run_mode() {
     local config_path="${1:-}" answer=""
     WPDB_DRY_RUN_ACTIVE="false"
@@ -58,6 +58,14 @@ decide_dry_run_mode() {
             WPDB_DRY_RUN_ACTIVE="true"
             printf "Run in ${BOLD}dry-run mode${RESET}: ${YELLOW}enabled${RESET} (from config)\n\n"
         else
+            # an unknown value must never start a live import by accident
+            case "$(printf '%s' "$CONFIG_DRY_RUN" | tr '[:upper:]' '[:lower:]')" in
+                false|no|0|off) ;;
+                *)
+                    printf "${RED}❌ dry_run: '%s' is not true or false. Nothing was changed.${RESET}\n" "$CONFIG_DRY_RUN"
+                    return 1
+                    ;;
+            esac
             printf "Run in ${BOLD}dry-run mode${RESET}: ${GREEN}live mode${RESET} (from config)\n\n"
         fi
     else
@@ -136,10 +144,11 @@ dry_run_guard_check() {
         return 1
     }
     local hours="${CONFIG_REQUIRE_DRY_RUN_HOURS:-24}" key file stamp_key stamp_time now age
-    if [[ ! "$hours" =~ ^[0-9]+$ || "$hours" -lt 1 ]]; then
+    if [[ ! "$hours" =~ ^[0-9]{1,5}$ || "$((10#$hours))" -lt 1 ]]; then
         printf "${RED}❌ require_dry_run_hours: '%s' is not a whole number of hours (1 or more). Nothing was changed.${RESET}\n" "$hours"
         return 1
     fi
+    hours=$((10#$hours))   # "08" is 8 hours, not a bad octal number
     key=$(dry_run_stamp_key "$@")
     file=$(_dry_run_stamp_file "$key")
     if [[ -f "$file" ]]; then

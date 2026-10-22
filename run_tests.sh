@@ -591,6 +591,10 @@ run_unit_tests() {
         run_test_suite "Unit Tests (Import Report)" "$test_dir/test_import_report.sh" "post-import report: parser, leftovers, rotation, saved file (600), off switch, config"
         [[ $? -ne 0 ]] && overall_result=1
     fi
+    if [[ -f "$test_dir/test_hardening.sh" ]]; then
+        run_test_suite "Unit Tests (Hardening)" "$test_dir/test_hardening.sh" "bad dry_run value, restore --dry-run, portable config parser, import_sql_mode preflight"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
     if [[ -f "$test_dir/test_backup_edge.sh" ]]; then
         run_test_suite "Unit Tests (Backup Edge Cases)" "$test_dir/test_backup_edge.sh" "backup: free space, backup_keep_days, gpg encryption, progress, restore of encrypted files"
         [[ $? -ne 0 ]] && overall_result=1

@@ -411,6 +411,18 @@ _ri_guard_scenario() {
     _ri_run_tool "$SRV_WORK/t11"
     _chk "require_dry_run=maybe: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "is not true or false" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
     unset WPDB_STAMP_DIR
+
+    # 7) a mistyped dry_run is refused too: it must never start a live import (--yes would run it)
+    awk '/^require_dry_run=/ { print "require_dry_run=false"; next } /^dry_run=/ { next } 1; /^\[general\]/ { print "dry_run=ture" }' "$cfg" > "$SRV_WORK/t11.conf" && cat "$SRV_WORK/t11.conf" > "$cfg"
+    fp=$(_ri_fingerprint target11)
+    _ri_run_tool "$SRV_WORK/t11" --yes
+    _chk "dry_run=ture: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "dry_run: .ture. is not true or false" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
+
+    # 8) no domains in the config with --yes: the tool cannot ask, so it stops before the backup and the import
+    awk '/^dry_run=/ { print "dry_run=false"; next } /^old_domain=/ { print "old_domain="; next } /^new_domain=/ { print "new_domain="; next } 1' "$cfg" > "$SRV_WORK/t11.conf" && cat "$SRV_WORK/t11.conf" > "$cfg"
+    fp=$(_ri_fingerprint target11)
+    _ri_run_tool "$SRV_WORK/t11" --yes
+    _chk "empty domains with --yes: exit 1, explained, nothing changed (no import)" bash -c 'test "$1" -ne 0 && grep -q "cannot ask for it" <<< "$0" && ! grep -qE "Database import successful|Creating backup|Backup created" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
 }
 
 # Scenario 12 (#24): a dump with zero dates on a strict-mode server (MySQL 8 defaults to NO_ZERO_DATE; MariaDB does
@@ -826,6 +838,17 @@ test_real_import() {
     { printf 'CREATE DATABASE /*!32312 IF NOT EXISTS*/ `target7` /*!40100 DEFAULT CHARACTER SET utf8mb4 */;\nUSE `target7`;\nDROP DATABASE IF EXISTS `target7`;\n'; cat "$SRV_WORK/prod.sql"; } > "$SRV_WORK/prod_dbstmts.sql"
     _ri_dry_run_scenario "Scenario 7d: dump with CREATE/USE/DROP DATABASE (must not touch the real database)" "$SRV_WORK/prod_dbstmts.sql" prod.example.com "$SRV_WORK/t7" target7 --dry-run no
     _chk "the real database still has its tables"          test "$(_ri_q -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='target7'")" -gt 5
+
+    # the same dump in a LIVE run, naming ANOTHER database: refused, that database and the site are untouched
+    _ri_q -e "CREATE DATABASE IF NOT EXISTS victim7; CREATE TABLE IF NOT EXISTS victim7.wp_options (id INT PRIMARY KEY, v VARCHAR(20)); REPLACE INTO victim7.wp_options VALUES (1,'precious')" >/dev/null 2>&1
+    { printf 'USE `victim7`;\n'; cat "$SRV_WORK/prod.sql"; } > "$SRV_WORK/prod_switch.sql"
+    _ri_write_config "$SRV_WORK/t7" "$SRV_WORK/prod_switch.sql" prod.example.com target.test auto
+    local fp7; fp7=$(_ri_fingerprint target7)
+    _ri_run_tool "$SRV_WORK/t7" --yes
+    _chk "live run of a dump with USE <other db>: exit 1 and explained" bash -c 'test "$1" -eq 1 && grep -q "selects another database" <<< "$0" && grep -q "Nothing was changed" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+    _chk "the other database is untouched"                 test "$(_ri_q -N -e "SELECT v FROM victim7.wp_options WHERE id=1")" = "precious"
+    _chk "the site database is unchanged"                  test "$fp7" = "$(_ri_fingerprint target7)"
+    _ri_q -e "DROP DATABASE IF EXISTS victim7" >/dev/null 2>&1
 
     # a database user that may not create databases: a clear message, nothing changed
     _ri_q -e "CREATE USER 'limuser'@'localhost' IDENTIFIED BY 'limpass123'; GRANT ALL ON \`target7b\`.* TO 'limuser'@'localhost'" >/dev/null 2>&1
