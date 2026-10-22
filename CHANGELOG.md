@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-22
+
+### Known limits
+- Ctrl-C on the WP-CLI import path (`use_socket=false`) can leave `wp db import` running in the background.
+- Two runs at the same time on one site have no lock.
+- `new_domain` is not validated, and a typo in `old_domain` shows only after the import ("Domain validation failed"); the dry run warns about it.
+- The dry run is slow on a dump with a single line of tens of MB.
+
 ### Added
 - **Post-import report** ([#21](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/21)): after a live import the tool prints a summary and saves it as `wpdb-import-report.txt` next to `wpdb-import.conf` (mode 600). It lists the replacements per table and the split between the PHP (serialized-aware) and SQL replacer, the tables WP-CLI skipped, the `Error:` / `Warning:` lines of the WP-CLI logs, the old domain still found in the database (one read-only `search-replace --dry-run` per old host, same table flags as the real run, `guid` not counted), and the time per step. Single site and multisite. No report in a dry run.
   - **`import_report=true`** (default; `false` turns the report and the extra read of the database off) and **`report_keep=5`** (the previous report is renamed `wpdb-import-report.<date>.txt`, the oldest beyond the limit are deleted, `0` keeps all). A problem with the report only prints a warning; it never fails the import.

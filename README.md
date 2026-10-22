@@ -261,7 +261,7 @@ jobs:
           wp config create --dbname=wordpress --dbuser=root --dbpass=root --dbhost=127.0.0.1
 
       - name: Get the import tool (pinned release)
-        run: git clone --depth 1 --branch v1.2.0 https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git "$RUNNER_TEMP/wpdb"
+        run: git clone --depth 1 --branch v1.3.0 https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool.git "$RUNNER_TEMP/wpdb"
 
       - name: Write the config
         run: |
