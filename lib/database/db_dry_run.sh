@@ -17,6 +17,9 @@
 #     5. the scratch database is dropped, and a summary is printed
 #   Nothing is backed up, imported or replaced in the real database.
 #
+# With require_dry_run=true a LIVE run is refused until a dry run of the same dump has finished
+#   (see "require_dry_run" below).
+#
 # Needs: the mysql client and an account that may CREATE DATABASE (a clear message is
 #   printed when either is missing).
 #
@@ -72,6 +75,89 @@ decide_dry_run_mode() {
         fi
     fi
     export WPDB_DRY_RUN_ACTIVE
+}
+
+# ===============================================
+# require_dry_run: a live run needs a fresh dry run
+# ===============================================
+# require_dry_run=true (default false) and require_dry_run_hours=N (default 24) in the config.
+# A dry run that finishes writes a small "stamp" file in a private folder outside the project
+# (~/.wp-db-import/dry-run-stamps, or WPDB_STAMP_DIR). A live run is refused unless a stamp
+# of the same dump, domains and mappings is not older than N hours. The dump is identified by
+# its absolute path, size and modification time (a checksum of a multi-GB dump is too slow); a
+# dump that changed on disk gets a new time and so needs a new dry run.
+# Nothing is written, and nothing is refused, while require_dry_run is off.
+
+# What a dry run previewed, as one line. Parameters: sql file, old domain, new domain, config path, WordPress root
+dry_run_stamp_key() {
+    local sql="$1" old="$2" new="$3" config="${4:-}" wp_root="${5:-}" abs size mtime maps=""
+    abs="$(cd "$(dirname "$sql")" 2>/dev/null && pwd -P)/$(basename "$sql")"
+    size=$(_sql_file_size_bytes "$sql")
+    mtime=$(stat -f %m "$sql" 2>/dev/null)
+    [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -c %Y "$sql" 2>/dev/null)
+    [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+    if [[ -n "$config" && -f "$config" ]] && declare -F dm_section_lines >/dev/null 2>&1; then
+        maps=$( { dm_section_lines "$config" site_mappings; dm_section_lines "$config" domain_mappings; dm_section_lines "$config" site_domain_mappings; } | cksum | awk '{ print $1 "-" $2 }')
+    fi
+    printf '%s|%s|%s|%s|%s|%s|%s' "$abs" "$size" "$mtime" "$old" "$new" "$wp_root" "$maps"
+}
+
+dry_run_stamp_dir() { printf '%s' "${WPDB_STAMP_DIR:-$HOME/.wp-db-import/dry-run-stamps}"; }
+
+# The stamp file of a key: the file name is a checksum, the content (key, time) is what is compared
+_dry_run_stamp_file() { printf '%s/%s' "$(dry_run_stamp_dir)" "$(printf '%s' "$1" | cksum | awk '{ print $1 "-" $2 }')"; }
+
+# Writes the stamp of a finished dry run. Does nothing while require_dry_run is off.
+# Parameters: sql file, old domain, new domain, config path, WordPress root
+dry_run_stamp_write() {
+    is_config_true "${CONFIG_REQUIRE_DRY_RUN:-}" || return 0
+    local key file dir
+    key=$(dry_run_stamp_key "$@") || return 1
+    file=$(_dry_run_stamp_file "$key")
+    dir=$(dry_run_stamp_dir)
+    if ! (umask 077; mkdir -p "$dir") 2>/dev/null || ! (umask 077; printf '%s\n%s\n' "$key" "$(date +%s)" > "$file") 2>/dev/null; then
+        printf "${YELLOW}⚠️  Could not write the dry-run stamp in %s: a live run with require_dry_run=true will be refused.${RESET}\n" "$dir"
+        return 1
+    fi
+    [[ "$dir" == "$HOME/.wp-db-import/dry-run-stamps" ]] && chmod 700 "$HOME/.wp-db-import" "$dir" 2>/dev/null
+    printf "${DIM}   Dry-run stamp saved: a live run of this dump is allowed for %s hours (require_dry_run=true).${RESET}\n" "${CONFIG_REQUIRE_DRY_RUN_HOURS:-24}"
+    return 0
+}
+
+# Allows or refuses a LIVE run. Returns 0 when allowed, 1 when refused (the reason and the command to run are printed).
+# Parameters: sql file, old domain, new domain, config path, WordPress root
+dry_run_guard_check() {
+    is_config_true "${CONFIG_REQUIRE_DRY_RUN:-}" || {
+        # an unknown value must not switch a safety guard off without a word
+        case "$(printf '%s' "${CONFIG_REQUIRE_DRY_RUN:-}" | tr '[:upper:]' '[:lower:]')" in
+            ""|false|no|0|off) return 0 ;;
+        esac
+        printf "${RED}❌ require_dry_run: '%s' is not true or false. Nothing was changed.${RESET}\n" "$CONFIG_REQUIRE_DRY_RUN"
+        return 1
+    }
+    local hours="${CONFIG_REQUIRE_DRY_RUN_HOURS:-24}" key file stamp_key stamp_time now age
+    if [[ ! "$hours" =~ ^[0-9]+$ || "$hours" -lt 1 ]]; then
+        printf "${RED}❌ require_dry_run_hours: '%s' is not a whole number of hours (1 or more). Nothing was changed.${RESET}\n" "$hours"
+        return 1
+    fi
+    key=$(dry_run_stamp_key "$@")
+    file=$(_dry_run_stamp_file "$key")
+    if [[ -f "$file" ]]; then
+        { IFS= read -r stamp_key; IFS= read -r stamp_time; } < "$file"
+        now=$(date +%s)
+        if [[ "$stamp_key" == "$key" && "$stamp_time" =~ ^[0-9]+$ ]]; then
+            age=$((now - stamp_time))
+            [[ "$age" -ge 0 && "$age" -le $((hours * 3600)) ]] && return 0
+            printf "${RED}❌ require_dry_run=true: the last dry run of this dump finished %s hours ago (the limit is %s).${RESET}\n" "$((age / 3600))" "$hours"
+        else
+            printf "${RED}❌ require_dry_run=true: the dry-run stamp is not valid for this dump.${RESET}\n"
+        fi
+    else
+        printf "${RED}❌ require_dry_run=true: no dry run of this dump, with these domains and mappings, was finished in the last %s hours.${RESET}\n" "$hours"
+    fi
+    printf "${YELLOW}💡 Run the preview first:  wp-db-import --dry-run${RESET}\n"
+    printf "   Then run the import again. A changed dump, domain or mapping needs a new dry run. Nothing was changed.\n"
+    return 1
 }
 
 # ===============================================
@@ -323,4 +409,5 @@ _dry_run_in_scratch() {
 }
 
 export -f wpdb_dry_run_requested decide_dry_run_mode dry_run_domains _dry_run_sql_str \
-    _dry_run_stream dry_run_preview _dry_run_in_scratch dry_run_tables_without_key 2>/dev/null
+    _dry_run_stream dry_run_preview _dry_run_in_scratch dry_run_tables_without_key dry_run_stamp_key dry_run_stamp_dir _dry_run_stamp_file \
+    dry_run_stamp_write dry_run_guard_check 2>/dev/null

@@ -165,7 +165,7 @@ read_general_config() {
         awk -v key="$key" '
             /^\[general\]/ { in_section=1; next }
             /^\[/ && in_section { in_section=0 }
-            in_section && $0 ~ key "[[:space:]]*=" {
+            in_section && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
                 match($0, /=/)
                 val = substr($0, RSTART + 1)
                 sub(/^[[:space:]]+/, "", val)

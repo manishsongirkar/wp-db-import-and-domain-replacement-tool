@@ -14,7 +14,7 @@
 #        options, no leftover old domain, the pre-import backup, cache flush, no temp files
 #   Scenarios: single site (socket), use_socket=false (WP-CLI path), .gz dump, compatibility
 #   retry (MariaDB collations), multisite subdirectory, multisite subdomain, skip_tables and
-#   precise on custom tables.
+#   precise on custom tables, tables without a primary key, and require_dry_run.
 #
 # Needs: a MySQL/MariaDB server binary (see lib/tests/server_helpers.sh), php with mysqli,
 #   WP-CLI, and network access for `wp core download` (WP-CLI caches the download).
@@ -340,6 +340,68 @@ _ri_nokey_scenario() {
     _chk "the keyless table keeps the old domain (WP-CLI skipped it)" test "$(_ri_q -N -e "SELECT COUNT(*) FROM target10.wp_nopk WHERE v LIKE '%$old%'")" = 2
     _chk "the table with a UNIQUE NOT NULL key is replaced" test "$(_ri_q -N -e "SELECT v FROM target10.wp_uniq")" = "https://target.test/u"
     _chk "the table with a primary key is replaced"        test "$(_ri_q -N -e "SELECT v FROM target10.wp_haspk")" = "https://target.test/k"
+}
+
+# Scenario 11: require_dry_run=true. A live run is refused until a dry run of the same dump finished;
+# --dry-run is never blocked; a changed dump needs a new dry run; with the key off nothing is checked.
+_ri_guard_scenario() {
+    printf "\n  -- Scenario 11: require_dry_run (a live run needs a fresh dry run of the same dump)\n"
+    local dump="$SRV_WORK/prod11.sql" cfg="$SRV_WORK/t11/wpdb-import.conf" fp backups_before
+    export WPDB_STAMP_DIR="$SRV_WORK/stamps"
+    cp "$SRV_WORK/prod.sql" "$dump"
+    _ri_install_site "$SRV_WORK/t11" target11 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); unset WPDB_STAMP_DIR; return; }
+    _ri_wp "$SRV_WORK/t11" core is-installed >/dev/null 2>&1; _ri_wp "$SRV_WORK/t11" option get siteurl >/dev/null 2>&1
+    _ri_write_config "$SRV_WORK/t11" "$dump" prod.example.com target.test auto
+    awk '1; /^\[general\]/ { print "require_dry_run=true"; print "require_dry_run_hours=24" }' "$cfg" > "$SRV_WORK/t11.conf" && cat "$SRV_WORK/t11.conf" > "$cfg"
+
+    # 1) live run, no stamp: refused before anything is changed or backed up
+    fp=$(_ri_fingerprint target11); backups_before=$(ls "$SRV_WORK/backups" 2>/dev/null | wc -l | tr -d ' ')
+    _ri_run_tool "$SRV_WORK/t11"
+    _chk "no dry run yet: exit 1, explained, names the command" bash -c 'test "$1" -eq 1 && grep -q "no dry run of this dump" <<< "$0" && grep -q "wp-db-import --dry-run" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+    _chk "refused: the database is unchanged"               test "$fp" = "$(_ri_fingerprint target11)"
+    _chk "refused: no backup was made, no import started"   bash -c 'test "$(ls "$0" 2>/dev/null | wc -l | tr -d " ")" = "$1" && ! grep -q "Database import" <<< "$2"' "$SRV_WORK/backups" "$backups_before" "$_RI_OUT"
+    _chk "refused: no stamp exists"                         bash -c '! ls "$0"/* >/dev/null 2>&1' "$WPDB_STAMP_DIR"
+    _chk "console shows no shell/PHP errors"                _ri_console_clean
+
+    # 2) --dry-run is never blocked, and it writes the stamp
+    _ri_run_tool "$SRV_WORK/t11" --dry-run
+    _chk "--dry-run with the guard on: exit 0"              test "$_RI_RC" -eq 0
+    _chk "--dry-run: the stamp is announced"                grep -q 'Dry-run stamp saved' <<< "$_RI_OUT"
+    _chk "--dry-run: one stamp file, mode 600"              bash -c 'm() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }; test "$(ls "$0" | wc -l | tr -d " ")" = 1 && test "$(m "$(ls -d "$0"/* | head -1)")" = 600' "$WPDB_STAMP_DIR"
+    _chk "--dry-run: the real database is unchanged"        test "$fp" = "$(_ri_fingerprint target11)"
+
+    # 3) the live run is now allowed
+    _ri_run_tool "$SRV_WORK/t11"
+    _chk "after the dry run: the live run exits 0"          test "$_RI_RC" -eq 0
+    _chk "after the dry run: the import ran"                grep -q 'Database import successful' <<< "$_RI_OUT"
+    _ri_assert_replaced "$SRV_WORK/t11" "target.test"
+
+    # 4) the live run above saved the site mapping, which changes the stamp key: a second live run needs a new dry run
+    fp=$(_ri_fingerprint target11)
+    _ri_run_tool "$SRV_WORK/t11"
+    _chk "a second live run without a new dry run: refused (the saved mapping changed the preview)" bash -c 'test "$1" -eq 1 && grep -q "no dry run of this dump" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
+    # a changed dump needs a new dry run too
+    _ri_run_tool "$SRV_WORK/t11" --dry-run
+    _chk "dry run again: exit 0"                            test "$_RI_RC" -eq 0
+    fp=$(_ri_fingerprint target11)
+    touch -t 203001010000 "$dump"
+    _ri_run_tool "$SRV_WORK/t11"
+    _chk "the dump changed after the dry run: refused, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "no dry run of this dump" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
+
+    # 5) the key off: no check and no stamp
+    rm -rf "$WPDB_STAMP_DIR"
+    awk '/^require_dry_run=/ { print "require_dry_run=false"; next } 1' "$cfg" > "$SRV_WORK/t11.conf" && cat "$SRV_WORK/t11.conf" > "$cfg"
+    _ri_run_tool "$SRV_WORK/t11"
+    _chk "require_dry_run=false: the live run needs no stamp" test "$_RI_RC" -eq 0
+    _ri_run_tool "$SRV_WORK/t11" --dry-run
+    _chk "require_dry_run=false: a dry run writes no stamp"  bash -c '! test -e "$0"' "$WPDB_STAMP_DIR"
+
+    # 6) a bad value is refused, never ignored
+    awk '/^require_dry_run=/ { print "require_dry_run=maybe"; next } 1' "$cfg" > "$SRV_WORK/t11.conf" && cat "$SRV_WORK/t11.conf" > "$cfg"
+    fp=$(_ri_fingerprint target11)
+    _ri_run_tool "$SRV_WORK/t11"
+    _chk "require_dry_run=maybe: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "is not true or false" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
+    unset WPDB_STAMP_DIR
 }
 
 # Scenario 8b: multisite (subdirectory) with [domain_mappings] (network) and [site_domain_mappings] (blog 2 only)
@@ -704,6 +766,7 @@ test_real_import() {
 
     _ri_skip_precise_scenario
     _ri_nokey_scenario
+    _ri_guard_scenario
     _ri_custom_multisite_scenario
     _ri_prefix_multisite_scenario subdirectory zz_
     _ri_prefix_multisite_scenario subdomain Qx9_

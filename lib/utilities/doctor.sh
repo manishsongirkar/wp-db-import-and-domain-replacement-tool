@@ -245,6 +245,24 @@ doctor_site_checks() {
         fi
     fi
 
+    # Dry-run guard (only shown when it is on): the stamp folder must be writable, or every live run is refused
+    local rdr rdh sdir sprobe
+    if [[ -n "$config_path" && -f "$config_path" ]]; then
+        rdr=$(parse_config_section "$config_path" "general" "require_dry_run" 2>/dev/null)
+        rdh=$(parse_config_section "$config_path" "general" "require_dry_run_hours" 2>/dev/null)
+        if is_config_true "$rdr"; then
+            sdir=$(dry_run_stamp_dir)
+            sprobe="$sdir"; while [[ ! -e "$sprobe" && "$sprobe" != "/" ]]; do sprobe=$(dirname "$sprobe"); done
+            if [[ -n "$rdh" ]] && { [[ ! "$rdh" =~ ^[0-9]+$ ]] || [[ "$rdh" -lt 1 ]]; }; then
+                _doc_row FAIL "Dry-run guard" "require_dry_run_hours '$rdh' is not a whole number of hours" "set require_dry_run_hours to 1 or more in $config_path"
+            elif [[ ! -d "$sprobe" || ! -w "$sprobe" ]]; then
+                _doc_row FAIL "Dry-run guard" "$sdir is not writable, so every live run would be refused" "chmod/chown the folder, or set WPDB_STAMP_DIR to a writable folder"
+            else
+                _doc_row OK "Dry-run guard" "on: a live run needs a dry run of the same dump in the last ${rdh:-24} h (stamps in $sdir)"
+            fi
+        fi
+    fi
+
     # Config file
     if [[ -n "$config_path" && -f "$config_path" ]]; then
         local out

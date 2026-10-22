@@ -12,9 +12,17 @@
   - Tests: `test_search_replace_flags.sh` (flags on every pass, values, config upgrade), dry-run and doctor cases, and real-import scenario 9 (a skipped table, a wildcard, a custom serialized value that only `--precise` repairs).
 - **Dry run lists tables with no primary key** ([#46](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/46)): the temporary database is queried (`information_schema`, the same columns `SHOW COLUMNS` marks `PRI`, which is what WP-CLI reads) and the tables with no key are printed with their row counts, most rows first (10 shown, the rest counted). A `UNIQUE NOT NULL` key counts as a key; views are not listed; nothing is printed when every table has a key. Report only: the import and the replacement are unchanged.
 - Tests: unit cases in `test_dry_run.sh` (stubbed client) and real-import scenario 10 (a keyless table, a `UNIQUE NOT NULL` table, a table with a primary key and a view; a live run leaves the keyless table unchanged).
+- **`require_dry_run` guard** ([#47](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/47)), opt in (default `false`: no check and no file written):
+  - **`require_dry_run=true`** refuses a **live** import, before any backup or change, unless a dry run of the same dump finished in the last **`require_dry_run_hours`** hours (default `24`). The message names the command to run (`wp-db-import --dry-run`). `--dry-run` is never blocked.
+  - A finished dry run writes a stamp in a private folder outside the project (`~/.wp-db-import/dry-run-stamps`, mode 700/600, `WPDB_STAMP_DIR` to change it). Decisions on the open questions of the issue: the dump is identified by **absolute path + size + modification time** (a checksum of a multi-GB dump is too slow); the key also holds the old and new domain, the WordPress folder and the mapping sections. For CI: run `wp-db-import --dry-run` and `wp-db-import --yes` in the same job.
+  - A value that is not true/false, or hours that are not a whole number of 1 or more, stops the run with a message (it never switches the guard off silently). `config-validate`, `config-show` and `doctor` (stamp folder writable) know the keys; they are added to existing configs at import time, to new configs and to the examples.
+  - Tests: `test_require_dry_run.sh` (no stamp, stale, changed dump/domain/mapping, fresh, key off, bad values, config, wiring) and real-import scenario 11.
 
 ### Documentation
 - **Corrected:** README and USAGE said tables without a primary key are "read slowly". With WP-CLI 2.12 they are **skipped** (reported as `skipped`) and keep the old domain. The docs now say so and point to the dry-run list.
+
+### Fixed
+- **`parse_config_section` matched a key anywhere in a line**, so `dry_run` was also read from `require_dry_run=true` when that line came first in `[general]`. The key must now start the line (leading spaces are fine). Same fix in the standalone reader of `config_reader.sh`.
 
 ### Security
 - **PHP injection in the multisite network update fixed:** domains and paths placed in the `wp eval` code are escaped (`php_sq_escape`), and blog IDs must be numbers. Before, a quote in a domain from `wpdb-import.conf` or a prompt could leave the PHP string. The helper is required: without it the update stops and writes nothing.
