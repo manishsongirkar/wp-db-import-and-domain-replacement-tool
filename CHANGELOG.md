@@ -10,6 +10,11 @@
   - The dry run leaves skipped tables out of its counts, names them, and says when precise is on.
   - The keys are added to existing configs at import time (with comments), to new configs and to the example files. Empty keys give the same WP-CLI commands as before. `config-show` and `doctor` show them.
   - Tests: `test_search_replace_flags.sh` (flags on every pass, values, config upgrade), dry-run and doctor cases, and real-import scenario 9 (a skipped table, a wildcard, a custom serialized value that only `--precise` repairs).
+- **Dry run lists tables with no primary key** ([#46](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/46)): the temporary database is queried (`information_schema`, the same columns `SHOW COLUMNS` marks `PRI`, which is what WP-CLI reads) and the tables with no key are printed with their row counts, most rows first (10 shown, the rest counted). A `UNIQUE NOT NULL` key counts as a key; views are not listed; nothing is printed when every table has a key. Report only: the import and the replacement are unchanged.
+- Tests: unit cases in `test_dry_run.sh` (stubbed client) and real-import scenario 10 (a keyless table, a `UNIQUE NOT NULL` table, a table with a primary key and a view; a live run leaves the keyless table unchanged).
+
+### Documentation
+- **Corrected:** README and USAGE said tables without a primary key are "read slowly". With WP-CLI 2.12 they are **skipped** (reported as `skipped`) and keep the old domain. The docs now say so and point to the dry-run list.
 
 ### Security
 - **PHP injection in the multisite network update fixed:** domains and paths placed in the `wp eval` code are escaped (`php_sq_escape`), and blog IDs must be numbers. Before, a quote in a domain from `wpdb-import.conf` or a prompt could leave the PHP string. The helper is required: without it the update stops and writes nothing.

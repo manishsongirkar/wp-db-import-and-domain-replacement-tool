@@ -46,6 +46,7 @@ _d_load() {
 # A stub mysql that answers by query text. Controls (environment):
 #   STUB_CREATE_RC=1        CREATE DATABASE fails (no privilege)
 #   STUB_IMPORT=ok|compat|fail   behavior of the dump import (compat: first import rejected, second works)
+#   STUB_NOPK="a\nb"             the tables the key query returns (tables without a primary key)
 _d_make_stub() {
     local dir="$1"
     cat > "$dir/mysql" <<'EOF'
@@ -72,6 +73,8 @@ fi
 case "$sql" in
     "CREATE DATABASE"*)            [[ "${STUB_CREATE_RC:-0}" == 1 ]] && { echo "ERROR 1044 (42000): Access denied for user 'u'@'localhost' to database 'x'"; exit 1; }; exit 0 ;;
     *"DROP DATABASE"*)             exit 0 ;;
+    *"c.column_key = 'PRI'"*)      [[ -n "${STUB_NOPK:-}" ]] && printf '%s\n' "$STUB_NOPK" ;;   # tables without a key (one name per line)
+    "SELECT '"*"', COUNT(*) FROM "*) printf '%s' "$sql" | grep -o "SELECT '[^']*'" | sed "s/SELECT '//; s/'\$//" | awk '{ printf "%s\t%d\n", $0, (NR == 1 ? 120 : 7) }' ;;
     *"information_schema.tables"*) printf 'wp_options\nwp_posts\n' ;;
     *"information_schema.columns"*) printf 'wp_options\toption_value\nwp_posts\tpost_content\nwp_posts\tpost_title\n' ;;
     "SELECT COUNT(*) FROM"*)       printf '7\n5\n' ;;
@@ -316,6 +319,23 @@ EOT
     : > "$STUB_LOG"
     out=$(dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); out=$(printf '%s' "$out" | _strip)
     _chk "no keys: no skip or precise line, wp_options is counted" bash -c "! grep -qE 'Skipped tables|Precise mode' <<< \"\$0\" && grep 'LOCATE(' '$STUB_LOG' | grep -q 'wp_options'" "$out"
+    # tables without a primary key: WP-CLI skips them, the preview lists them (report only)
+    : > "$STUB_LOG"
+    out=$(STUB_NOPK=$'wp_legacy_log\nwp_tmp' dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); rc=$?; out=$(printf '%s' "$out" | _strip)
+    _chk "no key: the preview still succeeds (report only)"  test "$rc" -eq 0
+    _chk "no key: the block says WP-CLI skips them and the old domain stays" grep -q 'will SKIP (no primary key): the old domain stays in them' <<< "$out"
+    _chk "no key: both tables are listed with their row counts" bash -c 'grep -qE "wp_legacy_log +120 rows" <<< "$0" && grep -qE "wp_tmp +7 rows" <<< "$0"' "$out"
+    _chk "no key: the table with most rows comes first"      bash -c 'a=$(grep -n "wp_legacy_log" <<< "$0" | head -1 | cut -d: -f1); b=$(grep -n "wp_tmp" <<< "$0" | head -1 | cut -d: -f1); test "$a" -lt "$b"' "$out"
+    _chk "no key: the fix is named"                          grep -q 'Add a primary key' <<< "$out"
+    _chk "no key: the rest of the summary is unchanged"      grep -q 'Would import: *2 tables / 12 rows' <<< "$out"
+    _chk "the key query reads the scratch database only, tables only (no views)" bash -c "grep \"c.column_key = 'PRI'\" '$STUB_LOG' | grep -q \"table_schema = 'wpdb_dry_\" && grep \"c.column_key = 'PRI'\" '$STUB_LOG' | grep -q \"table_type = 'BASE TABLE'\""
+    _chk "the row counts read the listed tables only"        bash -c "grep -q \"SELECT 'wp_legacy_log', COUNT(\*) FROM \\\`wp_legacy_log\\\`;SELECT 'wp_tmp', COUNT(\*) FROM \\\`wp_tmp\\\`;\" '$STUB_LOG'"
+    : > "$STUB_LOG"
+    out=$(dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); out=$(printf '%s' "$out" | _strip)
+    _chk "every table has a key: no block at all"            bash -c '! grep -qE "SKIP|primary key" <<< "$0"' "$out"
+    _chk "every table has a key: no per-table count query"   bash -c "! grep -q \"', COUNT(\\*) FROM\" '$STUB_LOG'"
+    out=$(STUB_NOPK=$(printf 'wp_t%s\n' 1 2 3 4 5 6 7 8 9 10 11 12) dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "" 2>&1 </dev/null); out=$(printf '%s' "$out" | _strip)
+    _chk "12 tables: 10 are shown, the rest is counted"      bash -c '[[ $(grep -cE "^ +wp_t[0-9]+ +[0-9]+ rows" <<< "$0") -eq 10 ]] && grep -q "and 2 more tables" <<< "$0"' "$out"
 
     unset STUB_LOG STUB_DIR WPDB_MYSQL_BIN CONFIG_USE_SOCKET
     _finish "the preview is safe and explains failures"
