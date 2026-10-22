@@ -179,6 +179,29 @@ A dry run **never changes your database**: no backup, no import, no replacement.
 - **Behavior change:** before, `dry_run=true` still imported the dump into your real database and only previewed the search-replace. A dry run now previews everything and imports nothing. The question "Run in dry-run mode?" is asked **before** the import, not after it.
 - Exit codes: `0` preview done, `1` preview could not run (no client, no CREATE privilege, broken dump).
 
+#### 🔒 Require a dry run first (optional)
+
+A live run can start with no preview: the dry-run question defaults to **N**, and `--yes` runs live. To make the preview a hard rule, set in `wpdb-import.conf`:
+
+```ini
+require_dry_run=true        # default false: no check, and nothing is written
+require_dry_run_hours=24    # how long a finished dry run stays valid (a whole number, 1 or more)
+```
+
+- A dry run that **finishes** writes a small stamp file in a private folder **outside the project** (`~/.wp-db-import/dry-run-stamps`, mode `700`/`600`; set `WPDB_STAMP_DIR` to use another folder). A live run is **refused before anything is changed** (no backup, no import) unless a stamp of the same dump, domains and mappings is not older than `require_dry_run_hours`. The message names the command to run: `wp-db-import --dry-run`.
+- **What "the same dump" means:** the absolute path, the size and the modification time of the file. A checksum of a multi-GB dump would take minutes, so it is not used. A dump that is changed or replaced gets a new time and needs a new dry run. The old and new domain, the WordPress folder, and the `[site_mappings]`, `[domain_mappings]` and `[site_domain_mappings]` entries (comments do not count) are part of the stamp too.
+- `--dry-run` (and `dry_run=true`) is never blocked, and the guard is ignored by it. A value that is not `true` or `false` stops the run with a message; it never switches the guard off by accident.
+- **CI:** run the preview and the import in the **same job**, so both use the same home folder and the same dump file:
+
+  ```yaml
+  - run: wp-db-import --dry-run
+  - run: wp-db-import --yes
+  ```
+
+  A preview from another job or machine does not count (the stamp is local).
+- The live run saves the site mapping in `[site_mappings]` when it ends. That changes the stamp key, so a **second** live run of the same dump needs a new dry run first. This is on purpose: a changed mapping is a changed preview.
+- `wp-db-import doctor` shows a `Dry-run guard` row when it is on and fails when the stamp folder is not writable (every live run would be refused).
+
 ### 🤖 Unattended Mode (`--yes`) for Scripts and CI
 
 ```bash
@@ -388,6 +411,10 @@ backup_gpg_recipient=
 # tables the replacement must not touch (comma list, * and ? wildcards), and WP-CLI --precise
 skip_tables=
 precise=false
+
+# refuse a live import unless a dry run of the same dump finished in the last N hours
+require_dry_run=false
+require_dry_run_hours=24
 
 [site_mappings]
 # Format: blog_id:old_domain:new_domain
@@ -646,6 +673,8 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
 | **all_tables** | Include non-WordPress prefixed tables | `true` | `all_tables=true` |
 | **skip_tables** | Tables the replacement must not touch (comma list, `*` and `?` wildcards) | empty (none) | `skip_tables=wp_custom_cache,wp_logs_*` |
 | **precise** | Pass `--precise` to every search-replace call (PHP replacement: slower, handles custom serialized formats) | `false` | `precise=true` |
+| **require_dry_run** | Refuse a live import unless a dry run of the same dump finished in the last `require_dry_run_hours` hours (see [Require a dry run first](#-require-a-dry-run-first-optional)) | `false` | `require_dry_run=true` |
+| **require_dry_run_hours** | How long a finished dry run stays valid (whole number, 1 or more) | `24` | `require_dry_run_hours=24` |
 | **dry_run** | Preview the whole import in a temporary database; nothing is changed (see [Dry Run](#-dry-run-preview-without-changing-anything)) | `false` | `dry_run=false` |
 | **clear_revisions** | Delete all post revisions before search-replace | `true` | `clear_revisions=true` |
 | **setup_stage_proxy** | Automatically configure stage file proxy | `true` | `setup_stage_proxy=true` |

@@ -130,6 +130,7 @@ lib/tests/
 │   ├── test_new_modules.sh        # Module loading
 │   ├── test_domain_mappings.sh    # [domain_mappings] (stubbed WP-CLI): anchoring, order, scopes, report
 │   ├── test_search_replace_flags.sh # skip_tables / precise (stubbed WP-CLI): flags on every pass, config
+│   ├── test_require_dry_run.sh    # require_dry_run guard: stamp, changed dump/domain, bad values, config
 │   ├── test_backup_edge.sh        # backup edge cases (stubbed df/WP-CLI, real gpg round trip)
 │   ├── test_completions.sh        # Bash/Zsh completions: syntax, sync with --help, behavior in Bash 3.2 and 5
 │   ├── test_doctor.sh             # wp-db-import doctor (stub wp/mysql): tools, connection, config, no secrets

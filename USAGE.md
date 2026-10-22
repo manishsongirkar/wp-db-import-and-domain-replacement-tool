@@ -57,6 +57,8 @@ wp-db-import --dry-run             # or dry_run=true in the config, or WPDB_DRY_
 
 Imports the dump into a **temporary database**, reports `Would import: N tables / M rows`, whether the compatibility filter is needed, and how many occurrences of the old domain (and of every site-mapping domain) would be replaced per table, then drops the temporary database. Your database is not changed: no backup, no import, no replacement. It also lists the tables with **no primary key** (only when there are some): WP-CLI skips them and the old domain stays in them, so add a key to them in the dump or replace by SQL after the import. Needs the mysql client and permission to `CREATE DATABASE` (a clear message is shown if missing). Before this change `dry_run=true` still imported the dump; now it imports nothing.
 
+**Require a dry run first (optional).** `require_dry_run=true` makes a live import fail, before anything is changed, unless a dry run of the same dump (path, size and modification time), domains and mappings finished in the last `require_dry_run_hours` hours (default 24). The dry run writes a stamp in `~/.wp-db-import/dry-run-stamps` (`WPDB_STAMP_DIR` changes the folder). In CI, run `wp-db-import --dry-run` and then `wp-db-import --yes` in the same job. `--dry-run` is never blocked. Default `false`: no check, no stamp.
+
 ### Unattended Mode (`--yes`)
 
 For scripts and CI. Every prompt takes its default (same as Enter), nothing is read from stdin, and stdin is closed for the whole run.
@@ -110,6 +112,8 @@ backup_encrypt=false
 backup_gpg_recipient=
 skip_tables=
 precise=false
+require_dry_run=false
+require_dry_run_hours=24
 
 [site_mappings]
 1:production-site.com:local-site.test

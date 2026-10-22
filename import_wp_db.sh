@@ -432,7 +432,15 @@ import_wp_db() {
   decide_dry_run_mode "$config_path"
   if [[ "$WPDB_DRY_RUN_ACTIVE" == "true" ]]; then
     dry_run_preview "$sql_file" "$search_domain" "$replace_domain" "$wp_root" "$config_path"
-    return $?
+    local dry_run_rc=$?
+    # require_dry_run=true: a finished dry run unlocks a live run of this dump for a while
+    [[ "$dry_run_rc" -eq 0 ]] && dry_run_stamp_write "$sql_file" "$search_domain" "$replace_domain" "$config_path" "$wp_root"
+    return $dry_run_rc
+  fi
+
+  # require_dry_run=true: refuse a live run unless a fresh dry run of this dump finished (nothing is changed before this)
+  if ! dry_run_guard_check "$sql_file" "$search_domain" "$replace_domain" "$config_path" "$wp_root"; then
+    return 1
   fi
 
   # A live import replaces the database: warn (never block) when the server does not look like the developer's own machine

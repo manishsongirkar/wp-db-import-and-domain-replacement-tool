@@ -225,6 +225,23 @@ skip_tables=
 #   false — WP-CLI default (default)
 #   true  — Pass --precise to every search-replace call
 precise=false
+
+# -----------------------------------------------
+# Dry-Run Guard (optional)
+# -----------------------------------------------
+# require_dry_run makes the tool REFUSE a live import unless a dry run of the same dump
+# (same file, size and modification time), domains and mappings finished in the last
+# require_dry_run_hours hours. The dry run writes a small stamp file in a private folder
+# outside the project (~/.wp-db-import/dry-run-stamps). Ignored when --dry-run is used.
+# For CI, run `wp-db-import --dry-run` and then `wp-db-import --yes` in the same job.
+#
+# Values:
+#   false — No check (default)
+#   true  — Refuse a live import without a fresh dry run
+require_dry_run=false
+
+# require_dry_run_hours is how long a finished dry run stays valid (a whole number, 1 or more).
+require_dry_run_hours=24
 TEMPLATE_EOF
 }
 
@@ -364,8 +381,9 @@ parse_config_section() {
             }
             next
         }
-        in_section && !/^[[:space:]]*[#;]/ && $0 ~ key "[[:space:]]*=" {
-            # (comment lines are skipped: "# Example: mysql_socket=/path" is not a setting)
+        in_section && !/^[[:space:]]*[#;]/ && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
+            # (comment lines are skipped: "# Example: mysql_socket=/path" is not a setting;
+            #  the key must start the line: "require_dry_run=true" is not "dry_run")
             # Find position of first equals sign
             match($0, /=/)
             if (RSTART > 0) {
@@ -663,7 +681,8 @@ ensure_socket_config_settings() {
     for pair in "use_socket=auto" "mysql_socket=" "import_optimizations=auto" \
                 "parallel_import=false" "backup_before_import=ask" "backup_dir=" "backup_keep=5" \
                 "backup_keep_days=0" "backup_encrypt=false" "backup_gpg_recipient=" \
-                "skip_tables=" "precise=false"; do
+                "skip_tables=" "precise=false" \
+                "require_dry_run=false" "require_dry_run_hours=24"; do
         key="${pair%%=*}"
         default="${pair#*=}"
         if ! grep -qi "^[[:space:]]*${key}[[:space:]]*=" "$config_path" 2>/dev/null; then
@@ -758,6 +777,18 @@ validate_config_file() {
         done < <(sr_validate_settings "$(parse_config_section "$config_path" "general" "skip_tables")" "$(parse_config_section "$config_path" "general" "precise")")
     fi
 
+    # require_dry_run and require_dry_run_hours: a bad value would switch the guard off or lock every live run
+    local rdr rdh
+    rdr=$(parse_config_section "$config_path" "general" "require_dry_run" | tr '[:upper:]' '[:lower:]')
+    rdh=$(parse_config_section "$config_path" "general" "require_dry_run_hours")
+    case "$rdr" in
+        ""|true|false|yes|no|1|0|on|off) ;;
+        *) errors+=("require_dry_run: '$rdr' is not true or false") ;;
+    esac
+    if [[ -n "$rdh" ]] && { [[ ! "$rdh" =~ ^[0-9]+$ ]] || [[ "$rdh" -lt 1 ]]; }; then
+        errors+=("require_dry_run_hours: '$rdh' is not a whole number of hours (1 or more)")
+    fi
+
     # Custom URL mappings: report every invalid entry
     if declare -F dm_load >/dev/null 2>&1; then
         local dm_line
@@ -829,6 +860,7 @@ show_config() {
     printf "  Auto Proceed:      ${CYAN}%s${RESET}\n" "${auto_proceed:-false}"
     printf "  Skip Tables:       ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "skip_tables" | grep . || echo none)"
     printf "  Precise:           ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "precise" | grep . || echo false)"
+    printf "  Require Dry Run:   ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "require_dry_run" | grep . || echo false) ($(parse_config_section "$config_path" "general" "require_dry_run_hours" | grep . || echo 24) h)"
 
     # Display site mappings
     if declare -F dm_load >/dev/null 2>&1; then

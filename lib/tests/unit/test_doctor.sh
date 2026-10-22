@@ -99,8 +99,8 @@ _dc_run() {
     local out rc
     out=$( cd "$dir" && env -i HOME="$_DC_WORK/home" PATH="$bindir" WPDB_FALLBACK_PATH="$_DC_WORK/none" \
         STUB_CONNECT="${STUB_CONNECT:-ok}" STUB_CREATE="${STUB_CREATE:-ok}" STUB_MODE="${STUB_MODE:-}" STUB_WPVER="${STUB_WPVER:-2.12.0}" STUB_PACKET="${STUB_PACKET:-67108864}" STUB_POOL="${STUB_POOL:-134217728}" \
-        STUB_ISINSTALLED="${STUB_ISINSTALLED:-ok}" STUB_LOG="${STUB_LOG:-}" "$BASH" -c '
-        for f in core/utils config/config_manager database/sql_source database/socket_detector utilities/doctor; do
+        STUB_ISINSTALLED="${STUB_ISINSTALLED:-ok}" STUB_LOG="${STUB_LOG:-}" WPDB_STAMP_DIR="${WPDB_STAMP_DIR:-}" "$BASH" -c '
+        for f in core/utils config/config_manager database/sql_source database/socket_detector database/db_dry_run utilities/doctor; do
             source "'"$_DC_ROOT"'/lib/$f.sh" >/dev/null 2>&1
         done
         doctor_cli "$@"' _ "$@" 2>&1 )
@@ -207,6 +207,20 @@ test_doctor_site() {
     printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nskip_tables=wp keep;x\n' "$_DC_WORK" > "$site/wpdb-import.conf"
     out=$(_dc_run "$site" "$b"); rc=$?
     _chk "a bad skip_tables: FAIL with a fix, exit 1"    bash -c 'test "$1" -eq 1 && grep -q "FAIL  Search-replace" <<< "$0" && grep -q "fix skip_tables and precise" <<< "$0"' "$out" "$rc"
+    # dry-run guard: a row only when it is on; the stamp folder must be writable
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nrequire_dry_run=true\nrequire_dry_run_hours=6\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    out=$(WPDB_STAMP_DIR="$_DC_WORK/stamps" _dc_run "$site" "$b")
+    _chk "require_dry_run=true: an OK row names the hours and the folder" bash -c 'grep -q "OK    Dry-run guard .*in the last 6 h (stamps in .*/stamps)" <<< "$0"' "$out"
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nrequire_dry_run=false\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    out=$(_dc_run "$site" "$b")
+    _chk "require_dry_run=false: no guard row"            bash -c '! grep -q "Dry-run guard" <<< "$0"' "$out"
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nrequire_dry_run=true\nrequire_dry_run_hours=abc\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    out=$(_dc_run "$site" "$b")
+    _chk "bad hours: FAIL with a fix"                     bash -c 'grep -q "FAIL  Dry-run guard .*not a whole number" <<< "$0"' "$out"
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nrequire_dry_run=true\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    printf 'x' > "$_DC_WORK/notadir"
+    out=$(WPDB_STAMP_DIR="$_DC_WORK/notadir/sub" _dc_run "$site" "$b")
+    _chk "unwritable stamp folder: FAIL, live runs would always be refused" bash -c 'grep -q "FAIL  Dry-run guard .*not writable" <<< "$0"' "$out"
     printf 'this is not a valid config\n' > "$site/wpdb-import.conf"
     out=$(_dc_run "$site" "$b"); rc=$?
     _chk "invalid config: FAIL with the fix command"     bash -c 'test "$1" -eq 1 && grep -q "FAIL  Config file" <<< "$0" && grep -q "config-validate" <<< "$0"' "$out" "$rc"

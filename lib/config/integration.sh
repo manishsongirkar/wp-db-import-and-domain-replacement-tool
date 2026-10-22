@@ -59,6 +59,8 @@ load_import_config() {
     export CONFIG_BACKUP_GPG_RECIPIENT=""
     export CONFIG_SKIP_TABLES=""
     export CONFIG_PRECISE=""
+    export CONFIG_REQUIRE_DRY_RUN=""
+    export CONFIG_REQUIRE_DRY_RUN_HOURS=""
 
     if [[ ! -f "$config_path" ]]; then
         return 1
@@ -112,6 +114,12 @@ load_import_config() {
     # search-replace settings (empty = WP-CLI default)
     CONFIG_SKIP_TABLES=$(parse_config_section "$config_path" "general" "skip_tables")
     CONFIG_PRECISE=$(parse_config_section "$config_path" "general" "precise")
+    # dry-run guard (off by default)
+    local raw_require_dry_run raw_require_dry_run_hours
+    raw_require_dry_run=$(parse_config_section "$config_path" "general" "require_dry_run")
+    CONFIG_REQUIRE_DRY_RUN="${raw_require_dry_run:-false}"
+    raw_require_dry_run_hours=$(parse_config_section "$config_path" "general" "require_dry_run_hours")
+    CONFIG_REQUIRE_DRY_RUN_HOURS="${raw_require_dry_run_hours:-24}"
 
     return 0
 }

@@ -217,7 +217,7 @@ test_config() {
     printf '%s\n' '[general]' 'sql_file=dump.sql' 'old_domain=prod.com' 'new_domain=local.test' 'all_tables=true' 'dry_run=false' 'auto_proceed=true' 'use_socket=false' 'mysql_socket=' 'import_optimizations=auto' 'parallel_import=false' 'backup_before_import=ask' 'backup_dir=' 'backup_keep=5' 'backup_keep_days=0' 'backup_encrypt=false' 'backup_gpg_recipient=' '' '[site_mappings]' '1:prod.com:local.test' > "$old"
     cp "$old" "$run"
     ensure_socket_config_settings "$run" >/dev/null 2>&1
-    _chk "the upgrade names the two keys"                  test "$CONFIG_SETTINGS_MIGRATED_ITEMS" = "skip_tables, precise, [domain_mappings], [site_domain_mappings]"
+    _chk "the upgrade names the two keys"                  test "$CONFIG_SETTINGS_MIGRATED_ITEMS" = "skip_tables, precise, require_dry_run, require_dry_run_hours, [domain_mappings], [site_domain_mappings]"
     _chk "defaults: skip_tables empty, precise=false"      bash -c 'grep -qx "skip_tables=" "$0" && grep -qx "precise=false" "$0"' "$run"
     _chk "every new key comes with its comment"            bash -c 'source "'"$_F_ROOT"'/lib/core/utils.sh" >/dev/null 2>&1; source "'"$_F_ROOT"'/lib/config/config_manager.sh" >/dev/null 2>&1; t=$(cat "$0"); for k in skip_tables precise; do [[ -n "$(config_key_comment $k)" && "$t" == *"$(config_key_comment $k)"*"${k}="* ]] || exit 1; done' "$run"
     _chk "no line of the old file changed or was removed"  bash -c '! diff "$0" "$1" | grep -q "^<"' "$old" "$run"
