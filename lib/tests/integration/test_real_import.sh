@@ -413,15 +413,25 @@ _ri_guard_scenario() {
     unset WPDB_STAMP_DIR
 }
 
-# Scenario 12 (#24): a dump with zero dates on a strict-mode server (MySQL 8 and MariaDB default to NO_ZERO_DATE).
+# Scenario 12 (#24): a dump with zero dates on a strict-mode server (MySQL 8 defaults to NO_ZERO_DATE; MariaDB does
+# not, so the throw-away server is made strict for this scenario and put back after it).
 # The dump is the normal production dump plus a table that is added AFTER the dump's own sql_mode footer, so the
 # server's strict mode is in force when it runs, as for a dump made by another tool.
 _ri_zero_date_scenario() {
     printf "\n  -- Scenario 12: zero dates on a strict-mode server (import_sql_mode)\n"
+    local gmode_orig rc
+    gmode_orig=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")
+    _ri_zero_date_body; rc=$?
+    _ri_q -e "SET GLOBAL sql_mode = '$gmode_orig'"
+    return $rc
+}
+
+_ri_zero_date_body() {
     local dump="$SRV_WORK/prod12.sql" gmode_before gmode_after fp
     cp "$SRV_WORK/prod.sql" "$dump"
     printf "\nCREATE TABLE wp_zero (id INT PRIMARY KEY, d DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00', e DATE);\nINSERT INTO wp_zero VALUES (1,'0000-00-00 00:00:00','0000-00-00'),(2,'2020-01-01 00:00:00','2019-00-10');\n" >> "$dump"
     gmode_before=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")
+    case "$gmode_before" in *NO_ZERO_DATE*) ;; *) _ri_q -e "SET GLOBAL sql_mode = CONCAT_WS(',', @@GLOBAL.sql_mode, 'NO_ZERO_DATE', 'NO_ZERO_IN_DATE')"; gmode_before=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode") ;; esac
     _chk "the test server really is strict (NO_ZERO_DATE in its global sql_mode)" bash -c 'grep -q NO_ZERO_DATE <<< "$0"' "$gmode_before"
 
     # a plain import of the dump fails on this server (the premise)
