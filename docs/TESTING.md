@@ -102,6 +102,7 @@ lib/tests/
 │   ├── test_require_dry_run.sh    # require_dry_run: stamp, guard, changed dump/domain, bad values, config
 │   ├── test_sql_mode.sh           # import_sql_mode: zero dates, session-only retry, keep/explicit, dry-run parity, config
 │   ├── test_import_report.sh      # post-import report: parser, leftovers, rotation, saved file (600), off switch, config
+│   ├── test_hardening.sh          # bad dry_run value, restore --dry-run, portable config parser, import_sql_mode preflight
 │   ├── test_backup_edge.sh        # backup: free space, backup_keep_days, gpg encryption, progress, restore of encrypted files
 │   ├── test_completions.sh        # Bash/Zsh completions: syntax, sync with --help, behavior in Bash 3.2 and 5
 │   ├── test_doctor.sh             # wp-db-import doctor: tools, connection, config, backup folder, no secrets

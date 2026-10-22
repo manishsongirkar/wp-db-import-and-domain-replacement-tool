@@ -368,7 +368,8 @@ import_wp_db() {
   printf "\n"
 
   # 🌐 Get the main domain mapping (Source/Search and Destination/Replace)
-  get_domains "$config_path"
+  # (a missing domain that cannot be asked for, with --yes or a closed stdin, stops the run here)
+  get_domains "$config_path" || return 1
 
   # Create config file if it doesn't exist, then save user-provided values
   if ! config_file_exists; then
@@ -427,9 +428,37 @@ import_wp_db() {
     fi
   fi
 
+  # import_sql_mode goes into the SQL stream: a bad value stops the run BEFORE anything is changed
+  if declare -F import_sql_mode_validate >/dev/null 2>&1; then
+    local ism_why
+    if ! ism_why=$(import_sql_mode_validate "${CONFIG_IMPORT_SQL_MODE:-}"); then
+      printf "${RED}❌ %s${RESET}\n" "$ism_why"
+      printf "${YELLOW}💡 Fix import_sql_mode in %s. Nothing was changed.${RESET}\n" "$config_path"
+      return 1
+    fi
+  fi
+
   # 🧪 Dry run is decided BEFORE anything is imported: a dry run previews the whole import in a
   # temporary database and never changes the real one (no backup, no import, no replacement).
-  decide_dry_run_mode "$config_path"
+  # A bad dry_run value stops the run here (it must never become a live import).
+  decide_dry_run_mode "$config_path" || return 1
+
+  # A dump that selects another database (mysqldump --databases) would be imported THERE: a live run is refused
+  local db_switch_lines="" db_switch_target=""
+  get_wp_db_credentials "$wp_root" >/dev/null 2>&1 && db_switch_target="${WP_DB_NAME:-}"
+  db_switch_lines=$(sql_dump_switches_database "$sql_file" "$db_switch_target")
+  if [[ -n "$db_switch_lines" ]]; then
+    printf "${YELLOW}⚠️  This dump selects another database than '%s':${RESET}\n" "${db_switch_target:-this site}"
+    printf "     %s\n" "$db_switch_lines"
+    if [[ "$WPDB_DRY_RUN_ACTIVE" == "true" ]]; then
+      printf "${YELLOW}   The dry run removes these lines. A live run is refused until the dump is exported without --databases (or the lines are removed).${RESET}\n\n"
+    else
+      printf "${RED}❌ A live import would change that database and leave this site untouched. Nothing was changed.${RESET}\n"
+      printf "${YELLOW}💡 Export the dump without --databases, or remove the CREATE DATABASE / USE lines.${RESET}\n"
+      return 1
+    fi
+  fi
+
   if [[ "$WPDB_DRY_RUN_ACTIVE" == "true" ]]; then
     dry_run_preview "$sql_file" "$search_domain" "$replace_domain" "$wp_root" "$config_path"
     local dry_run_rc=$?

@@ -740,9 +740,10 @@ sr_validate_settings() {
 
 # True when table $1 matches a pattern of the comma list $2 (same * and ? wildcards as WP-CLI).
 sr_table_is_skipped() {
-    local table="$1" p
-    local IFS=','
-    for p in $2; do
+    local table="$1" p pats
+    # read -a, not "for p in $2": an unquoted list would expand * and ? against the files of the current folder
+    IFS=',' read -ra pats <<< "$2"
+    for p in ${pats[@]+"${pats[@]}"}; do
         # shellcheck disable=SC2053
         [[ "$table" == $p ]] && return 0
     done

@@ -245,9 +245,18 @@ restore_decrypt_backup() {
 # Parameters: $1 = file (.sql, .sql.gz, .zip, .sql.bz2 or .sql.gz.gpg), $2 = WordPress root,
 #             $3 = config path (optional)
 # Returns 0 on success or when the user cancels; 1 on failure.
+# With --dry-run (WPDB_DRY_RUN) it only prints the file and the target database.
 # An encrypted file is decrypted once to a private temp file that is removed afterwards.
 restore_database() {
     local file="$1" rc
+    # --dry-run: say what would be restored and change nothing (no decryption, no backup, no import)
+    if wpdb_dry_run_requested; then
+        printf "${YELLOW}🧪 Dry run: nothing is restored.${RESET}\n"
+        printf "   Backup file:     %s\n" "$file"
+        printf "   Target database: %s\n" "$(restore_current_db_name "${2:-${WP_ROOT:-$(pwd)}}")"
+        printf "   To restore it, run the same command without --dry-run.\n"
+        return 0
+    fi
     if [[ -n "$file" && "$(sql_file_kind "$file")" == "gpg" ]]; then
         restore_decrypt_backup "$file" || return 1
         local plain="$RESTORE_DECRYPTED_FILE"

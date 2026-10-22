@@ -338,6 +338,28 @@ _build_mysql_args() {
     fi
 }
 
+# ===============================================
+# Does the dump switch to another database?
+# ===============================================
+# A dump made with mysqldump --databases (or by phpMyAdmin) has CREATE DATABASE / USE `name`; lines. In a live
+# import they would send the whole dump, with its DROP TABLE statements, into THAT database and leave the
+# WordPress database untouched. Prints (at most five) such lines that do not name the target database
+# and returns 0 when there is one. Parameters: $1 = dump file, $2 = target database name
+sql_dump_switches_database() {
+    local file="$1" target="${2:-}" line rest name found=1
+    while IFS= read -r line; do
+        rest=$(printf '%s' "$line" | LC_ALL=C sed -E -e 's#/\*![0-9]*[[:space:]]*##g' -e 's#\*/##g' -e 's/`//g' \
+            -e 's/IF[[:space:]]+(NOT[[:space:]]+)?EXISTS//I' -e 's/^[[:space:]]*(USE|CREATE DATABASE|DROP DATABASE|ALTER DATABASE)[[:space:]]+//I')
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        name="${rest%%[[:space:];]*}"
+        if [[ -z "$target" || "$name" != "$target" ]]; then
+            printf '%s\n' "$line"
+            found=0
+        fi
+    done < <(sql_open_stream "$file" 2>/dev/null | LC_ALL=C grep -aEi -m5 -e '^(USE|CREATE DATABASE|DROP DATABASE|ALTER DATABASE)[[:space:]]' -e '^/\*![0-9]+[[:space:]]+(CREATE|DROP|ALTER)[[:space:]]+DATABASE[[:space:]]')
+    return $found
+}
+
 export -f _sql_file_size_bytes sql_file_kind sql_open_stream sql_verify_source \
     sql_uncompressed_size_bytes estimate_heuristic _sql_compat_script sql_compat_filter \
-    import_error_is_compat_related import_error_is_zero_date import_retry_plan import_log_has_errors print_failure_hint cap_log_file sql_has_drop_table _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null
+    import_error_is_compat_related import_error_is_zero_date import_retry_plan import_log_has_errors print_failure_hint cap_log_file sql_has_drop_table sql_dump_switches_database _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null
