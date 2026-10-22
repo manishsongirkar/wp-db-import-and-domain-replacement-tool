@@ -70,10 +70,11 @@
 # Verified Stage File Proxy Download
 # ===============================================
 #
-# Description: Downloads the Stage File Proxy release zip from the project's GitHub
-#   releases and installs nothing unless the file matches the pinned SHA-256.
-#   To publish a new plugin release: upload it, then update SFP_RELEASE_URL and
-#   SFP_RELEASE_SHA256 below (shasum -a 256 stage-file-proxy.zip).
+# Description: Downloads the latest Stage File Proxy release zip and its published
+#   .sha256 file from the project's GitHub repo, and installs nothing unless the
+#   zip matches that checksum. No release number or hash is stored in this tool.
+#   Only SFP_REPO_URL names the project. Tests may set SFP_RELEASE_URL and
+#   SFP_RELEASE_SHA256 to override the download and the expected hash.
 #
 # Parameters:
 #	- $1: Destination path for the zip.
@@ -81,8 +82,8 @@
 #
 # Returns: 0 if downloaded and verified; 1 otherwise (the file is removed on failure).
 #
-SFP_RELEASE_URL="${SFP_RELEASE_URL:-https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip}"
-SFP_RELEASE_SHA256="${SFP_RELEASE_SHA256:-64fb0897b56392c3550a31bddefe574ad5497b329a2284bed9fc10667fd9bbaf}"
+SFP_REPO_URL="${SFP_REPO_URL:-https://github.com/manishsongirkar/stage-file-proxy}"
+SFP_RELEASE_URL="${SFP_RELEASE_URL:-$SFP_REPO_URL/releases/latest/download/stage-file-proxy.zip}"
 
 # Prints the SHA-256 of a file using whichever tool exists (macOS, Linux, BusyBox).
 sha256_of_file() {
@@ -98,17 +99,37 @@ sha256_of_file() {
     fi
 }
 
+# Downloads URL $1 to file $2 with curl or wget. Output goes to log $3.
+sfp_fetch() {
+    local url="$1" dest="$2" log="${3:-/dev/null}"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url" -o "$dest" >> "$log" 2>&1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$dest" "$url" >> "$log" 2>&1
+    else
+        printf "${RED}❌ Neither curl nor wget is available to download the plugin${RESET}\n"
+        return 1
+    fi
+}
+
 download_verified_stage_file_proxy_zip() {
     local dest="$1"
     local log="${2:-/dev/null}"
 
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$SFP_RELEASE_URL" -o "$dest" >> "$log" 2>&1 || { rm -f "$dest"; return 1; }
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$dest" "$SFP_RELEASE_URL" >> "$log" 2>&1 || { rm -f "$dest"; return 1; }
-    else
-        printf "${RED}❌ Neither curl nor wget is available to download the plugin${RESET}\n"
-        return 1
+    sfp_fetch "$SFP_RELEASE_URL" "$dest" "$log" || { rm -f "$dest"; return 1; }
+
+    # Expected hash: the override if set, else the .sha256 file published next to the zip.
+    local expected="${SFP_RELEASE_SHA256:-}"
+    if [[ -z "$expected" ]]; then
+        local sha_file="$dest.sha256"
+        sfp_fetch "$SFP_RELEASE_URL.sha256" "$sha_file" "$log" || { rm -f "$dest" "$sha_file"; return 1; }
+        expected=$(awk '{print $1; exit}' "$sha_file")
+        rm -f "$sha_file"
+        if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+            rm -f "$dest"
+            printf "${RED}❌ Published checksum for Stage File Proxy is missing or invalid; not installing.${RESET}\n"
+            return 1
+        fi
     fi
 
     local actual
@@ -118,10 +139,10 @@ download_verified_stage_file_proxy_zip() {
         printf "${RED}❌ No SHA-256 tool found (sha256sum, shasum or openssl); cannot verify the plugin${RESET}\n"
         return 1
     fi
-    if [[ "$actual" != "$SFP_RELEASE_SHA256" ]]; then
+    if [[ "$actual" != "$expected" ]]; then
         rm -f "$dest"
         printf "${RED}❌ Stage File Proxy download failed checksum verification; not installing.${RESET}\n"
-        printf "${DIM}   expected: %s${RESET}\n${DIM}   actual:   %s${RESET}\n" "$SFP_RELEASE_SHA256" "$actual"
+        printf "${DIM}   expected: %s${RESET}\n${DIM}   actual:   %s${RESET}\n" "$expected" "$actual"
         return 1
     fi
     return 0
@@ -493,7 +514,7 @@ setup_stage_file_proxy() {
                 done
             fi
             printf "${CYAN}🔧 Manual installation options:${RESET}\n"
-            printf "${YELLOW}   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/download/101/stage-file-proxy.zip${RESET}\n"
+            printf "${YELLOW}   1. Download manually: https://github.com/manishsongirkar/stage-file-proxy/releases/latest/download/stage-file-proxy.zip${RESET}\n"
             printf "${YELLOW}   2. Install via WP Admin: Plugins → Add New → Upload Plugin${RESET}\n"
             printf "${YELLOW}   3. Check internet connection and try again${RESET}\n"
             printf "${RED}Please install the plugin manually and run this script again${RESET}\n"
@@ -1534,6 +1555,7 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
         export -f install_stage_file_proxy_plugin
         export -f download_verified_stage_file_proxy_zip
         export -f sha256_of_file
+        export -f sfp_fetch
         export -f get_stage_proxy_mappings
         export -f save_stage_proxy_mapping
         export -f get_domain_mapping_for_site

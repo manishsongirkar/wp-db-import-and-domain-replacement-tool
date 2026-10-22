@@ -461,7 +461,7 @@ test_sec_download_tampering() {
     unset -f sha256_of_file; _sec_load
 
     # The shipped pin matches the committed constant and URL scheme is https
-    _chk "shipped release URL is https"             bash -c "grep -E '^SFP_RELEASE_URL=' '$_SEC_ROOT/lib/utilities/stage_file_proxy.sh' | grep -q 'https://github.com/manishsongirkar/'"
+    _chk "shipped release URL is https"             bash -c "grep -E '^SFP_REPO_URL=' '$_SEC_ROOT/lib/utilities/stage_file_proxy.sh' | grep -q 'https://github.com/manishsongirkar/'"
     _chk "download uses curl --fail (HTTP errors are failures)" grep -q 'curl -fsSL' "$_SEC_ROOT/lib/utilities/stage_file_proxy.sh"
     unset SFP_RELEASE_SHA256
     _finish "tampered downloads are never installed"

@@ -966,8 +966,22 @@ test_sfp_checksum() {
     SFP_RELEASE_URL="file://$w/does-not-exist.zip" download_verified_stage_file_proxy_zip "$w/out2.zip" "$w/dl.log" >/dev/null
     _chk "download failure is rejected"       test $? -ne 0
 
-    _chk "release URL points at the project's own GitHub release" grep -q 'github.com/manishsongirkar/stage-file-proxy/releases/download/' "$_HARD_ROOT/lib/utilities/stage_file_proxy.sh"
-    _chk "pinned checksum is a 64-char hex"  bash -c "[[ '$SFP_RELEASE_SHA256' =~ ^[0-9a-f]{64}\$ ]]"
+    _chk "release URL points at the project's own GitHub release" grep -q 'github.com/manishsongirkar/stage-file-proxy' "$_HARD_ROOT/lib/utilities/stage_file_proxy.sh"
+    _chk "no release number or hash is pinned" bash -c "! grep -E '^SFP_.*(download/[0-9]|[0-9a-f]{64})' '$_HARD_ROOT/lib/utilities/stage_file_proxy.sh'"
+
+    # Published .sha256 file is used when no hash override is set (format: "<hash>  <name>")
+    printf '%s  src.zip\n' "$good" > "$w/src.zip.sha256"
+    ( unset SFP_RELEASE_SHA256; SFP_RELEASE_URL="file://$w/src.zip" download_verified_stage_file_proxy_zip "$w/pub.zip" "$w/dl.log" )
+    _chk "published .sha256 file is accepted"  test -f "$w/pub.zip"
+    printf '%s  src.zip\n' "$(printf '0%.0s' {1..64})" > "$w/src.zip.sha256"
+    ( unset SFP_RELEASE_SHA256; SFP_RELEASE_URL="file://$w/src.zip" download_verified_stage_file_proxy_zip "$w/pub2.zip" "$w/dl.log" >/dev/null )
+    _chk "mismatching published hash is rejected" test ! -e "$w/pub2.zip"
+    printf 'not-a-hash\n' > "$w/src.zip.sha256"
+    ( unset SFP_RELEASE_SHA256; SFP_RELEASE_URL="file://$w/src.zip" download_verified_stage_file_proxy_zip "$w/pub3.zip" "$w/dl.log" >/dev/null )
+    _chk "invalid published hash is rejected"     test ! -e "$w/pub3.zip"
+    rm -f "$w/src.zip.sha256"
+    ( unset SFP_RELEASE_SHA256; SFP_RELEASE_URL="file://$w/src.zip" download_verified_stage_file_proxy_zip "$w/pub4.zip" "$w/dl.log" >/dev/null )
+    _chk "missing .sha256 file is rejected"       test ! -e "$w/pub4.zip"
     _chk "installers never use the unverified URL directly" bash -c "! grep -nE 'wp plugin install https?://' '$_HARD_ROOT/lib/utilities/stage_file_proxy.sh'"
     _finish "Stage File Proxy download is verified"
 }
