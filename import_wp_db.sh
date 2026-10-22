@@ -468,9 +468,11 @@ import_wp_db() {
 
   # 📥 Import the database using WP-CLI (with a spinner)
   # Uses db_import.sh
+  WPDB_REPORT_STEPS=""; WPDB_IMPORT_SECS=0; WPDB_IMPORT_NOTES=""
   if ! perform_db_import "$sql_file" "$DB_LOG"; then
       return 1
   fi
+  declare -F report_step_add >/dev/null 2>&1 && report_step_add "Database import" "${WPDB_IMPORT_SECS:-0}"
 
   # 🔍 Domain validation against database (if config exists)
   # Uses domain_manager.sh
@@ -557,6 +559,7 @@ import_wp_db() {
   fi
 
   if [[ "$cleanup_revisions" =~ ^[Yy]$ ]]; then
+  local rev_t0; rev_t0=$(date +%s)
     printf "${CYAN}🗑️ Clearing ALL Post Revisions (improves search-replace speed)...${RESET}\n"
 
   # Clear revisions based on site type (Multisite or Single-site)
@@ -610,6 +613,7 @@ import_wp_db() {
   fi
 
   printf "\n"
+  declare -F report_step_add >/dev/null 2>&1 && report_step_add "Revision cleanup" "$(( $(date +%s) - rev_t0 ))"
   else
     printf "${YELLOW}⏭️  Skipping revision cleanup as requested.${RESET}\n\n"
   fi
@@ -658,6 +662,7 @@ import_wp_db() {
   # Live mode only: a dry run returned earlier. The flag is kept for the search-replace code.
   local dry_run_flag=""
 
+  local sr_t0=0
   # 🌐 Handle Multisite (Logic for site list, mapping, and per-site replacement)
   if [[ "$is_multisite" == "yes" ]]; then
 
@@ -854,6 +859,7 @@ ${subsite_line}"
         [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
       fi
 
+      sr_t0=$(date +%s)
       # 🔧 Update wp_blogs and wp_site tables BEFORE search-replace operations
       if update_multisite_tables "$main_site_id" "$multisite_type" "$search_domain"; then
           local auto_updates_successful="yes"
@@ -897,6 +903,7 @@ ${subsite_line}"
       [[ "$confirm_replace" != [Yy]* ]] && { printf "${YELLOW}⚠️  Operation cancelled.${RESET}\n"; return 0; }
     fi
 
+    sr_t0=$(date +%s)
     printf "\n🔁 Running search-replace operations...\n"
 
     # Custom URL mappings first (longest first), then the main domain
@@ -928,6 +935,9 @@ ${subsite_line}"
       return 1
     fi
   fi
+
+  declare -F report_step_add >/dev/null 2>&1 && report_step_add "Search-replace" "$(( $(date +%s) - sr_t0 ))"
+  local flush_t0; flush_t0=$(date +%s)
 
   # 🧹 Flush caches and transients (post-search-replace operations)
   printf "\n${CYAN}🧹 Flushing WordPress and WP-CLI caches & transients...${RESET}\n"
@@ -971,6 +981,19 @@ ${subsite_line}"
       printf "${YELLOW}  ⚠️  Transient deletion finished (No transients found or minor error).${RESET}\n"
   else
       printf "${GREEN}  ✅ All transients deleted.${RESET}\n"
+  fi
+
+  declare -F report_step_add >/dev/null 2>&1 && report_step_add "Cache flush" "$(( $(date +%s) - flush_t0 ))"
+
+  # 📋 Post-import report (import_report=true): printed, and saved next to wpdb-import.conf. Never fails the import.
+  if declare -F import_report_generate >/dev/null 2>&1; then
+    local report_site="single site" report_dir report_hosts
+    [[ "$is_multisite" == "yes" ]] && report_site="multisite ($multisite_type)"
+    report_dir="${config_path:+$(dirname "$config_path")}"
+    report_dir="${report_dir:-$wp_root}"
+    report_hosts=$(report_old_hosts "$search_domain" ${domain_keys[@]+"${domain_keys[@]}"})
+    # shellcheck disable=SC2086
+    import_report_generate "$report_dir" "$search_domain" "$replace_domain" "$report_site" -- $report_hosts || true
   fi
 
   printf "\n${GREEN}${BOLD}🎉 All done!${RESET} Database import and replacements completed successfully.\n\n"

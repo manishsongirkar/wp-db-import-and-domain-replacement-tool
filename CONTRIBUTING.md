@@ -500,6 +500,7 @@ wp-db-import-and-domain-replacement-tool/
 │   │   ├── db_backup.sh          # Pre-import backup (ask/true/false)
 │   │   ├── db_dry_run.sh         # --dry-run: preview in a temporary database
 │   │   ├── domain_mappings.sh    # [domain_mappings] / [site_domain_mappings]: custom search => replace
+│   │   ├── import_report.sh      # Post-import report: replacements per table, leftovers, time per step
 │   │   ├── db_restore.sh         # wp-db-import restore (list, --last, <file>)
 │   │   ├── db_import.sh          # Socket / mysql / WP-CLI import, estimate, retry
 │   │   ├── search_replace.sh

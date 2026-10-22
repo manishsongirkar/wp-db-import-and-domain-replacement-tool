@@ -100,6 +100,8 @@ lib/tests/
 │   ├── test_domain_mappings.sh    # [domain_mappings]: anchoring, order, scopes, report, config, regression guards
 │   ├── test_search_replace_flags.sh # skip_tables and precise: flags on every pass, validation, config upgrade
 │   ├── test_require_dry_run.sh    # require_dry_run: stamp, guard, changed dump/domain, bad values, config
+│   ├── test_sql_mode.sh           # import_sql_mode: zero dates, session-only retry, keep/explicit, dry-run parity, config
+│   ├── test_import_report.sh      # post-import report: parser, leftovers, rotation, saved file (600), off switch, config
 │   ├── test_backup_edge.sh        # backup: free space, backup_keep_days, gpg encryption, progress, restore of encrypted files
 │   ├── test_completions.sh        # Bash/Zsh completions: syntax, sync with --help, behavior in Bash 3.2 and 5
 │   ├── test_doctor.sh             # wp-db-import doctor: tools, connection, config, backup folder, no secrets

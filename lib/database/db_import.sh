@@ -105,6 +105,7 @@ perform_db_import_via_socket() {
     local use_optimized_session="${8:-false}"
 
     local use_compat_filter="${9:-false}"
+    local sql_mode_arg="${10:-}"
 
     # Locate mysql binary with Homebrew paths
     local mysql_bin
@@ -118,7 +119,7 @@ perform_db_import_via_socket() {
 
     # Pass password via environment variable to avoid shell history / ps exposure.
     # MYSQL_PWD is the official mysql client env var for password.
-    _emit_import_stream "$sql_file" "$use_optimized_session" "$use_compat_filter" \
+    _emit_import_stream "$sql_file" "$use_optimized_session" "$use_compat_filter" "$sql_mode_arg" \
         | MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" &> "$log_file"
 
     # Exit status of the pipeline is mysql's; archive integrity was verified up front
@@ -138,10 +139,22 @@ perform_db_import_via_socket() {
 #   $1: SQL file (plain, .gz, .zip or .bz2)
 #   $2: Wrap with session optimizations (true/false)
 #   $3: Apply the compatibility filter (true/false)
+#   $4: Session sql_mode for this import: "" = unchanged, "relax" = NO_ZERO_DATE and NO_ZERO_IN_DATE
+#       switched off (the other modes stay), or an explicit mode list (validated by the caller).
+#       The mode is set for this connection only, and restored at the end. The global mode is never touched.
 #
 _emit_import_stream() {
-    local sql_file="$1" optimized="${2:-false}" compat="${3:-false}"
+    local sql_file="$1" optimized="${2:-false}" compat="${3:-false}" sql_mode="${4:-}"
 
+    if [[ -n "$sql_mode" ]]; then
+        printf "SET @wpdb_old_sql_mode = @@SESSION.sql_mode;\n"
+        if [[ "$sql_mode" == "relax" ]]; then
+            # (a second REPLACE of ',,' closes the gap when two flags sat side by side)
+            printf "SET SESSION sql_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(REPLACE(REPLACE(@@SESSION.sql_mode, 'NO_ZERO_IN_DATE', ''), 'NO_ZERO_DATE', ''), ',,', ','), ',,', ','));\n"
+        else
+            printf "SET SESSION sql_mode = '%s';\n" "$sql_mode"
+        fi
+    fi
     if [[ "$optimized" == "true" ]]; then
         printf "SET AUTOCOMMIT = 0;\nSET FOREIGN_KEY_CHECKS = 0;\nSET UNIQUE_CHECKS = 0;\n"
     fi
@@ -152,6 +165,9 @@ _emit_import_stream() {
     fi
     if [[ "$optimized" == "true" ]]; then
         printf "\nCOMMIT;\nSET FOREIGN_KEY_CHECKS = 1;\nSET UNIQUE_CHECKS = 1;\nSET AUTOCOMMIT = 1;\n"
+    fi
+    if [[ -n "$sql_mode" ]]; then
+        printf "\nSET SESSION sql_mode = @wpdb_old_sql_mode;\n"
     fi
 }
 
@@ -166,26 +182,27 @@ _emit_import_stream() {
 # Parameters:
 #   $1: SQL file   $2: log file   $3: apply compatibility filter (true/false)
 #   $4: WP-CLI command (default: wp)   $5: "direct" to use execute_wp_cli
+#   $6: session sql_mode ("", "relax" or a mode list, see _emit_import_stream); a value forces the stream form
 #
 perform_db_import_via_wpcli() {
-    local sql_file="$1" log_file="$2" compat="${3:-false}" wp_cmd="${4:-wp}" mode="${5:-}"
+    local sql_file="$1" log_file="$2" compat="${3:-false}" wp_cmd="${4:-wp}" mode="${5:-}" sql_mode_arg="${6:-}"
 
     local rc
     if [[ "$mode" == "direct" ]]; then
-        if [[ "$compat" != "true" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
+        if [[ "$compat" != "true" && -z "$sql_mode_arg" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
             execute_wp_cli db import "$sql_file" &> "$log_file"
         else
-            _emit_import_stream "$sql_file" false "$compat" | execute_wp_cli db import - &> "$log_file"
+            _emit_import_stream "$sql_file" false "$compat" "$sql_mode_arg" | execute_wp_cli db import - &> "$log_file"
         fi
         rc=$?
     else
         (
             # Fallback directories go AFTER the user's PATH so the active environment's client wins
             export PATH="$PATH:${WPDB_FALLBACK_PATH:-/opt/homebrew/bin:/usr/local/bin}"
-            if [[ "$compat" != "true" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
+            if [[ "$compat" != "true" && -z "$sql_mode_arg" && "$(sql_file_kind "$sql_file")" == "plain" ]]; then
                 "$wp_cmd" db import "$sql_file"
             else
-                _emit_import_stream "$sql_file" false "$compat" | "$wp_cmd" db import -
+                _emit_import_stream "$sql_file" false "$compat" "$sql_mode_arg" | "$wp_cmd" db import -
             fi
         ) &> "$log_file"
         rc=$?
@@ -488,6 +505,21 @@ import_prepare_retry() {
 }
 
 # ================================================================
+# Tell the user what the retry changes
+# ================================================================
+# Parameters: $1 = "true" when the compatibility filter is applied, $2 = "relax" when the zero-date modes are switched off
+import_announce_retry() {
+    local filter="$1" sqlmode="$2"
+    if [[ "$filter" == "true" && -n "$sqlmode" ]]; then
+        printf "${YELLOW}⚠️  Import hit SQL compatibility and zero-date errors; retrying with the compatibility filter and NO_ZERO_DATE / NO_ZERO_IN_DATE off for this import session...${RESET}\n"
+    elif [[ -n "$sqlmode" ]]; then
+        printf "${YELLOW}⚠️  Import hit a zero-date error (strict sql_mode on the server); retrying with NO_ZERO_DATE and NO_ZERO_IN_DATE off for this import session only...${RESET}\n"
+    else
+        printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
+    fi
+}
+
+# ================================================================
 # Perform Database Import
 # ================================================================
 #
@@ -570,6 +602,17 @@ perform_db_import() {
     local import_success=false
     local import_method=""
     local compat_used=false
+
+    # Session sql_mode (import_sql_mode): "" = unchanged, "relax" = zero-date modes off (set after a zero-date
+    # failure when import_sql_mode=auto), anything else = the list the user asked for from the first attempt.
+    local sql_mode_arg="" sql_mode_relaxed=false
+    case "$(printf '%s' "${CONFIG_IMPORT_SQL_MODE:-auto}" | tr '[:upper:]' '[:lower:]')" in
+        auto|keep|"") ;;
+        *)
+            sql_mode_arg="$CONFIG_IMPORT_SQL_MODE"
+            printf "${CYAN}🧮 Session sql_mode for this import:${RESET} %s ${DIM}(import_sql_mode; this connection only)${RESET}\n" "$sql_mode_arg"
+            ;;
+    esac
 
     # Retry safety: if the dump never drops its tables, remember which tables exist now so a
     # failed attempt's leftovers can be removed before any retry or fallback.
@@ -704,7 +747,7 @@ perform_db_import() {
                         "$sql_file" "$log_file" \
                         "$socket_path" "$db_host" \
                         "$db_user" "$db_pass" "$db_name" \
-                        "$use_optimized_session"
+                        "$use_optimized_session" "false" "$sql_mode_arg"
                 ) &
                 local socket_pid=$!
                 show_spinner "$socket_pid" "Importing"
@@ -715,8 +758,10 @@ perform_db_import() {
                     # Version-specific SQL (collations, DEFINER, ...): retry once with the filter.
                     # Safe to re-run: dumps drop their tables, or the tables the failed attempt
                     # created are removed first (import_prepare_retry).
-                    if import_error_is_compat_related "$log_file"; then
-                        printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
+                    if import_retry_plan "$log_file"; then
+                        local retry_filter="$RETRY_FILTER"
+                        import_announce_retry "$RETRY_FILTER" "$RETRY_SQLMODE"
+                        [[ -n "$RETRY_SQLMODE" ]] && { sql_mode_arg="$RETRY_SQLMODE"; sql_mode_relaxed=true; }
                         if ! import_prepare_retry "$tables_snapshot"; then
                             retry_blocked=true
                         else
@@ -726,14 +771,14 @@ perform_db_import() {
                                     "$sql_file" "$log_file" \
                                     "$socket_path" "$db_host" \
                                     "$db_user" "$db_pass" "$db_name" \
-                                    "$use_optimized_session" "true"
+                                    "$use_optimized_session" "$retry_filter" "$sql_mode_arg"
                             ) &
                             socket_pid=$!
                             show_spinner "$socket_pid" "Importing"
                             if wait "$socket_pid"; then
                                 import_success=true
                                 import_method="$mysql_cli_mode"
-                                compat_used=true
+                                [[ "$retry_filter" == "true" ]] && compat_used=true
                             fi
                         fi
                     fi
@@ -777,25 +822,27 @@ perform_db_import() {
         fi
 
         import_attempts=$((import_attempts + 1))
-        perform_db_import_via_wpcli "$sql_file" "$log_file" false "$wp_cmd" &
+        perform_db_import_via_wpcli "$sql_file" "$log_file" false "$wp_cmd" "" "$sql_mode_arg" &
         local spinner_pid=$!
         show_spinner "$spinner_pid" "Importing"
         if wait "$spinner_pid"; then
             import_success=true
             import_method="wp-cli"
-        elif import_error_is_compat_related "$log_file"; then
-            printf "${YELLOW}⚠️  Import hit an SQL compatibility error; retrying with the compatibility filter...${RESET}\n"
+        elif import_retry_plan "$log_file"; then
+            local retry_filter="$RETRY_FILTER"
+            import_announce_retry "$RETRY_FILTER" "$RETRY_SQLMODE"
+            [[ -n "$RETRY_SQLMODE" ]] && { sql_mode_arg="$RETRY_SQLMODE"; sql_mode_relaxed=true; }
             if ! import_prepare_retry "$tables_snapshot"; then
                 retry_blocked=true
             else
                 import_attempts=$((import_attempts + 1))
-                perform_db_import_via_wpcli "$sql_file" "$log_file" true "$wp_cmd" &
+                perform_db_import_via_wpcli "$sql_file" "$log_file" "$retry_filter" "$wp_cmd" "" "$sql_mode_arg" &
                 spinner_pid=$!
                 show_spinner "$spinner_pid" "Importing"
                 if wait "$spinner_pid"; then
                     import_success=true
                     import_method="wp-cli"
-                    compat_used=true
+                    [[ "$retry_filter" == "true" ]] && compat_used=true
                 fi
             fi
         fi
@@ -810,7 +857,7 @@ perform_db_import() {
 
     if [[ "$import_success" == "false" && "$retry_blocked" == "false" ]]; then
         printf "${YELLOW}Fallback: Direct WP-CLI execution...${RESET}\n"
-        if perform_db_import_via_wpcli "$sql_file" "$log_file" "$compat_used" "$wp_cmd" direct; then
+        if perform_db_import_via_wpcli "$sql_file" "$log_file" "$compat_used" "$wp_cmd" direct "$sql_mode_arg"; then
             import_success=true
             import_method="wp-cli-direct"
         fi
@@ -843,8 +890,17 @@ perform_db_import() {
 
     printf "${GREEN}✅ Database import successful!%s ${CYAN}[Completed in %02d:%02d]${RESET}\n" \
         "$method_label" "$import_minutes" "$import_seconds"
+    # kept for the post-import report
+    WPDB_IMPORT_SECS="$import_elapsed"
+    WPDB_IMPORT_NOTES="${import_method:+method: $import_method}"
+    [[ "$compat_used" == "true" ]] && WPDB_IMPORT_NOTES="${WPDB_IMPORT_NOTES:+$WPDB_IMPORT_NOTES; }compatibility filter used"
+    [[ "$sql_mode_relaxed" == "true" ]] && WPDB_IMPORT_NOTES="${WPDB_IMPORT_NOTES:+$WPDB_IMPORT_NOTES; }zero dates allowed (session sql_mode)"
+    [[ -n "$sql_mode_arg" && "$sql_mode_relaxed" != "true" ]] && WPDB_IMPORT_NOTES="${WPDB_IMPORT_NOTES:+$WPDB_IMPORT_NOTES; }sql_mode: $sql_mode_arg"
     if [[ "$compat_used" == "true" ]]; then
         printf "${YELLOW}ℹ️  Imported with the SQL compatibility filter (collations/DEFINER/engine options adjusted for this server).${RESET}\n"
+    fi
+    if [[ "$sql_mode_relaxed" == "true" ]]; then
+        printf "${YELLOW}ℹ️  Imported with zero dates allowed (NO_ZERO_DATE and NO_ZERO_IN_DATE off for this import session only; the server sql_mode was not changed).${RESET}\n"
     fi
     printf "\n"
     return 0
@@ -859,4 +915,5 @@ export -f perform_db_import_via_socket
 export -f perform_db_import_via_wpcli
 export -f _emit_import_stream import_large_dump_notice
 export -f _warn_client_server_mismatch _import_db_query _import_list_tables import_snapshot_tables import_drop_new_tables import_prepare_retry
+export -f import_announce_retry
 export -f perform_db_import

@@ -165,7 +165,7 @@ doctor_site_checks() {
             local mode
             mode=$(_doc_query "SELECT @@SESSION.sql_mode" "$WP_DB_NAME" 2>/dev/null | head -1)
             if [[ "$mode" == *NO_ZERO_DATE* || "$mode" == *STRICT_TRANS_TABLES* ]]; then
-                _doc_row WARN "sql_mode" "strict (${mode:0:60})" "dumps with zero dates (0000-00-00) can fail; see issue #24"
+                _doc_row WARN "sql_mode" "strict (${mode:0:60})" "dumps with zero dates (0000-00-00) fail on this mode; import_sql_mode=auto (default) retries them with the zero-date modes off for the import session only (set import_sql_mode=keep to disable)"
             else
                 _doc_row OK "sql_mode" "${mode:-empty}"
             fi

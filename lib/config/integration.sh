@@ -59,6 +59,9 @@ load_import_config() {
     export CONFIG_BACKUP_GPG_RECIPIENT=""
     export CONFIG_SKIP_TABLES=""
     export CONFIG_PRECISE=""
+    export CONFIG_IMPORT_SQL_MODE=""
+    export CONFIG_IMPORT_REPORT=""
+    export CONFIG_REPORT_KEEP=""
     export CONFIG_REQUIRE_DRY_RUN=""
     export CONFIG_REQUIRE_DRY_RUN_HOURS=""
 
@@ -114,6 +117,15 @@ load_import_config() {
     # search-replace settings (empty = WP-CLI default)
     CONFIG_SKIP_TABLES=$(parse_config_section "$config_path" "general" "skip_tables")
     CONFIG_PRECISE=$(parse_config_section "$config_path" "general" "precise")
+
+    # session sql_mode of the import, and the post-import report (defaults: auto, true, 5)
+    local raw_import_sql_mode raw_import_report raw_report_keep
+    raw_import_sql_mode=$(parse_config_section "$config_path" "general" "import_sql_mode")
+    CONFIG_IMPORT_SQL_MODE="${raw_import_sql_mode:-auto}"
+    raw_import_report=$(parse_config_section "$config_path" "general" "import_report")
+    CONFIG_IMPORT_REPORT="${raw_import_report:-true}"
+    raw_report_keep=$(parse_config_section "$config_path" "general" "report_keep")
+    CONFIG_REPORT_KEEP="${raw_report_keep:-5}"
     # dry-run guard (off by default)
     local raw_require_dry_run raw_require_dry_run_hours
     raw_require_dry_run=$(parse_config_section "$config_path" "general" "require_dry_run")
