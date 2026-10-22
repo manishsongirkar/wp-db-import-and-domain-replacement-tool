@@ -200,6 +200,35 @@ import_error_is_compat_related() {
 }
 
 # ===============================================
+# Is this import failure a zero-date / strict sql_mode problem?
+# ===============================================
+# A dump with DEFAULT '0000-00-00 00:00:00' or zero dates in its rows fails on a server whose
+# sql_mode has NO_ZERO_DATE / NO_ZERO_IN_DATE (ERROR 1067 "Invalid default value", ERROR 1292
+# "Incorrect date value"). Parameters: $1 = import log file. Returns 0 on such an error.
+import_error_is_zero_date() {
+    local log="$1"
+    [[ -f "$log" ]] || return 1
+    LC_ALL=C grep -qiE 'ERROR 1067 .*Invalid default value|ERROR 1292 .*Incorrect (date|datetime|time) value|ERROR 1292 .*(0000-00-00|[0-9]{4}-00-[0-9]{2}|[0-9]{4}-[0-9]{2}-00)' "$log" 2>/dev/null
+}
+
+# ===============================================
+# What should the retry of a failed import change?
+# ===============================================
+# Parameters: $1 = import log file. Sets RETRY_FILTER ("true" = apply the compatibility filter) and
+# RETRY_SQLMODE ("relax" = switch the zero-date modes off for the session, "" = no change).
+# Returns 0 when a retry is worthwhile. import_sql_mode=keep never relaxes the mode (and so never
+# retries only for a zero-date error); an explicit mode list is already applied to every attempt.
+import_retry_plan() {
+    local log="$1"
+    RETRY_FILTER="false"; RETRY_SQLMODE=""
+    import_error_is_compat_related "$log" && RETRY_FILTER="true"
+    case "$(printf '%s' "${CONFIG_IMPORT_SQL_MODE:-auto}" | tr '[:upper:]' '[:lower:]')" in
+        auto|"") import_error_is_zero_date "$log" && RETRY_SQLMODE="relax" ;;
+    esac
+    [[ "$RETRY_FILTER" == "true" || -n "$RETRY_SQLMODE" ]]
+}
+
+# ===============================================
 # Does an import log contain MySQL errors?
 # ===============================================
 # Some mysql/mariadb clients exit 0 even when statements failed, so an exit code alone
@@ -311,4 +340,4 @@ _build_mysql_args() {
 
 export -f _sql_file_size_bytes sql_file_kind sql_open_stream sql_verify_source \
     sql_uncompressed_size_bytes estimate_heuristic _sql_compat_script sql_compat_filter \
-    import_error_is_compat_related import_log_has_errors print_failure_hint cap_log_file sql_has_drop_table _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null
+    import_error_is_compat_related import_error_is_zero_date import_retry_plan import_log_has_errors print_failure_hint cap_log_file sql_has_drop_table _describe_mysql_client _mysql_flavor _find_mysql_bin _build_mysql_args 2>/dev/null

@@ -416,6 +416,11 @@ precise=false
 require_dry_run=false
 require_dry_run_hours=24
 
+# session sql_mode for zero dates (auto, keep or a mode list), and the post-import report
+import_sql_mode=auto
+import_report=true
+report_keep=5
+
 [site_mappings]
 # Format: blog_id:old_domain:new_domain
 1:admin.example.com:example.test
@@ -500,6 +505,28 @@ wp-db-import --yes restore --last      # no question (scripts, CI)
 - The import uses the same fast path as a normal import (socket, mysql, WP-CLI), checks the output for errors and retries with the compatibility filter when needed.
 - After a successful import, **tables that did not exist when the backup was made** are removed (views are never removed, and nothing is removed if the backup's table list cannot be read). The object cache is flushed.
 - Exit codes: `0` success or cancelled, `1` failure (no backup found, corrupt archive, import failed), `2` usage error.
+
+### 📋 Post-Import Report
+
+After a **live** import and its replacements the tool prints a summary and saves it as `wpdb-import-report.txt` next to `wpdb-import.conf` (mode `600`; a dry run writes none):
+
+- **Replacements per table** (read from the WP-CLI logs), the total, and how many replacements the serialized-aware PHP replacer made against plain SQL.
+- **Skipped tables** (WP-CLI skips a table with no primary key) and the `Error:` / `Warning:` lines of the logs.
+- **The old domain still in the database**, per old host, with the top tables. It is one read-only `wp search-replace --dry-run` of the bare host with the same table flags as the real run (`--all-tables`, `skip_tables`, `precise`), so JSON-escaped URLs, `www` and e-mail addresses are counted too. E-mail addresses are left alone by design, so a few references are normal. `guid` columns are not counted. The database is never written.
+- **Time per step**: import, revision cleanup, search-replace, cache flush.
+- Works for single sites and multisite (every old host of the site mappings is checked; a subdomain of another listed host is counted with it).
+
+`report_keep=5` keeps the latest 5 reports: the previous one is renamed `wpdb-import-report.<date>.txt` and the oldest beyond the limit are deleted (`0` keeps all; other files are never touched). `import_report=false` turns the report off, including the extra read of the database that finds the leftovers (on a very large database that read takes time). A problem with the report (a read-only folder, a failing WP-CLI call) prints a warning and never fails the import. The file is in the project folder, next to `wpdb-import.conf`: do not commit it.
+
+### 🕓 Zero dates and strict sql_mode
+
+A dump with `DEFAULT '0000-00-00 00:00:00'` or zero dates in its rows fails on a server whose `sql_mode` has `NO_ZERO_DATE` / `NO_ZERO_IN_DATE` (`ERROR 1067 Invalid default value`, `ERROR 1292 Incorrect date value`). Dumps made by `mysqldump` set the mode themselves; dumps from other tools often do not. `import_sql_mode` decides what the tool does:
+
+- **`auto` (default):** nothing changes for a dump that imports. If the direct `mysql` import fails with a zero-date error, the tool retries **once**, with `NO_ZERO_DATE` and `NO_ZERO_IN_DATE` switched off (the other modes stay) for **that import connection only**. The old mode is restored at the end of the stream; the server's `sql_mode` (global or other connections) is never changed. The dry run does the same and says `Zero dates: allowed for the import`.
+- **`keep`:** never change the session mode. The direct import fails as before and the tool falls back to WP-CLI.
+- **A mode list** such as `NO_AUTO_VALUE_ON_ZERO`: set for the import session from the first attempt (letters, digits, `_` and `,` only; anything else is refused by `config-validate`).
+
+WP-CLI's own `wp db import` call accepted zero dates in the tests (MySQL 8.0 and 8.4), so on the WP-CLI path nothing is retried. `wp-db-import doctor` still warns about a strict mode and names this key.
 
 ### 🗜️ Compressed Dumps
 
@@ -673,6 +700,9 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
 | **all_tables** | Include non-WordPress prefixed tables | `true` | `all_tables=true` |
 | **skip_tables** | Tables the replacement must not touch (comma list, `*` and `?` wildcards) | empty (none) | `skip_tables=wp_custom_cache,wp_logs_*` |
 | **precise** | Pass `--precise` to every search-replace call (PHP replacement: slower, handles custom serialized formats) | `false` | `precise=true` |
+| **import_sql_mode** | Zero dates on a strict server: `auto` retries a failed zero-date import with `NO_ZERO_DATE` / `NO_ZERO_IN_DATE` off for the import session only; `keep` never changes it; or a mode list (see [Zero dates and strict sql_mode](#-zero-dates-and-strict-sql_mode)) | `auto` | `import_sql_mode=auto` |
+| **import_report** | Print and save the post-import report (see [Post-Import Report](#-post-import-report)) | `true` | `import_report=true` |
+| **report_keep** | Reports to keep (`0` keeps all) | `5` | `report_keep=5` |
 | **require_dry_run** | Refuse a live import unless a dry run of the same dump finished in the last `require_dry_run_hours` hours (see [Require a dry run first](#-require-a-dry-run-first-optional)) | `false` | `require_dry_run=true` |
 | **require_dry_run_hours** | How long a finished dry run stays valid (whole number, 1 or more) | `24` | `require_dry_run_hours=24` |
 | **dry_run** | Preview the whole import in a temporary database; nothing is changed (see [Dry Run](#-dry-run-preview-without-changing-anything)) | `false` | `dry_run=false` |

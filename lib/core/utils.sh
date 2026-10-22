@@ -750,6 +750,28 @@ sr_table_is_skipped() {
 }
 
 # ===============================================
+# import_sql_mode (config setting)
+# ===============================================
+#
+# import_sql_mode=auto   (default) a failed import that shows a zero-date error is retried once with
+#                        NO_ZERO_DATE and NO_ZERO_IN_DATE switched off for the import session only
+# import_sql_mode=keep   never change the session sql_mode
+# import_sql_mode=<list> set this sql_mode (for example NO_AUTO_VALUE_ON_ZERO) for the import session
+#
+# Checks the raw value ($1). Prints the reason and returns 1 when it is not one of these.
+import_sql_mode_validate() {
+    local v="${1:-}" re='^[A-Za-z0-9_,]+$'
+    case "$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')" in
+        ""|auto|keep) return 0 ;;
+    esac
+    if [[ ! "$v" =~ $re ]]; then
+        printf "import_sql_mode: '%s' is not auto, keep or a sql_mode list (letters, digits, _ and commas only)" "$v"
+        return 1
+    fi
+    return 0
+}
+
+# ===============================================
 # Get Tool Version
 # ===============================================
 #
@@ -815,6 +837,7 @@ if is_sourced; then
         export -f detect_protocol
         export -f execute_wp_cli
         export -f sr_build_flags sr_normalize_skip_tables sr_validate_settings sr_table_is_skipped
+        export -f import_sql_mode_validate
         export -f get_tool_version
         export -f is_sourced
         export -f find_wordpress_root

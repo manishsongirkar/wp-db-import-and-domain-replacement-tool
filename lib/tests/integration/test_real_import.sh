@@ -168,6 +168,15 @@ _ri_multisite_scenario() {
     _chk "serialized option replaced on the main site"   bash -c "cd '$tgt' && test \"\$(wp eval 'echo get_option(\"widget_probe\")[\"list\"][0];' 2>/dev/null)\" = 'https://$new_domain/a'"
     _chk "no occurrence of the old domain is left (all tables of both sites)" bash -c "cd '$tgt' && test \"\$(wp db query \"SELECT (SELECT COUNT(*) FROM wp_posts WHERE post_content LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_2_posts WHERE post_content LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_options WHERE option_value LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_2_options WHERE option_value LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_blogs WHERE domain LIKE '%$old_domain%') + (SELECT COUNT(*) FROM wp_site WHERE domain LIKE '%$old_domain%')\" --skip-column-names 2>/dev/null)\" = 0"
     _chk "no temp directory left behind"                 test -z "$(ls -A "$SRV_WORK/tmp" 2>/dev/null)"
+    # the post-import report (#21)
+    local rep="$tgt/wpdb-import-report.txt"
+    _chk "report: printed, and saved next to the config with mode 600" bash -c 'grep -q "Post-import report" <<< "$0" && test -f "$1" && test "$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1")" = 600' "$_RI_OUT" "$rep"
+    _chk "report: says multisite ($mode) and lists the tables of both sites" bash -c 'grep -q "^Site type:    multisite ($2)" "$0" && grep -qE "wp_posts +[0-9]+" "$0" && grep -qE "wp_2_posts +[0-9]+" "$0"' "$rep" _ "$mode"
+    # the report looks at EVERY text column: it finds a leftover the checks above do not look at (wp_usermeta: source_domain
+    # of the first user, set when WordPress created the network). The report and a direct SQL count must agree.
+    _chk "report: the only leftover is wp_usermeta, as in the SQL count (the report sees what the checks above do not)" bash -c 'sed -n "/^Old domain still/,/^Time per step/p" "$0" | grep -E "^ +wp_" | awk "{print \$1, \$2}" | grep -qx "wp_usermeta $1" && test "$(sed -n "/^Old domain still/,/^Time per step/p" "$0" | grep -cE "^ +wp_")" = 1' "$rep" "$(_ri_q -N -e "SELECT COUNT(*) FROM target_$mode.wp_usermeta WHERE meta_value LIKE '%$old_domain%'")"
+    _chk "report: no leftover in the tables of the sites (posts, options of both sites)" bash -c '! sed -n "/^Old domain still/,/^Time per step/p" "$0" | grep -qE "^ +wp_(2_)?(posts|options|comments)|wp_blogs|wp_site "' "$rep"
+    _chk "report: time per step lists import and search-replace"    bash -c 'grep -qE "Database import +[0-9]+:[0-9]+" "$0" && grep -qE "Search-replace +[0-9]+:[0-9]+" "$0"' "$rep"
 }
 
 
@@ -402,6 +411,116 @@ _ri_guard_scenario() {
     _ri_run_tool "$SRV_WORK/t11"
     _chk "require_dry_run=maybe: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "is not true or false" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp" "$(_ri_fingerprint target11)"
     unset WPDB_STAMP_DIR
+}
+
+# Scenario 12 (#24): a dump with zero dates on a strict-mode server (MySQL 8 defaults to NO_ZERO_DATE; MariaDB does
+# not, so the throw-away server is made strict for this scenario and put back after it).
+# The dump is the normal production dump plus a table that is added AFTER the dump's own sql_mode footer, so the
+# server's strict mode is in force when it runs, as for a dump made by another tool.
+_ri_zero_date_scenario() {
+    printf "\n  -- Scenario 12: zero dates on a strict-mode server (import_sql_mode)\n"
+    local gmode_orig rc
+    gmode_orig=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")
+    _ri_zero_date_body; rc=$?
+    _ri_q -e "SET GLOBAL sql_mode = '$gmode_orig'"
+    return $rc
+}
+
+_ri_zero_date_body() {
+    local dump="$SRV_WORK/prod12.sql" gmode_before gmode_after fp
+    cp "$SRV_WORK/prod.sql" "$dump"
+    printf "\nCREATE TABLE wp_zero (id INT PRIMARY KEY, d DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00', e DATE);\nINSERT INTO wp_zero VALUES (1,'0000-00-00 00:00:00','0000-00-00'),(2,'2020-01-01 00:00:00','2019-00-10');\n" >> "$dump"
+    gmode_before=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")
+    case "$gmode_before" in *NO_ZERO_DATE*) ;; *) _ri_q -e "SET GLOBAL sql_mode = CONCAT_WS(',', @@GLOBAL.sql_mode, 'NO_ZERO_DATE', 'NO_ZERO_IN_DATE')"; gmode_before=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode") ;; esac
+    _chk "the test server really is strict (NO_ZERO_DATE in its global sql_mode)" bash -c 'grep -q NO_ZERO_DATE <<< "$0"' "$gmode_before"
+
+    # a plain import of the dump fails on this server (the premise)
+    _ri_q -e "CREATE DATABASE IF NOT EXISTS zprobe"
+    _chk "premise: without the feature the dump fails on this server (ERROR 1067 or 1292)" bash -c '"$0" --no-defaults -uroot --socket="$1" zprobe < "$2" 2>&1 | grep -qE "ERROR (1067|1292)"' "$SRV_CLIENT" "$SRV_SOCKET" "$dump"
+    _ri_q -e "DROP DATABASE IF EXISTS zprobe"
+
+    local variant mode sockmode
+    for variant in "auto-socket|auto|auto" "auto-wpcli|auto|false"; do
+        IFS='|' read -r _ mode sockmode <<< "$variant"
+        rm -rf "$SRV_WORK/t12"; _ri_q -e "DROP DATABASE IF EXISTS target12"
+        _ri_install_site "$SRV_WORK/t12" target12 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); return; }
+        _ri_write_config "$SRV_WORK/t12" "$dump" prod.example.com target.test "$sockmode"
+        _ri_run_tool "$SRV_WORK/t12"
+        _chk "[$variant] exit code 0"                         test "$_RI_RC" -eq 0
+        if [[ "$sockmode" == "false" ]]; then
+            # WP-CLI's own client call accepts zero dates, so its first attempt works: nothing is retried or changed
+            _chk "[$variant] imported by WP-CLI at once: no retry, no sql_mode message" bash -c 'grep -q "Database import successful" <<< "$0" && ! grep -qE "zero-date error|retrying|Imported with zero dates" <<< "$0"' "$_RI_OUT"
+        else
+            _chk "[$variant] a zero-date error was seen, the retry changed only this session" bash -c 'grep -q "zero-date error" <<< "$0" && grep -q "this import session only" <<< "$0"' "$_RI_OUT"
+            _chk "[$variant] import successful, with the zero-date note" bash -c 'grep -q "Database import successful" <<< "$0" && grep -q "Imported with zero dates allowed" <<< "$0" && grep -q "server sql_mode was not changed" <<< "$0"' "$_RI_OUT"
+        fi
+        _chk "[$variant] the zero-date rows are in the database, unchanged" test "$(_ri_q -N -e "SELECT CONCAT(d,'|',e) FROM target12.wp_zero WHERE id=1")" = "0000-00-00 00:00:00|0000-00-00"
+        _chk "[$variant] the column default is still the zero date" test -n "$(_ri_q -N -e "SHOW CREATE TABLE target12.wp_zero" | grep '0000-00-00 00:00:00')"
+        gmode_after=$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")
+        _chk "[$variant] the GLOBAL sql_mode of the server was never changed" test "$gmode_before" = "$gmode_after"
+        _chk "[$variant] a new connection has the strict mode again (nothing leaked)" test -n "$(_ri_q -N -e "SELECT @@SESSION.sql_mode" | grep NO_ZERO_DATE)"
+        _chk "[$variant] the domain was replaced as usual"    bash -c "cd '$SRV_WORK/t12' && wp post list --post_type=post --field=post_content 2>/dev/null | grep -qF 'https://target.test/x'"
+        _chk "[$variant] console shows no shell/PHP errors"   _ri_console_clean
+    done
+
+    # a normal dump is imported exactly as before: no sql_mode message at all
+    _ri_write_config "$SRV_WORK/t12" "$SRV_WORK/prod.sql" prod.example.com target.test auto
+    _ri_run_tool "$SRV_WORK/t12"
+    _chk "a normal dump: exit 0 and no zero-date message (the dump imports on the first attempt)" bash -c 'test "$1" -eq 0 && ! grep -qiE "zero-date|zero dates|Session sql_mode|retrying" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+
+    # import_sql_mode=keep: the direct mysql import fails as before, nothing is retried with a changed mode; the
+    # tool then falls back to WP-CLI (as it always did), which accepts zero dates
+    rm -rf "$SRV_WORK/t12k"; _ri_install_site "$SRV_WORK/t12k" target12k "http://target.test" || return
+    _ri_write_config "$SRV_WORK/t12k" "$dump" prod.example.com target.test auto
+    awk '1; /^\[general\]/ { print "import_sql_mode=keep" }' "$SRV_WORK/t12k/wpdb-import.conf" > "$SRV_WORK/t12k.conf" && cat "$SRV_WORK/t12k.conf" > "$SRV_WORK/t12k/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t12k"
+    _chk "keep: the socket import failed and WP-CLI took over (the old behavior)" bash -c 'grep -q "falling back to WP-CLI" <<< "$0" && grep -q "Database import successful" <<< "$0" && test "$1" -eq 0' "$_RI_OUT" "$_RI_RC"
+    _chk "keep: no retry with a changed sql_mode"               bash -c '! grep -qE "retrying with NO_ZERO|Imported with zero dates" <<< "$0"' "$_RI_OUT"
+    _chk "keep: the global sql_mode is unchanged"               test "$gmode_before" = "$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")"
+
+    # an explicit mode list is used from the first attempt (no failed attempt, no retry)
+    rm -rf "$SRV_WORK/t12e"; _ri_install_site "$SRV_WORK/t12e" target12e "http://target.test" || return
+    _ri_write_config "$SRV_WORK/t12e" "$dump" prod.example.com target.test auto
+    awk '1; /^\[general\]/ { print "import_sql_mode=NO_AUTO_VALUE_ON_ZERO" }' "$SRV_WORK/t12e/wpdb-import.conf" > "$SRV_WORK/t12e.conf" && cat "$SRV_WORK/t12e.conf" > "$SRV_WORK/t12e/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t12e"
+    _chk "explicit list: exit 0, announced, no retry"           bash -c 'test "$1" -eq 0 && grep -q "Session sql_mode for this import: NO_AUTO_VALUE_ON_ZERO" <<< "$0" && ! grep -q "retrying" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+    _chk "explicit list: both zero-date rows were imported"     test "$(_ri_q -N -e "SELECT COUNT(*) FROM target12e.wp_zero")" = 2
+    _chk "explicit list: the global sql_mode is unchanged"      test "$gmode_before" = "$(_ri_q -N -e "SELECT @@GLOBAL.sql_mode")"
+
+    # a bad value is refused
+    awk '/^import_sql_mode=/ { print "import_sql_mode=bad value;x"; next } 1' "$SRV_WORK/t12e/wpdb-import.conf" > "$SRV_WORK/t12e.conf" && cat "$SRV_WORK/t12e.conf" > "$SRV_WORK/t12e/wpdb-import.conf"
+    _chk "a bad value is refused by config-validate (nothing is run with it)" bash -c '( cd "$0" && source "$1/lib/core/utils.sh" >/dev/null 2>&1; source "$1/lib/config/config_manager.sh" >/dev/null 2>&1; ! validate_config_file "$0/wpdb-import.conf" >/dev/null 2>&1 )' "$SRV_WORK/t12e" "$_RI_ROOT"
+
+    # the dry run of the dump: succeeds, says so, and changes nothing
+    rm -rf "$SRV_WORK/t12d"; _ri_install_site "$SRV_WORK/t12d" target12d "http://target.test" || return
+    _ri_wp "$SRV_WORK/t12d" core is-installed >/dev/null 2>&1; _ri_wp "$SRV_WORK/t12d" option get siteurl >/dev/null 2>&1
+    _ri_write_config "$SRV_WORK/t12d" "$dump" prod.example.com target.test auto
+    fp=$(_ri_fingerprint target12d)
+    _ri_run_tool "$SRV_WORK/t12d" --dry-run
+    _chk "dry run: exit 0 and the summary says zero dates are allowed for the import" bash -c 'test "$1" -eq 0 && grep -qE "Zero dates: +allowed for the import" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+    _chk "dry run: the real database is unchanged"              test "$fp" = "$(_ri_fingerprint target12d)"
+    _chk "dry run: no scratch database is left"                 _ri_no_scratch_db
+}
+
+# Scenario 13 (#21): import_report=false and a dry run write no report; the config keys reach the tool
+_ri_report_off_scenario() {
+    printf "\n  -- Scenario 13: no report with import_report=false and in a dry run\n"
+    rm -rf "$SRV_WORK/t13"
+    _ri_install_site "$SRV_WORK/t13" target13 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); return; }
+    _ri_write_config "$SRV_WORK/t13" "$SRV_WORK/prod.sql" prod.example.com target.test auto
+    awk '1; /^\[general\]/ { print "import_report=false" }' "$SRV_WORK/t13/wpdb-import.conf" > "$SRV_WORK/t13.conf" && cat "$SRV_WORK/t13.conf" > "$SRV_WORK/t13/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t13"
+    _chk "import_report=false: the import works (exit 0, replaced)" bash -c 'test "$1" -eq 0 && grep -q "All done" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+    _chk "import_report=false: no report printed and no file"    bash -c '! grep -q "Post-import report" <<< "$0" && ! ls "$1" | grep -q "^wpdb-import-report"' "$_RI_OUT" "$SRV_WORK/t13"
+    awk '/^import_report=/ { print "import_report=true"; next } 1' "$SRV_WORK/t13/wpdb-import.conf" > "$SRV_WORK/t13.conf" && cat "$SRV_WORK/t13.conf" > "$SRV_WORK/t13/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t13" --dry-run
+    _chk "a dry run writes no report"                            bash -c 'test "$1" -eq 0 && ! grep -q "Post-import report" <<< "$0" && ! ls "$2" | grep -q "^wpdb-import-report"' "$_RI_OUT" "$_RI_RC" "$SRV_WORK/t13"
+    # report_keep: three live runs with report_keep=2 leave the latest and one older report
+    awk '1; /^\[general\]/ { print "report_keep=2" }' "$SRV_WORK/t13/wpdb-import.conf" > "$SRV_WORK/t13.conf" && cat "$SRV_WORK/t13.conf" > "$SRV_WORK/t13/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t13"; sleep 1; _ri_run_tool "$SRV_WORK/t13"; sleep 1; _ri_run_tool "$SRV_WORK/t13"
+    _chk "report_keep=2: after three runs, 2 reports (latest + 1 dated)" bash -c 'test "$(ls "$0" | grep -c "^wpdb-import-report")" = 2 && test -f "$0/wpdb-import-report.txt"' "$SRV_WORK/t13"
+    _chk "the saved report is mode 600"                          bash -c 'test "$(stat -c %a "$0/wpdb-import-report.txt" 2>/dev/null || stat -f %Lp "$0/wpdb-import-report.txt")" = 600' "$SRV_WORK/t13"
+    _chk "single-site report text: type, totals, time per step"  bash -c 'grep -q "^Site type:    single site" "$0" && grep -qE "Total: [0-9]+ replacements in [0-9]+ tables" "$0" && grep -qE "Cache flush +[0-9]+:[0-9]+" "$0"' "$SRV_WORK/t13/wpdb-import-report.txt"
 }
 
 # Scenario 8b: multisite (subdirectory) with [domain_mappings] (network) and [site_domain_mappings] (blog 2 only)
@@ -757,6 +876,7 @@ test_real_import() {
     _ri_run_tool "$SRV_WORK/t8"
     ct8b=$(_ri_q -N -e "SELECT post_content FROM target8.wp_posts ORDER BY ID; SELECT option_value FROM target8.wp_options WHERE option_name IN ('siteurl','home','widget_probe') ORDER BY option_name" | { md5sum 2>/dev/null || md5; } | awk '{print $1}')
     _chk "second run: exit 0 and the content is unchanged"   bash -c 'test "$1" -eq 0 && test -n "$2" && test "$2" = "$3"' _ "$_RI_RC" "$ct8a" "$ct8b"
+    _chk "report: the second run kept the first report under a dated name" bash -c 'test -f "$0/wpdb-import-report.txt" && test "$(ls "$0" | grep -c "^wpdb-import-report\.[0-9]")" = 1' "$SRV_WORK/t8"
 
     # an invalid entry stops the run before anything is changed
     local fpbad; fpbad=$(_ri_fingerprint target8)
@@ -767,6 +887,8 @@ test_real_import() {
     _ri_skip_precise_scenario
     _ri_nokey_scenario
     _ri_guard_scenario
+    _ri_zero_date_scenario
+    _ri_report_off_scenario
     _ri_custom_multisite_scenario
     _ri_prefix_multisite_scenario subdirectory zz_
     _ri_prefix_multisite_scenario subdomain Qx9_

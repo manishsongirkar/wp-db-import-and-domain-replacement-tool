@@ -69,6 +69,35 @@ _matrix_nodrop_case() {
     return $ok
 }
 
+# Real-server check of the zero-date retry (issue #24): on a server with NO_ZERO_DATE the dump is rejected, the
+# relaxed session imports it, and the server's global sql_mode is never changed. Prints one table row. Returns 0 on success.
+_matrix_zero_date_case() {
+    local client="$1" sock="$2" label="$3" fx="$FIXTURES/dump_zero_dates.sql" plain relaxed rows strict ok=0 g1 g2 ses
+    q() { "$client" --no-defaults -uroot --socket="$sock" "$@"; }
+    q -e "DROP DATABASE IF EXISTS wp; CREATE DATABASE wp" >/dev/null 2>&1
+    g1=$(q -N -e "SELECT @@GLOBAL.sql_mode")
+    strict=no; [[ "$g1" == *NO_ZERO_DATE* ]] && strict=yes
+
+    perform_db_import_via_socket "$fx" "$SRV_WORK/z1.log" "$sock" "" root "" wp false false >/dev/null 2>&1
+    plain=$?
+    if [[ "$strict" == "yes" ]]; then
+        [[ $plain -ne 0 ]] || { printf "     ❌ %s: a NO_ZERO_DATE server accepted the zero-date dump (scenario not exercised)\n" "$label"; ok=1; }
+        import_error_is_zero_date "$SRV_WORK/z1.log" || { printf "     ❌ %s: the failure is not recognized as a zero-date error: %s\n" "$label" "$(head -1 "$SRV_WORK/z1.log")"; ok=1; }
+        q -e "DROP DATABASE wp; CREATE DATABASE wp" >/dev/null 2>&1
+    fi
+    perform_db_import_via_socket "$fx" "$SRV_WORK/z2.log" "$sock" "" root "" wp false false relax >/dev/null 2>&1
+    relaxed=$?
+    rows=$(q -N -e "SELECT COUNT(*) FROM wp.wp_posts" 2>/dev/null)
+    g2=$(q -N -e "SELECT @@GLOBAL.sql_mode")
+    ses=$(q -N -e "SELECT @@SESSION.sql_mode")
+    printf "  %-24s %-20s %-14s %-14s\n" "$label" "dump_zero_dates ($strict)" "$([[ $plain -eq 0 ]] && echo ok || echo 'rejected')" "$([[ $relaxed -eq 0 && "$rows" == 2 ]] && echo ok || echo FAIL)"
+    [[ $relaxed -eq 0 && "$rows" == "2" ]] || { printf "     ❌ %s: the relaxed import failed (rows=%s): %s\n" "$label" "$rows" "$(head -2 "$SRV_WORK/z2.log" | tr '\n' ' ')"; ok=1; }
+    [[ "$g1" == "$g2" ]] || { printf "     ❌ %s: the GLOBAL sql_mode changed\n" "$label"; ok=1; }
+    [[ "$strict" == "no" || "$ses" == *NO_ZERO_DATE* ]] || { printf "     ❌ %s: a new connection lost the strict mode\n" "$label"; ok=1; }
+    unset -f q
+    return $ok
+}
+
 test_server_matrix() {
     start_test "Server Version Matrix" "fixtures import on every available MySQL/MariaDB version with the filter"
     local servers
@@ -81,7 +110,7 @@ test_server_matrix() {
     SRV_WORK=$(mktemp -d "${TMPDIR:-/tmp}/wpdb-matrix.XXXXXX")
     trap srv_cleanup EXIT
     local errors=0 tested=0 idx=0 bindir info label client sock fx want
-    local -a fixtures=("dump_legacy.sql" "dump_mariadb11.sql" "dump_mysql8.sql" "dump_nodrop_mariadb11.sql")
+    local -a fixtures=("dump_legacy.sql" "dump_mariadb11.sql" "dump_mysql8.sql" "dump_nodrop_mariadb11.sql" "dump_zero_dates.sql")
 
     printf "\n  %-24s %-20s %-14s %-14s\n" "SERVER" "FIXTURE" "UNFILTERED" "FILTERED"
     while IFS= read -r bindir; do
@@ -105,6 +134,12 @@ test_server_matrix() {
             if [[ "$fx" == "dump_nodrop_mariadb11.sql" ]]; then
                 # Dump without DROP TABLE: the retry needs the failed attempt's tables removed first.
                 _matrix_nodrop_case "$client" "$sock" "$label"
+                [[ $? -ne 0 ]] && ((errors++))
+                continue
+            fi
+            if [[ "$fx" == "dump_zero_dates.sql" ]]; then
+                # Zero dates: rejected by NO_ZERO_DATE servers; the relaxed session imports it (issue #24)
+                _matrix_zero_date_case "$client" "$sock" "$label"
                 [[ $? -ne 0 ]] && ((errors++))
                 continue
             fi

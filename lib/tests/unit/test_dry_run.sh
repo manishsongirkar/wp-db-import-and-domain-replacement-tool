@@ -45,7 +45,8 @@ _d_load() {
 
 # A stub mysql that answers by query text. Controls (environment):
 #   STUB_CREATE_RC=1        CREATE DATABASE fails (no privilege)
-#   STUB_IMPORT=ok|compat|fail   behavior of the dump import (compat: first import rejected, second works)
+#   STUB_IMPORT=ok|compat|zerodate|fail   behavior of the dump import (compat: first import rejected, second works;
+#                                zerodate: rejected until the stream sets the session sql_mode)
 #   STUB_NOPK="a\nb"             the tables the key query returns (tables without a primary key)
 _d_make_stub() {
     local dir="$1"
@@ -66,6 +67,7 @@ if [[ -z "$sql" ]]; then                       # an import: SQL arrives on stdin
     cat > "$STUB_DIR/stdin.$n.sql"
     case "${STUB_IMPORT:-ok}" in
         fail)   echo "ERROR 1064 (42000) at line 3: You have an error in your SQL syntax"; exit 1 ;;
+        zerodate) if ! grep -q wpdb_old_sql_mode "$STUB_DIR/stdin.$n.sql"; then echo "ERROR 1067 (42000) at line 12: Invalid default value for 'd'"; exit 1; fi ;;
         compat) if [[ $n -eq 1 ]]; then echo "ERROR 1273 (HY000) at line 20: Unknown collation: 'utf8mb4_uca1400_ai_ci'"; exit 1; fi ;;
     esac
     exit 0
@@ -319,6 +321,22 @@ EOT
     : > "$STUB_LOG"
     out=$(dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); out=$(printf '%s' "$out" | _strip)
     _chk "no keys: no skip or precise line, wp_options is counted" bash -c "! grep -qE 'Skipped tables|Precise mode' <<< \"\$0\" && grep 'LOCATE(' '$STUB_LOG' | grep -q 'wp_options'" "$out"
+    # zero dates (import_sql_mode): the preview retries like a live import and says so
+    : > "$STUB_LOG"; rm -f "$w"/stdin.*.sql
+    out=$(STUB_IMPORT=zerodate dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "" 2>&1 </dev/null); rc=$?; out=$(printf '%s' "$out" | _strip)
+    _chk "zero dates: the preview succeeds after one relaxed retry" bash -c 'test "$1" -eq 0 && grep -q "Dry run finished" <<< "$0" && test "$(ls "$2"/stdin.*.sql | wc -l | tr -d " ")" = 2' "$out" "$rc" "$w"
+    _chk "zero dates: the summary says zero dates are allowed for the import" grep -qE 'Zero dates: +allowed for the import' <<< "$out"
+    _chk "zero dates: the compatibility filter is not reported as needed" grep -qE 'Compatibility filter: +no' <<< "$out"
+    _chk "zero dates: only the retry stream sets the session mode" bash -c '! grep -q wpdb_old_sql_mode "$0/stdin.1.sql" && grep -q wpdb_old_sql_mode "$0/stdin.2.sql"' "$w"
+    _chk "zero dates: the real database is never named"       bash -c "! grep -q 'realdb' '$STUB_LOG'"
+    : > "$STUB_LOG"; rm -f "$w"/stdin.*.sql
+    out=$(CONFIG_IMPORT_SQL_MODE=keep STUB_IMPORT=zerodate dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "" 2>&1 </dev/null); rc=$?; out=$(printf '%s' "$out" | _strip)
+    _chk "import_sql_mode=keep: the preview fails as a live import would, no retry" bash -c 'test "$1" -ne 0 && grep -q "The dump cannot be imported" <<< "$0" && test "$(ls "$2"/stdin.*.sql | wc -l | tr -d " ")" = 1' "$out" "$rc" "$w"
+    : > "$STUB_LOG"; rm -f "$w"/stdin.*.sql
+    out=$(CONFIG_IMPORT_SQL_MODE=NO_AUTO_VALUE_ON_ZERO STUB_IMPORT=zerodate dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "" 2>&1 </dev/null); rc=$?; out=$(printf '%s' "$out" | _strip)
+    _chk "an explicit list: used from the first attempt, no retry" bash -c 'test "$1" -eq 0 && test "$(ls "$2"/stdin.*.sql | wc -l | tr -d " ")" = 1 && grep -q "NO_AUTO_VALUE_ON_ZERO" "$2/stdin.1.sql"' "$out" "$rc" "$w"
+    unset CONFIG_IMPORT_SQL_MODE
+
     # tables without a primary key: WP-CLI skips them, the preview lists them (report only)
     : > "$STUB_LOG"
     out=$(STUB_NOPK=$'wp_legacy_log\nwp_tmp' dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); rc=$?; out=$(printf '%s' "$out" | _strip)

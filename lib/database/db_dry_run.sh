@@ -189,10 +189,10 @@ _dry_run_sql_str() {
 # ===============================================
 # The stream that goes into the scratch database
 # ===============================================
-# Parameters: $1 = file, $2 = apply compatibility filter (true/false)
+# Parameters: $1 = file, $2 = apply compatibility filter (true/false), $3 = session sql_mode ("", "relax" or a list)
 # Database-switching statements are removed so the dump can only land in the scratch database.
 _dry_run_stream() {
-    _emit_import_stream "$1" false "${2:-false}" \
+    _emit_import_stream "$1" false "${2:-false}" "${3:-}" \
         | LC_ALL=C sed -E -e '/^(USE|CREATE DATABASE|DROP DATABASE|ALTER DATABASE)[[:space:]].*;[[:space:]]*$/Id' \
                           -e '/^\/\*![0-9]+[[:space:]]+(CREATE|DROP|ALTER)[[:space:]]+DATABASE[[:space:]].*\*\/;[[:space:]]*$/Id'
 }
@@ -279,14 +279,22 @@ _dry_run_in_scratch() {
     local log; log="$(secure_tmpdir)/dry_run.log" || return 1
 
     # 4) import into the scratch database; try the compatibility filter if the server rejects the dump
-    local filter_needed="no" start_ms end_ms
+    local filter_needed="no" mode_needed="no" start_ms end_ms
+    # import_sql_mode: an explicit list applies from the first attempt, exactly as in a live import
+    local sql_mode_arg=""
+    case "$(printf '%s' "${CONFIG_IMPORT_SQL_MODE:-auto}" | tr '[:upper:]' '[:lower:]')" in
+        auto|keep|"") ;;
+        *) sql_mode_arg="$CONFIG_IMPORT_SQL_MODE" ;;
+    esac
     start_ms=$(_now_ms)
     printf "   Importing into a temporary database... "
-    if ! ( _dry_run_stream "$sql_file" false | MYSQL_PWD="${WP_DB_PASSWORD:-}" "$mysql_bin" "${args[@]}" > "$log" 2>&1 ) || import_log_has_errors "$log"; then
-        if import_error_is_compat_related "$log"; then
+    if ! ( _dry_run_stream "$sql_file" false "$sql_mode_arg" | MYSQL_PWD="${WP_DB_PASSWORD:-}" "$mysql_bin" "${args[@]}" > "$log" 2>&1 ) || import_log_has_errors "$log"; then
+        if import_retry_plan "$log"; then
+            local retry_filter="$RETRY_FILTER"
+            [[ -n "$RETRY_SQLMODE" ]] && { sql_mode_arg="$RETRY_SQLMODE"; mode_needed="yes"; }
             MYSQL_PWD="${WP_DB_PASSWORD:-}" "$mysql_bin" "${args[@]}" -e "DROP DATABASE \`${scratch}\`; CREATE DATABASE \`${scratch}\`" >/dev/null 2>&1
-            if ( _dry_run_stream "$sql_file" true | MYSQL_PWD="${WP_DB_PASSWORD:-}" "$mysql_bin" "${args[@]}" > "$log" 2>&1 ) && ! import_log_has_errors "$log"; then
-                filter_needed="yes"
+            if ( _dry_run_stream "$sql_file" "$retry_filter" "$sql_mode_arg" | MYSQL_PWD="${WP_DB_PASSWORD:-}" "$mysql_bin" "${args[@]}" > "$log" 2>&1 ) && ! import_log_has_errors "$log"; then
+                [[ "$retry_filter" == "true" ]] && filter_needed="yes"
             else
                 printf "${RED}failed${RESET}\n"
                 printf "${RED}❌ The dump cannot be imported, even with the compatibility filter:${RESET}\n"
@@ -341,6 +349,9 @@ _dry_run_in_scratch() {
     printf "\n${CYAN}${BOLD}📋 Dry run summary${RESET}\n"
     printf "   Would import:            ${BOLD}%d tables / %d rows${RESET}\n" "$tcount" "$rows"
     printf "   Compatibility filter:    ${BOLD}%s${RESET}%s\n" "$filter_needed" "$([[ "$filter_needed" == "yes" ]] && printf ' %s' "${DIM}(the server rejected the dump as is; the filter fixes it)${RESET}")"
+    if [[ "$mode_needed" == "yes" ]]; then
+        printf "   Zero dates:              ${BOLD}allowed for the import${RESET} ${DIM}(the dump has zero dates and the server sql_mode refuses them; the live import retries with NO_ZERO_DATE / NO_ZERO_IN_DATE off for its session; import_sql_mode=auto)${RESET}\n"
+    fi
 
     if [[ -n "$skip_list" ]]; then
         printf "   Skipped tables:          ${BOLD}%s${RESET} ${DIM}(skip_tables=%s; not counted below)${RESET}\n" "${skipped_tables:-none match}" "$skip_list"

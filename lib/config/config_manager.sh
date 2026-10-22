@@ -242,6 +242,33 @@ require_dry_run=false
 
 # require_dry_run_hours is how long a finished dry run stays valid (a whole number, 1 or more).
 require_dry_run_hours=24
+
+# -----------------------------------------------
+# Import SQL Mode (optional)
+# -----------------------------------------------
+# Dumps with zero dates (DEFAULT '0000-00-00 00:00:00') fail on a server whose sql_mode has
+# NO_ZERO_DATE / NO_ZERO_IN_DATE (ERROR 1067 / 1292). import_sql_mode decides what the tool does.
+# Only the import connection is changed; the server's own sql_mode is never changed.
+#
+# Values:
+#   auto  — Import as before. If it fails with a zero-date error, retry once with NO_ZERO_DATE
+#           and NO_ZERO_IN_DATE switched off for that session (default)
+#   keep  — Never change the session sql_mode
+#   <list> — Use this sql_mode for the import session, for example NO_AUTO_VALUE_ON_ZERO
+import_sql_mode=auto
+
+# -----------------------------------------------
+# Post-Import Report (optional)
+# -----------------------------------------------
+# import_report prints a summary after a live import and saves it as wpdb-import-report.txt
+# next to this file (mode 600): replacements per table, serialized-aware replacements, tables
+# WP-CLI skipped, errors, the old domain still found in the database, and the time per step.
+# The check for the old domain reads the whole database once, so set false to skip the report.
+import_report=true
+
+# report_keep is the number of reports to keep. Older ones are renamed
+# wpdb-import-report.<date>.txt and the oldest beyond this number are deleted. Use 0 to keep all.
+report_keep=5
 TEMPLATE_EOF
 }
 
@@ -682,7 +709,8 @@ ensure_socket_config_settings() {
                 "parallel_import=false" "backup_before_import=ask" "backup_dir=" "backup_keep=5" \
                 "backup_keep_days=0" "backup_encrypt=false" "backup_gpg_recipient=" \
                 "skip_tables=" "precise=false" \
-                "require_dry_run=false" "require_dry_run_hours=24"; do
+                "require_dry_run=false" "require_dry_run_hours=24" \
+                "import_sql_mode=auto" "import_report=true" "report_keep=5"; do
         key="${pair%%=*}"
         default="${pair#*=}"
         if ! grep -qi "^[[:space:]]*${key}[[:space:]]*=" "$config_path" 2>/dev/null; then
@@ -789,6 +817,22 @@ validate_config_file() {
         errors+=("require_dry_run_hours: '$rdh' is not a whole number of hours (1 or more)")
     fi
 
+    # import_sql_mode, import_report, report_keep
+    local ism irp rpk ism_why
+    ism=$(parse_config_section "$config_path" "general" "import_sql_mode")
+    if declare -F import_sql_mode_validate >/dev/null 2>&1 && ! ism_why=$(import_sql_mode_validate "$ism"); then
+        errors+=("$ism_why")
+    fi
+    irp=$(parse_config_section "$config_path" "general" "import_report" | tr '[:upper:]' '[:lower:]')
+    case "$irp" in
+        ""|true|false|yes|no|1|0|on|off) ;;
+        *) errors+=("import_report: '$irp' is not true or false") ;;
+    esac
+    rpk=$(parse_config_section "$config_path" "general" "report_keep")
+    if [[ -n "$rpk" && ! "$rpk" =~ ^[0-9]+$ ]]; then
+        errors+=("report_keep: '$rpk' is not a whole number (0 keeps every report)")
+    fi
+
     # Custom URL mappings: report every invalid entry
     if declare -F dm_load >/dev/null 2>&1; then
         local dm_line
@@ -860,6 +904,8 @@ show_config() {
     printf "  Auto Proceed:      ${CYAN}%s${RESET}\n" "${auto_proceed:-false}"
     printf "  Skip Tables:       ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "skip_tables" | grep . || echo none)"
     printf "  Precise:           ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "precise" | grep . || echo false)"
+    printf "  Import SQL Mode:   ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "import_sql_mode" | grep . || echo auto)"
+    printf "  Import Report:     ${CYAN}%s${RESET} (keep %s)\n" "$(parse_config_section "$config_path" "general" "import_report" | grep . || echo true)" "$(parse_config_section "$config_path" "general" "report_keep" | grep . || echo 5)"
     printf "  Require Dry Run:   ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "require_dry_run" | grep . || echo false) ($(parse_config_section "$config_path" "general" "require_dry_run_hours" | grep . || echo 24) h)"
 
     # Display site mappings

@@ -59,6 +59,10 @@ Imports the dump into a **temporary database**, reports `Would import: N tables 
 
 **Require a dry run first (optional).** `require_dry_run=true` makes a live import fail, before anything is changed, unless a dry run of the same dump (path, size and modification time), domains and mappings finished in the last `require_dry_run_hours` hours (default 24). The dry run writes a stamp in `~/.wp-db-import/dry-run-stamps` (`WPDB_STAMP_DIR` changes the folder). In CI, run `wp-db-import --dry-run` and then `wp-db-import --yes` in the same job. `--dry-run` is never blocked. Default `false`: no check, no stamp.
 
+**Post-import report.** A live import prints a report and saves it as `wpdb-import-report.txt` (mode 600) next to `wpdb-import.conf`: replacements per table, how many were made by the serialized-aware PHP replacer, tables WP-CLI skipped, errors, the old domain still found in the database (one read-only `search-replace --dry-run`, e-mail addresses included), and the time of each step. `report_keep=5` keeps the latest 5 (`0` keeps all). `import_report=false` turns it off. A dry run writes no report.
+
+**Zero dates (`import_sql_mode`).** A dump with zero dates (`0000-00-00`) fails on a strict server (`ERROR 1067` / `1292`). With `import_sql_mode=auto` (default) a failed direct import is retried once with `NO_ZERO_DATE` and `NO_ZERO_IN_DATE` off for the import session only; the server's own mode is never changed. `keep` never changes it; a mode list (for example `NO_AUTO_VALUE_ON_ZERO`) is used from the first attempt.
+
 ### Unattended Mode (`--yes`)
 
 For scripts and CI. Every prompt takes its default (same as Enter), nothing is read from stdin, and stdin is closed for the whole run.
@@ -114,6 +118,9 @@ skip_tables=
 precise=false
 require_dry_run=false
 require_dry_run_hours=24
+import_sql_mode=auto
+import_report=true
+report_keep=5
 
 [site_mappings]
 1:production-site.com:local-site.test
