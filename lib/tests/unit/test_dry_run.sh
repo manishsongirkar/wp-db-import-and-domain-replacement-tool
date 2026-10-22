@@ -304,6 +304,19 @@ EOT
     out=$(dry_run_preview "$w/d.sql" "absent.example.com" target.test "$site" "" 2>&1 </dev/null); out=$(printf '%s' "$out" | _strip)
     _chk "old domain not in the dump: a warning says nothing would be replaced" grep -q 'would replace nothing' <<< "$out"
 
+    # skip_tables: skipped tables are named, and no occurrence query looks at them (the live run leaves them alone)
+    : > "$STUB_LOG"
+    out=$(CONFIG_SKIP_TABLES="wp_opt*" CONFIG_PRECISE=true dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); rc=$?; out=$(printf '%s' "$out" | _strip)
+    _chk "skip_tables: preview succeeds"                   test "$rc" -eq 0
+    _chk "skip_tables: the skipped table is named"         grep -q 'Skipped tables: *wp_options' <<< "$out"
+    _chk "skip_tables: the table count is unchanged (it is still imported)" grep -q 'Would import: *2 tables / 12 rows' <<< "$out"
+    _chk "skip_tables: no occurrence query reads the skipped table" bash -c "! grep 'LOCATE(' '$STUB_LOG' | grep -q 'wp_options'"
+    _chk "skip_tables: the other table is still counted"   bash -c "grep 'LOCATE(' '$STUB_LOG' | grep -q 'wp_posts'"
+    _chk "precise: the summary says so"                    grep -q 'Precise mode: *on' <<< "$out"
+    : > "$STUB_LOG"
+    out=$(dry_run_preview "$w/d.sql" prod.example.com target.test "$site" "$w/prev.conf" 2>&1 </dev/null); out=$(printf '%s' "$out" | _strip)
+    _chk "no keys: no skip or precise line, wp_options is counted" bash -c "! grep -qE 'Skipped tables|Precise mode' <<< \"\$0\" && grep 'LOCATE(' '$STUB_LOG' | grep -q 'wp_options'" "$out"
+
     unset STUB_LOG STUB_DIR WPDB_MYSQL_BIN CONFIG_USE_SOCKET
     _finish "the preview is safe and explains failures"
 }

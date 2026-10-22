@@ -383,6 +383,10 @@ backup_keep_days=0
 backup_encrypt=false
 backup_gpg_recipient=
 
+# tables the replacement must not touch (comma list, * and ? wildcards), and WP-CLI --precise
+skip_tables=
+precise=false
+
 [site_mappings]
 # Format: blog_id:old_domain:new_domain
 1:admin.example.com:example.test
@@ -491,6 +495,8 @@ Set `sql_file` to a `.sql.gz`, `.zip` or `.sql.bz2` file. The dump is checked fo
 
 - Run `--dry-run` and read the per-table counts. A table that you did not expect in the list is a table to check.
 - Set `all_tables=false` to limit the replacement to the tables WordPress registers (core tables and tables that plugins register with `$wpdb`).
+- Set `skip_tables=wp_custom_cache,wp_logs_*` to leave named tables out of the replacement (WP-CLI `--skip-tables`; comma list, `*` and `?` are wildcards, no spaces inside a name). A dry run leaves them out of its counts and names them.
+- Set `precise=true` to pass `--precise` to every WP-CLI call. PHP then does the replacement: it is slower, but it also repairs serialized data that is in a non-standard format (for example a value that starts with `s:` and not `a:`, `i:` or `O:`). The default (`false`) keeps the WP-CLI speed.
 - Keep the backup on. `wp-db-import restore --last` undoes the run.
 
 **Large databases (about 2 GB and more).** The import itself streams the dump to the `mysql` client, so PHP memory is not used for it. The limits are in MySQL and in the WP-CLI search-replace step:
@@ -636,6 +642,8 @@ All options can be pre-configured in your `wpdb-import.conf` file, eliminating t
 | **old_domain** | Production domain to search for | Required input | `old_domain=example.com` |
 | **new_domain** | Local/staging domain to replace with | Required input | `new_domain=example.test` |
 | **all_tables** | Include non-WordPress prefixed tables | `true` | `all_tables=true` |
+| **skip_tables** | Tables the replacement must not touch (comma list, `*` and `?` wildcards) | empty (none) | `skip_tables=wp_custom_cache,wp_logs_*` |
+| **precise** | Pass `--precise` to every search-replace call (PHP replacement: slower, handles custom serialized formats) | `false` | `precise=true` |
 | **dry_run** | Preview the whole import in a temporary database; nothing is changed (see [Dry Run](#-dry-run-preview-without-changing-anything)) | `false` | `dry_run=false` |
 | **clear_revisions** | Delete all post revisions before search-replace | `true` | `clear_revisions=true` |
 | **setup_stage_proxy** | Automatically configure stage file proxy | `true` | `setup_stage_proxy=true` |

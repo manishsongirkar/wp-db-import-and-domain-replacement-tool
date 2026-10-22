@@ -575,6 +575,10 @@ run_unit_tests() {
         run_test_suite "Unit Tests (Domain Mappings)" "$test_dir/test_domain_mappings.sh" "[domain_mappings]: anchoring, order, scopes, report, config"
         [[ $? -ne 0 ]] && overall_result=1
     fi
+    if [[ -f "$test_dir/test_search_replace_flags.sh" ]]; then
+        run_test_suite "Unit Tests (Search-Replace Flags)" "$test_dir/test_search_replace_flags.sh" "skip_tables and precise: flags on every pass, validation, config upgrade"
+        [[ $? -ne 0 ]] && overall_result=1
+    fi
     if [[ -f "$test_dir/test_backup_edge.sh" ]]; then
         run_test_suite "Unit Tests (Backup Edge Cases)" "$test_dir/test_backup_edge.sh" "backup: free space, backup_keep_days, gpg encryption, progress, restore of encrypted files"
         [[ $? -ne 0 ]] && overall_result=1

@@ -108,6 +108,8 @@ backup_keep=5
 backup_keep_days=0
 backup_encrypt=false
 backup_gpg_recipient=
+skip_tables=
+precise=false
 
 [site_mappings]
 1:production-site.com:local-site.test
@@ -133,7 +135,7 @@ backup_gpg_recipient=
 - **Remote server warning:** a live import warns (it never blocks) when `DB_HOST` looks like a remote server. See the README note under Safety Guardrails.
 - **Table prefix:** multisite table updates and main-site detection use the `$table_prefix` of `wp-config.php` (not a fixed `wp_`).
 - **Backup first:** `backup_before_import=ask` (default) backs up before the import. A failed backup or too little disk space cancels the import.
-- **Custom tables:** `all_tables=true` (default) replaces in every table. For custom tables with unusual serialized or JSON data, run `--dry-run`, read the per-table counts, or set `all_tables=false` to limit the run to the tables WordPress registers.
+- **Custom tables:** `all_tables=true` (default) replaces in every table. For custom tables with unusual serialized or JSON data, run `--dry-run`, read the per-table counts, or set `all_tables=false` to limit the run to the tables WordPress registers. `skip_tables=wp_custom_cache,wp_logs_*` leaves named tables out (comma list, `*` and `?` wildcards; the dry run names them and does not count them). `precise=true` passes `--precise` to every WP-CLI call: slower, but it repairs serialized data in a non-standard format. Both keys are empty or `false` by default, and a bad value stops the run before anything changes.
 - **Large databases (about 2 GB and more):** raise `max_allowed_packet` (for example `512M`) if the import fails with `packet bigger than 'max_allowed_packet'` or `server has gone away`. Set `innodb_buffer_pool_size` to about 50-70% of free RAM. If search-replace runs out of PHP memory, add `exec: ini_set("memory_limit", "2G");` to a `wp-cli.yml` file in the WordPress folder, or set `memory_limit` in the CLI `php.ini` (`php --ini`). `WP_CLI_PHP_ARGS` does not work for a normal `wp` run. `wp search-replace` has no `--batch-size` option. Tables without a primary key are slow to process. Never run on a live production database. `wp-db-import doctor` warns about small `max_allowed_packet` and `innodb_buffer_pool_size`; a failed import or search-replace prints the matching fix.
 
 See the README section "Safety Guardrails and Large Databases" for details.

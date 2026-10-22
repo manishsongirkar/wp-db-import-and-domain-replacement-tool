@@ -219,9 +219,28 @@ _dry_run_in_scratch() {
     local cols_list c_table c_col domain_new d_old d_new total_occ=0 total_cells=0 report="" any=false
     cols_list=$("${q[@]}" -e "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = '${scratch}' AND data_type IN ('char','varchar','tinytext','text','mediumtext','longtext') ORDER BY table_name, ordinal_position" 2>/dev/null)
 
+    # skip_tables: the live run leaves these tables alone, so the counts leave them out too
+    local skip_list="" skipped_tables="" st
+    skip_list=$(sr_normalize_skip_tables "${CONFIG_SKIP_TABLES:-}" 2>/dev/null) || skip_list=""
+    if [[ -n "$skip_list" ]]; then
+        while IFS= read -r st; do
+            [[ -n "$st" ]] && sr_table_is_skipped "$st" "$skip_list" && skipped_tables+="${skipped_tables:+, }$st"
+        done <<< "$tables_list"
+        cols_list=$(while IFS=$'\t' read -r c_table c_col; do
+            [[ -n "$c_table" ]] && ! sr_table_is_skipped "$c_table" "$skip_list" && printf '%s\t%s\n' "$c_table" "$c_col"
+        done <<< "$cols_list")
+    fi
+
     printf "\n${CYAN}${BOLD}📋 Dry run summary${RESET}\n"
     printf "   Would import:            ${BOLD}%d tables / %d rows${RESET}\n" "$tcount" "$rows"
     printf "   Compatibility filter:    ${BOLD}%s${RESET}%s\n" "$filter_needed" "$([[ "$filter_needed" == "yes" ]] && printf ' %s' "${DIM}(the server rejected the dump as is; the filter fixes it)${RESET}")"
+
+    if [[ -n "$skip_list" ]]; then
+        printf "   Skipped tables:          ${BOLD}%s${RESET} ${DIM}(skip_tables=%s; not counted below)${RESET}\n" "${skipped_tables:-none match}" "$skip_list"
+    fi
+    if is_config_true "${CONFIG_PRECISE:-}"; then
+        printf "   Precise mode:            ${BOLD}on${RESET} ${DIM}(the live run passes --precise: slower, same counts)${RESET}\n"
+    fi
 
     while IFS=$'\t' read -r d_old d_new; do
         [[ -n "$d_old" ]] || continue
@@ -255,6 +274,7 @@ _dry_run_in_scratch() {
     done < <(dry_run_domains "$old_domain" "$new_domain" "$config_path")
 
     # URL findings (www variant, custom [domain_mappings] counts, other hosts): read from the dump only
+    [[ -n "$skip_list" ]] && printf "\n${DIM}   (the URL findings below read the whole dump, skipped tables included)${RESET}"
     declare -F dm_dry_run_report >/dev/null 2>&1 && dm_dry_run_report "$sql_file" "$old_domain" "$new_domain" "$config_path"
 
     printf "\n"

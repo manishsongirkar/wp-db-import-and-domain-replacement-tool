@@ -208,6 +208,23 @@ backup_encrypt=false
 
 # backup_gpg_recipient is the key id, fingerprint or e-mail of the public key to encrypt to.
 backup_gpg_recipient=
+
+# -----------------------------------------------
+# Search-Replace Settings (optional)
+# -----------------------------------------------
+# skip_tables lists tables the replacement must NOT touch (WP-CLI --skip-tables). Use it for
+# custom tables that hold data in a format WP-CLI cannot read safely. Separate names with
+# commas; * and ? are wildcards. Leave blank to skip none (default).
+# Example: skip_tables=wp_custom_cache,wp_logs_*
+skip_tables=
+
+# precise makes WP-CLI do the replacement in PHP (--precise): slower, but it also fixes
+# serialized or JSON data that is in a non-standard format (some custom tables).
+#
+# Values:
+#   false — WP-CLI default (default)
+#   true  — Pass --precise to every search-replace call
+precise=false
 TEMPLATE_EOF
 }
 
@@ -645,7 +662,8 @@ ensure_socket_config_settings() {
     local pair key default
     for pair in "use_socket=auto" "mysql_socket=" "import_optimizations=auto" \
                 "parallel_import=false" "backup_before_import=ask" "backup_dir=" "backup_keep=5" \
-                "backup_keep_days=0" "backup_encrypt=false" "backup_gpg_recipient="; do
+                "backup_keep_days=0" "backup_encrypt=false" "backup_gpg_recipient=" \
+                "skip_tables=" "precise=false"; do
         key="${pair%%=*}"
         default="${pair#*=}"
         if ! grep -qi "^[[:space:]]*${key}[[:space:]]*=" "$config_path" 2>/dev/null; then
@@ -732,6 +750,14 @@ validate_config_file() {
     setup_stage_proxy=$(parse_config_section "$config_path" "general" "setup_stage_proxy")
     auto_proceed=$(parse_config_section "$config_path" "general" "auto_proceed")
 
+    # skip_tables and precise: report every bad value
+    if declare -F sr_validate_settings >/dev/null 2>&1; then
+        local sr_line
+        while IFS= read -r sr_line; do
+            [[ -n "$sr_line" ]] && errors+=("$sr_line")
+        done < <(sr_validate_settings "$(parse_config_section "$config_path" "general" "skip_tables")" "$(parse_config_section "$config_path" "general" "precise")")
+    fi
+
     # Custom URL mappings: report every invalid entry
     if declare -F dm_load >/dev/null 2>&1; then
         local dm_line
@@ -801,6 +827,8 @@ show_config() {
     printf "  Clear Revisions:   ${CYAN}%s${RESET}\n" "${clear_revisions:-true}"
     printf "  Setup Stage Proxy: ${CYAN}%s${RESET}\n" "${setup_stage_proxy:-true}"
     printf "  Auto Proceed:      ${CYAN}%s${RESET}\n" "${auto_proceed:-false}"
+    printf "  Skip Tables:       ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "skip_tables" | grep . || echo none)"
+    printf "  Precise:           ${CYAN}%s${RESET}\n" "$(parse_config_section "$config_path" "general" "precise" | grep . || echo false)"
 
     # Display site mappings
     if declare -F dm_load >/dev/null 2>&1; then

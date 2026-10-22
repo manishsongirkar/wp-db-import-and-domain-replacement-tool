@@ -14,6 +14,7 @@
 #
 # Key Features:
 # - Executes four distinct search-replace passes (non-escaped and escaped, www and non-www).
+# - Passes the same flags to every pass (sr_build_flags in core/utils.sh), including skip_tables and precise.
 # - Handles multisite subsite domain and path configurations.
 # - Provides visual progress indicators for each site and step.
 #
@@ -26,7 +27,7 @@
 # Dependencies:
 #   - detect_bash_version (from core/utils.sh)
 #   - execute_wp_cli (from core/utils.sh)
-#   - Global flag variables (all_tables_flag, dry_run_flag)
+#   - Global flag variables (all_tables_flag, skip_tables_flag, precise_flag, dry_run_flag)
 #   - Global array variables (domain_keys, domain_values, domain_blog_ids, domain_paths)
 #   - Color constants (e.g., ${CYAN}, ${YELLOW}, ${RED}, ${BOLD}, ${RESET})
 #
@@ -184,109 +185,23 @@ run_search_replace() {
         sr2_old_www="${sr1_old_www//\//\\/}"
     fi
 
-    # Execute Pass 1: Standard replacement for non-www variant
-    local cmd_args=("search-replace" "$sr1_old_non_www" "$sr_new")
+    # The passes in order: plain non-www, plain www, escaped non-www, escaped www (www only when the source has it)
+    local -a pass_args=("$sr1_old_non_www" "$sr_new")
+    [[ "$has_www" == true ]] && pass_args+=("$sr1_old_www" "$sr_new")
+    pass_args+=("$sr2_old_non_www" "$sr_new_escaped")
+    [[ "$has_www" == true ]] && pass_args+=("$sr2_old_www" "$sr_new_escaped")
 
-    if [[ -n "$actual_url_flag" ]]; then
-        cmd_args+=("$actual_url_flag")
-    fi
-
-    cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-    if [[ -n "$all_tables_flag" ]]; then
-        cmd_args+=("$all_tables_flag")
-    fi
-
-    if [[ -n "$network_flag_arg" ]]; then
-        cmd_args+=("$network_flag_arg")
-    fi
-
-    if [[ -n "$dry_run_flag" ]]; then
-        cmd_args+=("$dry_run_flag")
-    fi
-
-    if ! execute_wp_cli "${cmd_args[@]}" &> "$log_file"; then
-        return 1
-    fi
-
-    # Execute Pass 2: Standard replacement for www variant (if source has www)
-    if [[ "$has_www" == true ]]; then
-        cmd_args=("search-replace" "$sr1_old_www" "$sr_new")
-
-        if [[ -n "$actual_url_flag" ]]; then
-            cmd_args+=("$actual_url_flag")
-        fi
-
-        cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-        if [[ -n "$all_tables_flag" ]]; then
-            cmd_args+=("$all_tables_flag")
-        fi
-
-        if [[ -n "$network_flag_arg" ]]; then
-            cmd_args+=("$network_flag_arg")
-        fi
-
-        if [[ -n "$dry_run_flag" ]]; then
-            cmd_args+=("$dry_run_flag")
-        fi
-
-        if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
-            return 1
-        fi
-    fi
-
-    # Execute Serialized Pass: Non-www variant
-    cmd_args=("search-replace" "$sr2_old_non_www" "$sr_new_escaped")
-
-    if [[ -n "$actual_url_flag" ]]; then
-        cmd_args+=("$actual_url_flag")
-    fi
-
-    cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-    if [[ -n "$all_tables_flag" ]]; then
-        cmd_args+=("$all_tables_flag")
-    fi
-
-    if [[ -n "$network_flag_arg" ]]; then
-        cmd_args+=("$network_flag_arg")
-    fi
-
-    if [[ -n "$dry_run_flag" ]]; then
-        cmd_args+=("$dry_run_flag")
-    fi
-
-    if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
-        return 1
-    fi
-
-    # Execute Final Pass: Serialized replacement for www variant (if source has www)
-    if [[ "$has_www" == true ]]; then
-        cmd_args=("search-replace" "$sr2_old_www" "$sr_new_escaped")
-
-        if [[ -n "$actual_url_flag" ]]; then
-            cmd_args+=("$actual_url_flag")
-        fi
-
-        cmd_args+=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-
-        if [[ -n "$all_tables_flag" ]]; then
-            cmd_args+=("$all_tables_flag")
-        fi
-
-        if [[ -n "$network_flag_arg" ]]; then
-            cmd_args+=("$network_flag_arg")
-        fi
-
-        if [[ -n "$dry_run_flag" ]]; then
-            cmd_args+=("$dry_run_flag")
-        fi
-
-        if ! execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1; then
-            return 1
-        fi
-    fi
+    sr_build_flags
+    local -a cmd_args
+    local i
+    : > "$log_file" || return 1
+    for ((i=0; i<${#pass_args[@]}; i+=2)); do
+        cmd_args=("search-replace" "${pass_args[i]}" "${pass_args[i+1]}")
+        [[ -n "$actual_url_flag" ]] && cmd_args+=("$actual_url_flag")
+        cmd_args+=("${SR_FLAGS[@]}")
+        [[ -n "$network_flag_arg" ]] && cmd_args+=("$network_flag_arg")
+        execute_wp_cli "${cmd_args[@]}" >> "$log_file" 2>&1 || return 1
+    done
 
     return 0
 }

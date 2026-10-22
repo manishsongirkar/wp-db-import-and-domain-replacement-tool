@@ -416,6 +416,17 @@ import_wp_db() {
     [[ "$dm_count" -gt 0 ]] && printf "    🔁 Custom URL mappings: ${CYAN}%s${RESET} (from [domain_mappings])\n\n" "$dm_count"
   fi
 
+  # skip_tables / precise: a bad value stops the run BEFORE anything is changed
+  # (ignoring a bad skip_tables would let the replacement touch a table the user wanted left alone)
+  if declare -F sr_validate_settings >/dev/null 2>&1; then
+    local sr_problems sr_line
+    if ! sr_problems=$(sr_validate_settings "${CONFIG_SKIP_TABLES:-}" "${CONFIG_PRECISE:-}"); then
+      while IFS= read -r sr_line; do printf "${RED}❌ %s${RESET}\n" "$sr_line"; done <<< "$sr_problems"
+      printf "${YELLOW}💡 Fix skip_tables and precise in %s. Nothing was changed.${RESET}\n" "$config_path"
+      return 1
+    fi
+  fi
+
   # 🧪 Dry run is decided BEFORE anything is imported: a dry run previews the whole import in a
   # temporary database and never changes the real one (no backup, no import, no replacement).
   decide_dry_run_mode "$config_path"
@@ -622,6 +633,18 @@ import_wp_db() {
       # Save to config for future use
       update_config_general "$config_path" "all_tables" "false"
     fi
+  fi
+
+  # skip_tables / precise from the config (empty = WP-CLI default); validated before the import started
+  local skip_tables_flag="" precise_flag="" skip_tables_list=""
+  skip_tables_list=$(sr_normalize_skip_tables "${CONFIG_SKIP_TABLES:-}")
+  if [[ -n "$skip_tables_list" ]]; then
+    skip_tables_flag="--skip-tables=$skip_tables_list"
+    printf "Skip tables: ${YELLOW}%s${RESET} (from config)\n" "$skip_tables_list"
+  fi
+  if is_config_true "${CONFIG_PRECISE:-}"; then
+    precise_flag="--precise"
+    printf "Include ${BOLD}--precise${RESET}: ${YELLOW}enabled${RESET} (from config, slower)\n"
   fi
 
   # Live mode only: a dry run returned earlier. The flag is kept for the search-replace code.

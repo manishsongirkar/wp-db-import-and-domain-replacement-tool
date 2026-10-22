@@ -677,6 +677,79 @@ execute_wp_cli() {
 }
 
 # ===============================================
+# Shared WP-CLI flags
+# ===============================================
+#
+# Description: Sets SR_FLAGS, the flags every `wp search-replace` call gets (run_search_replace
+#              and dm_run), so no pass can miss one.
+#
+# Parameters:
+#   - $1: Optional. The flag to use instead of all_tables_flag (dm_run passes
+#         --all-tables-with-prefix when it names tables). Pass "" for none.
+#
+# Reads (caller's variables, empty = not set): all_tables_flag, skip_tables_flag,
+#   precise_flag, dry_run_flag.
+#
+sr_build_flags() {
+    local tables_flag="${1-${all_tables_flag:-}}"
+    SR_FLAGS=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
+    [[ -n "$tables_flag" ]] && SR_FLAGS+=("$tables_flag")
+    [[ -n "${skip_tables_flag:-}" ]] && SR_FLAGS+=("$skip_tables_flag")
+    [[ -n "${precise_flag:-}" ]] && SR_FLAGS+=("$precise_flag")
+    [[ -n "${dry_run_flag:-}" ]] && SR_FLAGS+=("$dry_run_flag")
+    return 0
+}
+
+# ===============================================
+# skip_tables and precise (config settings)
+# ===============================================
+#
+# skip_tables=a,b*   comma list of table names; * and ? are wildcards (WP-CLI --skip-tables)
+# precise=true       WP-CLI --precise: PHP does the replacement (slower, handles data in a custom format)
+#
+# Prints the skip_tables list without spaces and empty items. A bad item prints the reason
+# and returns 1.
+sr_normalize_skip_tables() {
+    local -a items=()
+    local item out="" re='^[A-Za-z0-9_$*?-]+$'
+    IFS=',' read -ra items <<< "$1"
+    for item in ${items[@]+"${items[@]}"}; do
+        item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
+        [[ -z "$item" ]] && continue
+        if [[ ! "$item" =~ $re ]]; then
+            printf "skip_tables: '%s' is not a table name (letters, digits, _ \$ - and the wildcards * ? only; separate tables with commas)" "$item"
+            return 1
+        fi
+        out="${out:+$out,}$item"
+    done
+    printf '%s' "$out"
+}
+
+# Checks the raw skip_tables ($1) and precise ($2) values. Prints one reason per line and returns 1 when one is bad.
+sr_validate_settings() {
+    local rc=0 msg
+    if ! msg=$(sr_normalize_skip_tables "${1:-}"); then
+        printf "%s\n" "$msg"; rc=1
+    fi
+    case "$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]')" in
+        ""|true|false|yes|no|1|0|on|off) ;;
+        *) printf "precise: '%s' is not true or false\n" "$2"; rc=1 ;;
+    esac
+    return $rc
+}
+
+# True when table $1 matches a pattern of the comma list $2 (same * and ? wildcards as WP-CLI).
+sr_table_is_skipped() {
+    local table="$1" p
+    local IFS=','
+    for p in $2; do
+        # shellcheck disable=SC2053
+        [[ "$table" == $p ]] && return 0
+    done
+    return 1
+}
+
+# ===============================================
 # Get Tool Version
 # ===============================================
 #
@@ -741,6 +814,7 @@ if is_sourced; then
         export -f detect_main_site
         export -f detect_protocol
         export -f execute_wp_cli
+        export -f sr_build_flags sr_normalize_skip_tables sr_validate_settings sr_table_is_skipped
         export -f get_tool_version
         export -f is_sourced
         export -f find_wordpress_root

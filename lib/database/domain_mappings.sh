@@ -172,25 +172,25 @@ dm_print_problems() {
 # ===============================================
 # Parameters: $1 log file, $2 scope flag ("" single site, "--network"), $3 table list (optional,
 #             space separated: only these tables, and then no --all-tables)
-# Uses DM_ENTRIES (call dm_load first). Same flags as run_search_replace (all_tables_flag,
-# dry_run_flag, --skip-columns=guid). Each entry runs twice: plain and JSON-escaped (/ as \/).
+# Uses DM_ENTRIES (call dm_load first). Same flags as run_search_replace (sr_build_flags:
+# all_tables_flag, skip_tables_flag, precise_flag, dry_run_flag, --skip-columns=guid).
+# Each entry runs twice: plain and JSON-escaped (/ as \/).
 # Returns 1 if a WP-CLI call fails.
 dm_run() {
     local log_file="$1" url_flag="${2:-}" tables="${3:-}" old new form search replace
     local -a flags tbl
     [[ -z "$DM_ENTRIES" ]] && return 0
-    flags=("--skip-columns=guid" "--report-changed-only" "--skip-plugins" "--skip-themes" "--skip-packages")
-    [[ "$url_flag" == "--network" ]] && flags+=("$url_flag")
     tbl=()
     if [[ -n "$tables" ]]; then
         # explicit tables of another site are only allowed together with --all-tables-with-prefix
         # shellcheck disable=SC2206
         tbl=($tables)
-        flags+=("--all-tables-with-prefix")
-    elif [[ -n "${all_tables_flag:-}" ]]; then
-        flags+=("$all_tables_flag")
+        sr_build_flags "--all-tables-with-prefix"
+    else
+        sr_build_flags
     fi
-    [[ -n "${dry_run_flag:-}" ]] && flags+=("$dry_run_flag")
+    flags=("${SR_FLAGS[@]}")
+    [[ "$url_flag" == "--network" ]] && flags+=("$url_flag")
     : > "$log_file"
     while IFS=$'\t' read -r old new; do
         [[ -z "$old" ]] && continue

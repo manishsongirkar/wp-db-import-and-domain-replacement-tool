@@ -57,6 +57,8 @@ load_import_config() {
     export CONFIG_BACKUP_KEEP_DAYS=""
     export CONFIG_BACKUP_ENCRYPT=""
     export CONFIG_BACKUP_GPG_RECIPIENT=""
+    export CONFIG_SKIP_TABLES=""
+    export CONFIG_PRECISE=""
 
     if [[ ! -f "$config_path" ]]; then
         return 1
@@ -106,6 +108,10 @@ load_import_config() {
     raw_backup_encrypt=$(parse_config_section "$config_path" "general" "backup_encrypt")
     CONFIG_BACKUP_ENCRYPT="${raw_backup_encrypt:-false}"
     CONFIG_BACKUP_GPG_RECIPIENT=$(parse_config_section "$config_path" "general" "backup_gpg_recipient")
+
+    # search-replace settings (empty = WP-CLI default)
+    CONFIG_SKIP_TABLES=$(parse_config_section "$config_path" "general" "skip_tables")
+    CONFIG_PRECISE=$(parse_config_section "$config_path" "general" "precise")
 
     return 0
 }

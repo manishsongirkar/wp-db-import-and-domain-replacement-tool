@@ -13,7 +13,8 @@
 #     4. checks the database: tables, siteurl/home, replaced links in posts and serialized
 #        options, no leftover old domain, the pre-import backup, cache flush, no temp files
 #   Scenarios: single site (socket), use_socket=false (WP-CLI path), .gz dump, compatibility
-#   retry (MariaDB collations), multisite subdirectory, multisite subdomain.
+#   retry (MariaDB collations), multisite subdirectory, multisite subdomain, skip_tables and
+#   precise on custom tables.
 #
 # Needs: a MySQL/MariaDB server binary (see lib/tests/server_helpers.sh), php with mysqli,
 #   WP-CLI, and network access for `wp core download` (WP-CLI caches the download).
@@ -240,6 +241,62 @@ _ri_prefix_single_scenario() {
 _ri_inject() {
     local f="$1" from="$2" to="$3"
     awk -v from="$from" -v to="$to" '{ out = ""; while ((i = index($0, from)) > 0) { out = out substr($0, 1, i - 1) to; $0 = substr($0, i + length(from)) } print out $0 }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
+# Scenario 9: skip_tables and precise on a single site. A dump with custom tables: one that must stay
+# as it is (named and by wildcard), one in a custom serialized format that only --precise can fix.
+_ri_skip_precise_scenario() {
+    printf "\n  -- Scenario 9: skip_tables and precise (custom tables)\n"
+    local prod="$SRV_WORK/prod9" dump="$SRV_WORK/prod9.sql" old="prod.example.com" url_len ser
+    url_len=$(printf '%s' "https://$old/a" | wc -c | tr -d ' ')
+    ser="s:${url_len}:\"https://$old/a\";"
+    _ri_install_site "$prod" prod9 "https://$old" || { printf "  ❌ production site install failed\n"; ((errors++)); return; }
+    _ri_add_content "$prod" "$old"
+    _ri_q prod9 -e "CREATE TABLE wp_keepme (id INT AUTO_INCREMENT PRIMARY KEY, v TEXT); CREATE TABLE wp_skip_log (id INT AUTO_INCREMENT PRIMARY KEY, v TEXT);
+        CREATE TABLE wp_plain (id INT AUTO_INCREMENT PRIMARY KEY, v TEXT); CREATE TABLE wp_custfmt (id INT AUTO_INCREMENT PRIMARY KEY, v TEXT);
+        INSERT INTO wp_keepme (v) VALUES ('https://$old/keep'); INSERT INTO wp_skip_log (v) VALUES ('https://$old/log');
+        INSERT INTO wp_plain (v) VALUES ('https://$old/plain'); INSERT INTO wp_custfmt (v) VALUES ('$ser');" || { printf "  ❌ could not create the custom tables\n"; ((errors++)); return; }
+    _ri_wp "$prod" db export "$dump" --add-drop-table >/dev/null 2>&1 || { printf "  ❌ dump export failed\n"; ((errors++)); return; }
+
+    # run 1: skip_tables (a name and a wildcard) + precise
+    _ri_install_site "$SRV_WORK/t9" target9 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); return; }
+    _ri_write_config "$SRV_WORK/t9" "$dump" "$old" target.test auto
+    awk '1; /^\[general\]/ { print "skip_tables=wp_keepme, wp_skip_*"; print "precise=true" }' "$SRV_WORK/t9/wpdb-import.conf" > "$SRV_WORK/t9.conf" && cat "$SRV_WORK/t9.conf" > "$SRV_WORK/t9/wpdb-import.conf"
+
+    # a dry run first: it names the skipped tables and changes nothing
+    # the first WP-CLI loads of a new site update wp_options by themselves (cron): load it before taking the state
+    _ri_wp "$SRV_WORK/t9" core is-installed >/dev/null 2>&1; _ri_wp "$SRV_WORK/t9" option get siteurl >/dev/null 2>&1
+    local before9 state9; state9=$(_ri_state target9); before9=$(_ri_fingerprint target9)
+    _ri_run_tool "$SRV_WORK/t9" --dry-run
+    [[ "$before9" != "$(_ri_fingerprint target9)" ]] && _ri_state_diff "$state9" "$(_ri_state target9)"
+    _chk "dry run: exit 0, the real database is unchanged" bash -c 'test "$1" -eq 0 && test "$2" = "$3"' _ "$_RI_RC" "$before9" "$(_ri_fingerprint target9)"
+    _chk "dry run: names the skipped tables"                bash -c 'grep -E "Skipped tables: .*wp_keepme" <<< "$0" | grep -q wp_skip_log' "$_RI_OUT"
+    _chk "dry run: says precise is on"                      grep -qE 'Precise mode: +on' <<< "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"               _ri_console_clean
+
+    _ri_run_tool "$SRV_WORK/t9"
+    _chk "exit code 0"                                      test "$_RI_RC" -eq 0
+    _chk "the settings are announced"                       bash -c 'grep -q "Skip tables: .*wp_keepme,wp_skip_\*" <<< "$0" && grep -q -e "--precise" <<< "$0"' "$_RI_OUT"
+    _chk "console shows no shell/PHP errors"               _ri_console_clean
+    _chk "a skipped table is NOT changed (by name)"         test "$(_ri_q -N -e "SELECT v FROM target9.wp_keepme")" = "https://$old/keep"
+    _chk "a skipped table is NOT changed (by wildcard)"     test "$(_ri_q -N -e "SELECT v FROM target9.wp_skip_log")" = "https://$old/log"
+    _chk "another custom table IS changed"                  test "$(_ri_q -N -e "SELECT v FROM target9.wp_plain")" = "https://target.test/plain"
+    _chk "precise: the custom serialized value is replaced and still valid" bash -c "cd '$SRV_WORK/t9' && test \"\$(wp eval 'echo unserialize(\$GLOBALS[\"wpdb\"]->get_var(\"SELECT v FROM wp_custfmt\"));' 2>/dev/null)\" = 'https://target.test/a'"
+    _ri_assert_replaced "$SRV_WORK/t9" "target.test"
+
+    # run 2: the keys empty -> nothing is skipped (the same as before the keys existed)
+    _ri_install_site "$SRV_WORK/t9b" target9b "http://target.test" || { printf "  ❌ second target install failed\n"; ((errors++)); return; }
+    _ri_write_config "$SRV_WORK/t9b" "$dump" "$old" target.test auto
+    _ri_run_tool "$SRV_WORK/t9b"
+    _chk "no keys: exit 0 and no skip or precise line"      bash -c 'test "$1" -eq 0 && ! grep -qE "Skip tables:|--precise" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+    _chk "no keys: the table is changed like any other"    test "$(_ri_q -N -e "SELECT v FROM target9b.wp_keepme")" = "https://target.test/keep"
+
+    # an invalid value stops the run before anything is changed
+    local fp9; fp9=$(_ri_fingerprint target9b)
+    printf '\n' >> "$SRV_WORK/t9b/wpdb-import.conf"
+    awk '/^skip_tables=/ { next } 1; /^\[general\]/ { print "skip_tables=wp_keep;DROP" }' "$SRV_WORK/t9b/wpdb-import.conf" > "$SRV_WORK/t9b.conf" && cat "$SRV_WORK/t9b.conf" > "$SRV_WORK/t9b/wpdb-import.conf"
+    _ri_run_tool "$SRV_WORK/t9b"
+    _chk "invalid skip_tables: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "not a table name" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp9" "$(_ri_fingerprint target9b)"
 }
 
 # Scenario 8b: multisite (subdirectory) with [domain_mappings] (network) and [site_domain_mappings] (blog 2 only)
@@ -602,6 +659,7 @@ test_real_import() {
     _ri_run_tool "$SRV_WORK/t8"
     _chk "invalid entry: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "must start with //" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fpbad" "$(_ri_fingerprint target8)"
 
+    _ri_skip_precise_scenario
     _ri_custom_multisite_scenario
     _ri_prefix_multisite_scenario subdirectory zz_
     _ri_prefix_multisite_scenario subdomain Qx9_
