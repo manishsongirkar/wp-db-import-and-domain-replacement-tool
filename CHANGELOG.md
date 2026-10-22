@@ -36,6 +36,9 @@
   - A value that is not true/false, or hours that are not a whole number of 1 or more, stops the run with a message (it never switches the guard off silently). `config-validate`, `config-show` and `doctor` (stamp folder writable) know the keys; they are added to existing configs at import time, to new configs and to the examples.
   - Tests: `test_require_dry_run.sh` (no stamp, stale, changed dump/domain/mapping, fresh, key off, bad values, config, wiring) and real-import scenario 11.
 
+### Changed
+- **Stage File Proxy is always the latest release.** The tool no longer stores a release number or a SHA-256. It downloads `releases/latest/download/stage-file-proxy.zip` and the `.sha256` file published next to it from `manishsongirkar/stage-file-proxy`, and installs only if the two match (a missing or malformed `.sha256` file stops the install). `SFP_REPO_URL` names the project; `SFP_RELEASE_URL` and `SFP_RELEASE_SHA256` stay as overrides. Because the hash now comes from the same repository as the zip, it detects a damaged or truncated download, not a changed release.
+
 ### Documentation
 - **Corrected:** README and USAGE said tables without a primary key are "read slowly". With WP-CLI 2.12 they are **skipped** (reported as `skipped`) and keep the old domain. The docs now say so and point to the dry-run list.
 
