@@ -155,7 +155,8 @@ A dry run **never changes your database**: no backup, no import, no replacement.
 2. imports the dump into a **temporary database** (`wpdb_dry_...`), and tries the compatibility filter if the server rejects the dump as is;
 3. counts the **tables and rows** that would be created;
 4. counts the **occurrences of the old domain** (and of every `[site_mappings]` domain) **per table**, including serialized data;
-5. drops the temporary database and prints a summary:
+5. lists the **tables with no primary key** (only when there are some): WP-CLI skips them, so the old domain stays in them (see below);
+6. drops the temporary database and prints a summary:
 
 ```
 📋 Dry run summary
@@ -172,6 +173,7 @@ A dry run **never changes your database**: no backup, no import, no replacement.
 
 - Needs the **mysql client** and an account that may **CREATE DATABASE**. If the server refuses, the tool says so, shows the error and the `GRANT` that fixes it; nothing is changed.
 - A dump that cannot be imported is reported with its SQL error ("a real import would fail the same way").
+- **Tables with no primary key:** WP-CLI replaces one row at a time and needs a key to find the row. A table without a primary key is reported as `skipped` and **keeps the old domain** (checked with WP-CLI 2.12). A `UNIQUE NOT NULL` key counts as a key; views are not tables. The dry run prints `⚠️ Tables WP-CLI search-replace will SKIP (no primary key)` with the row count of each table, and nothing when every table has a key. The counts above still include these tables, but a real run does not change them. Add a primary key in the dump, or run an SQL `REPLACE()` on them after the import. The block is a report only: nothing is changed.
 - Dumps made with `--databases` (lines like `CREATE DATABASE`, `USE`, `DROP DATABASE`) cannot reach another database: those one-line statements are removed from the preview stream.
 - Domains that contain each other (`prod.example.com` and `news.prod.example.com`) are counted separately, longest first.
 - **Behavior change:** before, `dry_run=true` still imported the dump into your real database and only previewed the search-replace. A dry run now previews everything and imports nothing. The question "Run in dry-run mode?" is asked **before** the import, not after it.
@@ -506,7 +508,7 @@ Set `sql_file` to a `.sql.gz`, `.zip` or `.sql.bz2` file. The dump is checked fo
 - **`innodb_buffer_pool_size`**: set it to about 50–70% of free RAM on a dedicated database server. A bigger pool makes the import and the search-replace faster. In Local, edit the site's `my.cnf.hbs`, and restart the site.
 - **`innodb_flush_log_at_trx_commit=2`** and a bigger `innodb_log_file_size` (MySQL 8: `innodb_redo_log_capacity`) speed up large imports on local and staging servers. Do not keep `2` on a production server.
 - **PHP memory in search-replace**: WP-CLI reads tables in pages. A table with very large rows can still exhaust the PHP memory limit (`Allowed memory size ... exhausted`). Raise the limit for WP-CLI in one of two ways: add the line `exec: ini_set("memory_limit", "2G");` to a `wp-cli.yml` file in the WordPress folder (the tool runs WP-CLI in that folder), or set `memory_limit` in the CLI `php.ini` (find it with `php --ini`). Setting `WP_CLI_PHP_ARGS` does **not** work: it is not applied to a normal `wp` run. (`wp search-replace` has no `--batch-size` option, so there is no batch size to set.)
-- **Time**: search-replace runs 2 passes (4 with a `www` host, more with [custom URL mappings](#-custom-url-mappings)) over all tables. Tables without a primary key or without indexes are read slowly, and WP-CLI cannot page them well. Run the tool on a local or staging copy, never on a live production database.
+- **Time**: search-replace runs 2 passes (4 with a `www` host, more with [custom URL mappings](#-custom-url-mappings)) over all tables. WP-CLI **skips** a table with no primary key (the old domain stays in it): `--dry-run` lists such tables. Run the tool on a local or staging copy, never on a live production database.
 - **Free disk space**: the backup needs about half of the database size (checked before it starts). The temporary database of a dry run needs the full database size, plus the dump.
 - **Mega databases (10 GB and more)**: this tool does not split or chunk a dump. For these sizes, move the data with a native tool (for example `mysqldump --single-transaction` and `mysql`, or `mydumper`/`myloader`), test on a smaller copy first, and keep a backup.
 

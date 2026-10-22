@@ -12,7 +12,8 @@
 #        - if the server rejects it, the compatibility filter is tried and reported
 #     3. tables and rows that would be created are counted
 #     4. occurrences of the old domain (and of every site-mapping domain) are counted per
-#        table, i.e. what search-replace would change
+#        table, i.e. what search-replace would change; tables with no primary key are listed,
+#        because WP-CLI skips them
 #     5. the scratch database is dropped, and a summary is printed
 #   Nothing is backed up, imported or replaced in the real database.
 #
@@ -108,6 +109,26 @@ _dry_run_stream() {
     _emit_import_stream "$1" false "${2:-false}" \
         | LC_ALL=C sed -E -e '/^(USE|CREATE DATABASE|DROP DATABASE|ALTER DATABASE)[[:space:]].*;[[:space:]]*$/Id' \
                           -e '/^\/\*![0-9]+[[:space:]]+(CREATE|DROP|ALTER)[[:space:]]+DATABASE[[:space:]].*\*\/;[[:space:]]*$/Id'
+}
+
+# ===============================================
+# Tables WP-CLI search-replace skips
+# ===============================================
+# WP-CLI replaces one row at a time and needs a key to find the row: a table with no primary key is
+# reported as "skipped" and keeps the old domain. It uses the columns SHOW COLUMNS marks PRI, which
+# includes a UNIQUE NOT NULL key when there is no PRIMARY KEY, so this does the same (and views are not tables).
+# Parameters: $1 scratch database, then the client command (read-only queries only).
+# Prints "table<TAB>rows" lines, most rows first. Prints nothing when every table has a key.
+dry_run_tables_without_key() {
+    local scratch="$1" list t count_sql="" sq="'"
+    shift
+    list=$("$@" -e "SELECT t.table_name FROM information_schema.tables t WHERE t.table_schema = '${scratch}' AND t.table_type = 'BASE TABLE' AND NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema = t.table_schema AND c.table_name = t.table_name AND c.column_key = 'PRI') ORDER BY t.table_name" 2>/dev/null)
+    while IFS= read -r t; do
+        [[ -n "$t" ]] || continue
+        count_sql+="SELECT '${t//$sq/$sq$sq}', COUNT(*) FROM \`${t//\`/\`\`}\`;"
+    done <<< "$list"
+    [[ -n "$count_sql" ]] || return 0
+    "$@" -e "$count_sql" 2>/dev/null | sort -t$'\t' -k2,2nr -k1,1
 }
 
 # ===============================================
@@ -273,6 +294,20 @@ _dry_run_in_scratch() {
         [[ "$dom_tables" -gt 8 ]] && printf "      ${DIM}... and %d more tables${RESET}\n" "$((dom_tables - 8))"
     done < <(dry_run_domains "$old_domain" "$new_domain" "$config_path")
 
+    # tables without a key: WP-CLI skips them, so the old domain would stay in them
+    local nokey nk_table nk_rows nk_n=0
+    nokey=$(dry_run_tables_without_key "$scratch" "${q[@]}")
+    if [[ -n "$nokey" ]]; then
+        printf "\n   ${YELLOW}⚠️  Tables WP-CLI search-replace will SKIP (no primary key): the old domain stays in them${RESET}\n"
+        while IFS=$'\t' read -r nk_table nk_rows; do
+            [[ -n "$nk_table" ]] || continue
+            nk_n=$((nk_n + 1))
+            [[ "$nk_n" -le 10 ]] && printf "      %-34s %8s rows\n" "$nk_table" "$nk_rows"
+        done <<< "$nokey"
+        [[ "$nk_n" -gt 10 ]] && printf "      ${DIM}... and %d more tables${RESET}\n" "$((nk_n - 10))"
+        printf "      ${DIM}They are counted above, but a real run leaves them unchanged. Add a primary key (or a UNIQUE NOT NULL key)\n      to them in the dump, or run an SQL REPLACE() on them after the import.${RESET}\n"
+    fi
+
     # URL findings (www variant, custom [domain_mappings] counts, other hosts): read from the dump only
     [[ -n "$skip_list" ]] && printf "\n${DIM}   (the URL findings below read the whole dump, skipped tables included)${RESET}"
     declare -F dm_dry_run_report >/dev/null 2>&1 && dm_dry_run_report "$sql_file" "$old_domain" "$new_domain" "$config_path"
@@ -288,4 +323,4 @@ _dry_run_in_scratch() {
 }
 
 export -f wpdb_dry_run_requested decide_dry_run_mode dry_run_domains _dry_run_sql_str \
-    _dry_run_stream dry_run_preview _dry_run_in_scratch 2>/dev/null
+    _dry_run_stream dry_run_preview _dry_run_in_scratch dry_run_tables_without_key 2>/dev/null

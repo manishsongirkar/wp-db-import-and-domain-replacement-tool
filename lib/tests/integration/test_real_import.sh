@@ -299,6 +299,49 @@ _ri_skip_precise_scenario() {
     _chk "invalid skip_tables: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "not a table name" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fp9" "$(_ri_fingerprint target9b)"
 }
 
+# Scenario 10: tables without a primary key. The dry run lists them (a table with a UNIQUE NOT NULL key,
+# a table with a primary key and a view are not listed). The warning is right: a live run leaves the old
+# domain in a table that has no key, because WP-CLI skips it.
+_ri_nokey_scenario() {
+    printf "\n  -- Scenario 10: tables without a primary key\n"
+    local prod="$SRV_WORK/prod10" dump="$SRV_WORK/prod10.sql" old="prod.example.com"
+    _ri_install_site "$prod" prod10 "https://$old" || { printf "  ❌ production site install failed\n"; ((errors++)); return; }
+    _ri_add_content "$prod" "$old"
+    _ri_q prod10 -e "CREATE TABLE wp_nopk (v TEXT, n INT); CREATE TABLE wp_uniq (v TEXT, u INT NOT NULL, UNIQUE KEY (u));
+        CREATE TABLE wp_haspk (id INT AUTO_INCREMENT PRIMARY KEY, v TEXT); CREATE VIEW wp_nopk_view AS SELECT v FROM wp_nopk;
+        INSERT INTO wp_nopk VALUES ('https://$old/a', 1), ('https://$old/b', 2); INSERT INTO wp_uniq VALUES ('https://$old/u', 1);
+        INSERT INTO wp_haspk (v) VALUES ('https://$old/k');" || { printf "  ❌ could not create the tables\n"; ((errors++)); return; }
+    _ri_wp "$prod" db export "$dump" --add-drop-table >/dev/null 2>&1 || { printf "  ❌ dump export failed\n"; ((errors++)); return; }
+    _ri_install_site "$SRV_WORK/t10" target10 "http://target.test" || { printf "  ❌ target site install failed\n"; ((errors++)); return; }
+    _ri_wp "$SRV_WORK/t10" core is-installed >/dev/null 2>&1; _ri_wp "$SRV_WORK/t10" option get siteurl >/dev/null 2>&1
+
+    # a normal WordPress dump (every table has a key): no block at all
+    local before10; before10=$(_ri_fingerprint target10)
+    _ri_write_config "$SRV_WORK/t10" "$SRV_WORK/prod.sql" "$old" target.test auto
+    _ri_run_tool "$SRV_WORK/t10" --dry-run
+    _chk "normal dump: exit 0 and no 'no primary key' block" bash -c 'test "$1" -eq 0 && ! grep -qE "will SKIP|no primary key" <<< "$0"' "$_RI_OUT" "$_RI_RC"
+
+    # the dump with keyless tables
+    _ri_write_config "$SRV_WORK/t10" "$dump" "$old" target.test auto
+    _ri_run_tool "$SRV_WORK/t10" --dry-run
+    _chk "exit code 0 (report only)"                       test "$_RI_RC" -eq 0
+    _chk "the real database is unchanged"                  test "$before10" = "$(_ri_fingerprint target10)"
+    _chk "the block is shown"                              grep -q 'will SKIP (no primary key)' <<< "$_RI_OUT"
+    _chk "wp_nopk is listed with its 2 rows"               grep -qE 'wp_nopk +2 rows' <<< "$_RI_OUT"
+    _chk "a UNIQUE NOT NULL key counts as a key (wp_uniq not listed)" bash -c '! grep -qE "wp_uniq +[0-9]+ rows" <<< "$0"' "$_RI_OUT"
+    _chk "a table with a primary key is not listed"        bash -c '! grep -qE "(wp_haspk|wp_posts|wp_options) +[0-9]+ rows" <<< "$0"' "$_RI_OUT"
+    _chk "a view is not listed"                            bash -c '! grep -qE "wp_nopk_view +[0-9]+ rows" <<< "$0"' "$_RI_OUT"
+    _chk "no scratch database is left on the server"       _ri_no_scratch_db
+    _chk "console shows no shell/PHP errors"               _ri_console_clean
+
+    # the warning is right: the live run skips the keyless table and replaces the others
+    _ri_run_tool "$SRV_WORK/t10"
+    _chk "live run: exit 0"                                test "$_RI_RC" -eq 0
+    _chk "the keyless table keeps the old domain (WP-CLI skipped it)" test "$(_ri_q -N -e "SELECT COUNT(*) FROM target10.wp_nopk WHERE v LIKE '%$old%'")" = 2
+    _chk "the table with a UNIQUE NOT NULL key is replaced" test "$(_ri_q -N -e "SELECT v FROM target10.wp_uniq")" = "https://target.test/u"
+    _chk "the table with a primary key is replaced"        test "$(_ri_q -N -e "SELECT v FROM target10.wp_haspk")" = "https://target.test/k"
+}
+
 # Scenario 8b: multisite (subdirectory) with [domain_mappings] (network) and [site_domain_mappings] (blog 2 only)
 _ri_custom_multisite_scenario() {
     local prod="$SRV_WORK/prod_cm" tgt="$SRV_WORK/t_cm" dump="$SRV_WORK/prod_cm.sql"
@@ -660,6 +703,7 @@ test_real_import() {
     _chk "invalid entry: exit 1, explained, nothing changed" bash -c 'test "$1" -eq 1 && grep -q "must start with //" <<< "$0" && test "$2" = "$3"' "$_RI_OUT" "$_RI_RC" "$fpbad" "$(_ri_fingerprint target8)"
 
     _ri_skip_precise_scenario
+    _ri_nokey_scenario
     _ri_custom_multisite_scenario
     _ri_prefix_multisite_scenario subdirectory zz_
     _ri_prefix_multisite_scenario subdomain Qx9_
