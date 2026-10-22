@@ -197,6 +197,16 @@ test_doctor_site() {
     after=$(cksum < "$site/wpdb-import.conf")
     _chk "config file is read, not changed"              test "$before" = "$after"
     _chk "backup_dir from the config is used"            grep -q "$_DC_WORK/bk" <<< "$out"
+    # search-replace settings: a row only when something is set; a bad value is a FAIL
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nskip_tables=wp_keep,wp_logs_*\nprecise=true\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    out=$(_dc_run "$site" "$b")
+    _chk "skip_tables and precise set: an OK row names them" bash -c 'grep -q "OK    Search-replace  *skip_tables=wp_keep,wp_logs_\*, precise=on" <<< "$0"' "$out"
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nskip_tables=\nprecise=false\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    out=$(_dc_run "$site" "$b")
+    _chk "defaults (empty, false): no row"               bash -c '! grep -q "Search-replace" <<< "$0"' "$out"
+    printf '[general]\nuse_socket=false\nbackup_dir=%s/bk\nskip_tables=wp keep;x\n' "$_DC_WORK" > "$site/wpdb-import.conf"
+    out=$(_dc_run "$site" "$b"); rc=$?
+    _chk "a bad skip_tables: FAIL with a fix, exit 1"    bash -c 'test "$1" -eq 1 && grep -q "FAIL  Search-replace" <<< "$0" && grep -q "fix skip_tables and precise" <<< "$0"' "$out" "$rc"
     printf 'this is not a valid config\n' > "$site/wpdb-import.conf"
     out=$(_dc_run "$site" "$b"); rc=$?
     _chk "invalid config: FAIL with the fix command"     bash -c 'test "$1" -eq 1 && grep -q "FAIL  Config file" <<< "$0" && grep -q "config-validate" <<< "$0"' "$out" "$rc"

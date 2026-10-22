@@ -231,6 +231,20 @@ doctor_site_checks() {
         esac
     fi
 
+    # Search-replace settings (only shown when set)
+    local sk pr sk_why
+    if [[ -n "$config_path" && -f "$config_path" ]]; then
+        sk=$(parse_config_section "$config_path" "general" "skip_tables" 2>/dev/null)
+        pr=$(parse_config_section "$config_path" "general" "precise" 2>/dev/null)
+        if [[ -n "$sk" || -n "$pr" ]]; then
+            if ! sk_why=$(sr_validate_settings "$sk" "$pr" 2>&1); then
+                _doc_row FAIL "Search-replace" "$(printf '%s' "$sk_why" | head -1 | cut -c1-120)" "fix skip_tables and precise in $config_path"
+            elif [[ -n "$sk" ]] || is_config_true "$pr"; then
+                _doc_row OK "Search-replace" "skip_tables=${sk:-none}, precise=$(is_config_true "$pr" && echo on || echo off)"
+            fi
+        fi
+    fi
+
     # Config file
     if [[ -n "$config_path" && -f "$config_path" ]]; then
         local out

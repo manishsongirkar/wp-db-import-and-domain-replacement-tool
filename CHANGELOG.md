@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- **`skip_tables` and `precise` config keys** ([#45](https://github.com/manishsongirkar/wp-db-import-and-domain-replacement-tool/issues/45)):
+  - **`skip_tables=a,b_*`** (default empty): the tables WP-CLI must not touch (`--skip-tables`). `*` and `?` are wildcards; spaces around names and empty items are removed; a value with any other character stops the run before anything is changed (`config-validate` and `doctor` report it too).
+  - **`precise=true`** (default `false`): passes `--precise` to every call, so PHP does the replacement. Slower, but it repairs serialized data in a non-standard format in custom tables.
+  - Both reach every `wp search-replace` call: the four passes of the main replacement (single site, www, `--url`, `--network`), the custom `[domain_mappings]` and the per-site `[site_domain_mappings]`. The flag list now lives in one helper (`sr_build_flags`), so a pass cannot miss a flag.
+  - The dry run leaves skipped tables out of its counts, names them, and says when precise is on.
+  - The keys are added to existing configs at import time (with comments), to new configs and to the example files. Empty keys give the same WP-CLI commands as before. `config-show` and `doctor` show them.
+  - Tests: `test_search_replace_flags.sh` (flags on every pass, values, config upgrade), dry-run and doctor cases, and real-import scenario 9 (a skipped table, a wildcard, a custom serialized value that only `--precise` repairs).
+
 ### Security
 - **PHP injection in the multisite network update fixed:** domains and paths placed in the `wp eval` code are escaped (`php_sq_escape`), and blog IDs must be numbers. Before, a quote in a domain from `wpdb-import.conf` or a prompt could leave the PHP string. The helper is required: without it the update stops and writes nothing.
 - **Shell `eval` in the array helpers removed:** `set_associative_value` and `get_associative_value` read keys and values from variables, and all array helpers refuse names that are not plain identifiers. (No current code path used them with outside data.)
